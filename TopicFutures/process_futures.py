@@ -1,0 +1,142 @@
+# written with pair programming
+
+from .data_io import add_model_data_to_metadata
+from .utils import exponential_backoff
+
+from time import sleep
+import logging
+from dask.distributed import wait
+
+
+def process_completed_futures(completed_train_futures, completed_eval_futures, num_documents, workers, \
+                               batchsize, texts_zip_dir, metadata_dir, visualization_results=None):
+
+    # Create a mapping from model_data_id to visualization results
+    vis_results_map = {vis_result[0]: vis_result[1:] for vis_result in visualization_results}
+
+    # DEBUGGING
+    #if visualization_results and len(visualization_results) >= 2:
+    #    print(visualization_results[0], visualization_results[1])
+    #print(f"this is the vis_results_map(): {vis_results_map}")
+
+    # Process training futures
+    for future in completed_train_futures:
+        try:
+            models_data = future.result()  # This should be a list of dictionaries
+            if not isinstance(models_data, list):
+                models_data = [models_data]  # Ensure it is a list
+
+            for model_data in models_data:
+                unique_id = model_data['time_key']
+                
+                # Retrieve visualization results using filename hash as key
+                if unique_id in vis_results_map:
+                    #print(f"We are in the process_completed mapping time hash key.")
+                    create_pylda, create_pcoa = vis_results_map[unique_id]
+                    model_data['create_pylda'] = create_pylda
+                    model_data['create_pcoa'] = create_pcoa
+                
+                add_model_data_to_metadata(model_data, num_documents, workers, batchsize, texts_zip_dir, metadata_dir)
+        except Exception as e:
+            logging.error(f"Error occurred during process_completed_futures() TRAIN: {e}")
+        
+
+    # Process evaluation futures
+    #vis_futures = []
+    for future in completed_eval_futures:
+        try:
+            models_data = future.result()  # This should be a list of dictionaries
+            if not isinstance(models_data, list):
+                models_data = [models_data]  # Ensure it is a list
+
+            for model_data in models_data:
+                unique_id = model_data['time']
+                
+                # Retrieve visualization results using filename hash as key
+                if unique_id in vis_results_map:
+                    create_pylda, create_pcoa = vis_results_map[unique_id]
+                    model_data['create_pylda'] = create_pylda
+                    model_data['create_pcoa'] = create_pcoa
+                
+                add_model_data_to_metadata(model_data, num_documents, workers, batchsize, texts_zip_dir, metadata_dir)
+        except Exception as e:
+            logging.error(f"Error occurred during process_completed_futures() EVAL: {e}")
+        
+                    
+    #del models_data            
+    #garbage_collection(True, 'process_completed_futures(...)')
+    return completed_eval_futures, completed_train_futures
+
+
+# Function to retry processing with incomplete futures
+def retry_processing(incomplete_train_futures, incomplete_eval_futures, failed_model_params, future_to_params, timeout=None):
+    #print("we are in the retry_processing method()")
+    # Retry processing with incomplete futures using an extended timeout
+    # Process completed ones after reattempting
+    #done_train = [f for f in done if f in train_futures]
+    #done_eval = [f for f in done if f in eval_futures]
+    # Wait for completion of eval_futures
+    done_eval, not_done_eval = wait(incomplete_eval_futures, timeout=timeout)  # return_when='FIRST_COMPLETED'
+    #print(f"This is the size of the done_eval list: {len(done_eval)} and this is the size of the not_done_eval list: {len(not_done_eval)}")
+
+    # Wait for completion of train_futures
+    done_train, not_done_train = wait(incomplete_train_futures, timeout=timeout)  # return_when='FIRST_COMPLETED'
+    #print(f"This is the size of the done_train list: {len(done_train)} and this is the size of the not_done_train list: {len(not_done_train)}")
+
+    done = done_train.union(done_eval)
+    not_done = not_done_eval.union(not_done_train)
+                
+    #print(f"WAIT completed in {elapsed_time} minutes")
+    #print(f"This is the size of DONE {len(done)}. And this is the size of NOT_DONE {len(not_done)}\n")
+    #print(f"this is the value of done_train {done_train}")
+
+    completed_train_futures = [f for f in done_train]
+    #print(f"We have completed the TRAIN list comprehension. The size is {len(completed_train_futures)}")
+    #print(f"This is the length of the TRAIN completed_train_futures var {len(completed_train_futures)}")
+            
+    completed_eval_futures = [f for f in done_eval]
+    #print(f"We have completed the EVAL list comprehension. The size is {len(completed_eval_futures)}")
+    #print(f"This is the length of the EVAL completed_eval_futures var {len(completed_eval_futures)}")
+
+    #logging.info(f"This is the size of completed_train_futures {len(completed_train_futures)} and this is the size of completed_eval_futures {len(completed_eval_futures)}")
+    if len(completed_eval_futures) > 0 or len(completed_train_futures) > 0:
+        process_completed_futures(completed_train_futures, completed_eval_futures) 
+    
+    # Record parameters of still incomplete futures for later review
+    failed_model_params.extend(future_to_params[future] for future in not_done)
+    print("We have exited the retry_preprocessing() method.")
+    logging.info(f"There were {len(not_done_eval)} EVAL documents that couldn't be processed in retry_processing().")
+    logging.info(f"There were {len(not_done_train)} TRAIN documents that couldn't be processed in retry_processing().")
+
+    return failed_model_params
+    #garbage_collection(False, 'retry_processing(...)')
+
+
+# Function to handle failed futures and potentially retry them
+def handle_failed_future(train_model, client, future, future_to_params, train_futures, eval_futures, MAX_RETRIES=1):
+    # Dictionary to keep track of retries for each task
+    task_retries = {}
+    
+    logging.info("We are in the handle_failed_future() method.\n")
+    params = future_to_params[future]
+    attempt = task_retries.get(params, 0)
+    
+    if attempt < MAX_RETRIES:
+        logging.info(f"Retrying task {params} (attempt {attempt + 1}/{MAX_RETRIES})")
+        wait_time = exponential_backoff(attempt)
+        sleep(wait_time)  
+        
+        task_retries[params] = attempt + 1
+        
+        new_future_train = client.submit(train_model, *params)
+        new_future_eval = client.submit(train_model, *params)
+        
+        future_to_params[new_future_train] = params
+        future_to_params[new_future_eval] = params
+        
+        train_futures.append(new_future_train)
+        eval_futures.append(new_future_eval)
+    else:
+        logging.info(f"Task {params} failed after {MAX_RETRIES} attempts. No more retries.")
+
+    #garbage_collection(False,'handle_failed_future')
