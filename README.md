@@ -1,2 +1,1 @@
-# topic_analysis
-Latent Dirichlet Allocation Modelling and Visualization
+# Scalable LDA Insights Framework (SLIF)
