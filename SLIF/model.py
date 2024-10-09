@@ -1,4 +1,5 @@
-# written with pair programming
+# developed traditionally in addition to pair programming
+from .utils import garbage_collection
 import pandas as pd
 from dask.distributed import as_completed
 import dask   # Parallel computing library that scales Python workflows across multiple cores or machines 
@@ -8,11 +9,11 @@ from dask.distributed import progress
 from distributed import Future
 from dask.delayed import Delayed # Decorator for creating delayed objects in Dask computations
 #from dask.distributed import as_completed
-from dask.bag import Bag
-from dask import delayed
-from dask import persist
+#from dask.bag import Bag
+#from dask import delayed
+#from dask import persist
 import dask.config
-from dask.distributed import performance_report, wait, as_completed #,print
+from dask.distributed import performance_report, wait #, as_completed #,print
 from distributed import get_worker
 import logging
 from gensim.models import LdaModel  # Implements LDA for topic modeling using the Gensim library
@@ -207,7 +208,7 @@ def train_model(n_topics: int, alpha_str: list, beta_str: list, data: list, trai
         }
 
         models_data.append(current_increment_data)
-        #garbage_collection(False, 'train_model(): convergence and perplexity score calculations')
+        garbage_collection(False, 'train_model(...)')
         #del batch_documents, streaming_documents, lda_model_gensim, dictionary_batch, current_increment_data #, vis, success
 
         return models_data
