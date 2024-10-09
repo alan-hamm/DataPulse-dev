@@ -1,4 +1,4 @@
-# written with pair programming
+# developed traditionally in addition to pair programming
 import logging
 import gc
 
