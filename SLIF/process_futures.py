@@ -1,7 +1,7 @@
-# written with pair programming
+# developed traditionally in addition to pair programming
 
 from .data_io import add_model_data_to_metadata
-from .utils import exponential_backoff
+from .utils import exponential_backoff, garbage_collection
 
 from time import sleep
 import logging
@@ -64,7 +64,7 @@ def process_completed_futures(completed_train_futures, completed_eval_futures, n
         
                     
     #del models_data            
-    #garbage_collection(True, 'process_completed_futures(...)')
+    garbage_collection(False, 'process_completed_futures(...)')
     return completed_eval_futures, completed_train_futures
 
 
