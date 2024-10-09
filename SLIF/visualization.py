@@ -1,4 +1,5 @@
-# written with pair programming
+# developed traditionally in addition to pair programming
+from .utils import garbage_collection
 import os 
 import numpy as np
 import pyLDAvis
@@ -28,7 +29,11 @@ def create_vis(ldaModel, corpus, dictionary, filename, CORES, PYLDA_DIR, PCOA_DI
     # Prepare the visualization data.
     # Note: sort_topics=False will prevent reordering topics after training.
     try:
-        vis = pyLDAvis.gensim.prepare(ldaModel, corpus, dictionary,  n_jobs=int(CORES*(2/3)), sort_topics=False)
+        # ERROR: Object of type complex128 is not JSON serializable
+        # https://github.com/bmabey/pyLDAvis/issues/69#issuecomment-311337191
+        # as mentioned in the forum, use mds='mmds' instead of default js_PCoA
+        # https://pyldavis.readthedocs.io/en/latest/modules/API.html#pyLDAvis.prepare
+        vis = pyLDAvis.gensim.prepare(ldaModel, corpus, dictionary,  mds='mmds', n_jobs=int(CORES*(2/3)), sort_topics=False)
 
         pyLDAvis.save_html(vis, IMAGEFILE)
         create_pylda = True
@@ -99,5 +104,5 @@ def create_vis(ldaModel, corpus, dictionary, filename, CORES, PYLDA_DIR, PCOA_DI
         logging.error(f"An error occurred during PCoA transformation: {e}")
         create_pcoa=False
 
-
+    garbage_collection(False,"create_vis(...)")
     return filename, create_pylda, create_pcoa
