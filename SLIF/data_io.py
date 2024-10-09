@@ -1,4 +1,4 @@
-# written with pair programming methodology
+# developed traditionally in addition to pair programming
 import os
 from json import load
 from random import shuffle
@@ -6,6 +6,7 @@ import pandas as pd
 import hashlib
 import zipfile
 import logging
+from .utils import garbage_collection
 
 def get_num_records(filename):
     with open(filename, 'r', encoding='utf-8', errors='ignore') as jsonfile:
@@ -71,23 +72,25 @@ def futures_create_lda_datasets(filename, train_ratio, batch_size):
                     }
                 eval_count += len(eval_data_batch)
                 cumulative_count += eval_count
+    garbage_collection(False, "futures_create_lda_datasets(..)")
 
 
 # Function to save text data and model to single ZIP file
-def save_to_zip(time, text_data, text_json, ldamodel, corpus, dictionary, texts_zip_dir):
+def save_to_zip(time, top_folder, text_data, text_json, ldamodel, corpus, dictionary, texts_zip_dir):
     # Generate a unique filename based on current timestamp
     timestamp_str = hashlib.md5(time.strftime('%Y%m%d%H%M%S%f').encode()).hexdigest()
     text_zip_filename = f"{timestamp_str}.zip"
     
     # Write the text content and model to a zip file within TEXTS_ZIP_DIR
-    zip_path = os.path.join(texts_zip_dir, text_zip_filename)
-    with zipfile.ZipFile(zip_path, mode='w', compression=zipfile.ZIP_DEFLATED) as zf:
+    zip_path = os.path.join(texts_zip_dir,top_folder)
+    zpath = os.path.join(zip_path, text_zip_filename)
+    with zipfile.ZipFile(zpath, mode='w', compression=zipfile.ZIP_DEFLATED) as zf:
         zf.writestr(f"doc_{timestamp_str}.txt", text_data)
         zf.writestr(f"model_{timestamp_str}.pkl", ldamodel)
         zf.writestr(f"dict_{timestamp_str}.pkl", dictionary)
         zf.writestr(f"corpus_{timestamp_str}.pkl", corpus)
         zf.writestr(f"json_{timestamp_str}.pkl", text_json)
-    return zip_path
+    return zpath
 
 
 # Function to add new model data to metadata Parquet file
@@ -96,10 +99,15 @@ def add_model_data_to_metadata(model_data, num_documents, workers, batchsize, te
     # Save large body of text to zip and update model_data reference
     texts_zipped = []
     
+    # Path to the distinct document folder to contain all related documents
+    document_dir = os.path.join(texts_zip_dir, model_data['text_md5'])
+    os.makedirs(document_dir, exist_ok=True)
+
     #for text_list in model_data['text']:
     for text_list in model_data['text']:
         combined_text = ''.join([''.join(sent) for sent in text_list])  # Combine all sentences into one string
-        zip_path = save_to_zip(model_data['time'], combined_text, model_data['text_json'], model_data['lda_model'], model_data['corpus'], model_data['dictionary'], texts_zip_dir)
+        zip_path = save_to_zip(model_data['time'], document_dir, combined_text, \
+                               model_data['text_json'], model_data['lda_model'], model_data['corpus'], model_data['dictionary'], texts_zip_dir)
         texts_zipped.append(zip_path)
     # Update model data with zipped paths
     model_data['text'] = texts_zipped
@@ -208,6 +216,7 @@ def add_model_data_to_metadata(model_data, num_documents, workers, batchsize, te
 
 
     # Save updated metadata DataFrame back to Parquet file
+    garbage_collection(False, "add_model_data_to_metadata(...)")
     df_metadata.to_parquet(parquet_file_path)
     #del df_metadata, df_new_metadata, model_data
     #garbage_collection(False, 'add_model_data_to_metadata(...)')
