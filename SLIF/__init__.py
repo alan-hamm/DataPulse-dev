@@ -1,4 +1,6 @@
-# writting with pair programming methodology
+# developed traditionally in addition to pair programming
+# author: alan hamm(pqn7)
+# date apr 2024
 
 # Import key functions and classes from submodules to allow easy access at the package level
 from .data_io import get_num_records, futures_create_lda_datasets, save_to_zip, add_model_data_to_metadata
