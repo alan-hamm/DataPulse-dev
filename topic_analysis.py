@@ -1,8 +1,9 @@
-# written with pair programming
+# developed traditionally in addition to pair programming
 # author: alan hamm(pqn7)
+# date apr 2024
 
 #%%
-from TopicFutures import *
+from SLIF import *
 from dask.distributed import Client, LocalCluster, performance_report, wait
 from distributed import Future
 import dask
@@ -25,6 +26,7 @@ import warnings
 from bokeh.util.deprecation import BokehDeprecationWarning
 from numpy import ComplexWarning
 
+
 ###################################
 # BEGIN SCRIPT CONFIGURATION HERE #
 ###################################
@@ -46,12 +48,13 @@ DECADE = DECADE_TO_PROCESS
 # In the case of this machine, since it has an Intel Core i9 processor with 8 physical cores (16 threads with Hyper-Threading), 
 # it would be appropriate to set the number of workers in Dask Distributed LocalCluster to 8 or slightly lower to allow some CPU 
 # resources for other tasks running on your system.
-CORES = 8
+# https://www.intel.com/content/www/us/en/products/sku/228439/intel-core-i912950hx-processor-30m-cache-up-to-5-00-ghz/specifications.html
+CORES = 10
 MAXIMUM_CORES = 12
-THREADS_PER_CORE = 12
-RAM_MEMORY_LIMIT = "80GB" # Dask diagnostics significantly overestimates RAM usage -- nowhere near OS RAM measurement
+THREADS_PER_CORE = 2
+RAM_MEMORY_LIMIT = "10GB" # Dask diagnostics significantly overestimates RAM usage
 CPU_UTILIZATION_THRESHOLD = 110 # eg 85%
-MEMORY_UTILIZATION_THRESHOLD = 75 * (1024 ** 3)  # Convert GB to bytes
+MEMORY_UTILIZATION_THRESHOLD = 9 * (1024 ** 3)  # Convert GB to bytes
 # Specify the local directory path, spilling will be written here
 DASK_DIR = '/topic-modeling/dask-spill'
 
@@ -70,12 +73,12 @@ PER_WORD_TOPICS = True
 
 
 # the number of documents( defined as HTML extract of <p>...</p> ) to read from the JSON source file per batch
-FUTURES_BATCH_SIZE = 100
+FUTURES_BATCH_SIZE = 50
 
 # Constants for adaptive batching and retries
 # Number of futures to process per iteration
-BATCH_SIZE = 100 # number of documents, value should be greater than FUTURES_BATCH_SIZE
-MAX_BATCH_SIZE = 150 # maximum number of documents to be processed
+BATCH_SIZE = 50 # number of documents, value should be greater than FUTURES_BATCH_SIZE
+MAX_BATCH_SIZE = 60 # maximum number of documents to be processed
 MIN_BATCH_SIZE = math.ceil(FUTURES_BATCH_SIZE * 1.01) # minimum size of batch if resources are strained
 INCREASE_FACTOR = 1.05  # Increase batch size by p% upon success
 DECREASE_FACTOR = .10 # Decrease batch size by p% upon failure or timeout
@@ -142,7 +145,9 @@ logging.basicConfig(
 ##########################################
 # Filter out the specific warning message
 ##########################################
-# Suppress ComplexWarnings generated in create_vis() function with pyLDAvis
+# Suppress ComplexWarnings generated in create_vis() function with pyLDAvis, note: this 
+# is caused by using js_PCoA in the prepare() method call. Intsead of js_PCoA, MMDS is 
+# implemented.
 warnings.simplefilter('ignore', ComplexWarning)
 
 # Disable Bokeh deprecation warnings
@@ -161,7 +166,6 @@ dask.config.set({'distributed.worker.memory.target': False,
                  ,'distributed.worker.memory.terminate': 0.99})
 dask.config.set({'logging.distributed': 'error'})
 dask.config.set({"distributed.scheduler.worker-ttl": None})
-#dask.config.set({"distributed.scheduler.worker-ttl": None})
 
 
 # https://distributed.dask.org/en/latest/worker-memory.html#memory-not-released-back-to-the-os
@@ -359,7 +363,7 @@ if __name__=="__main__":
         #print(f"this is the number of for loop iterations: {num_iter}")
         num_iter+=1
         # determine if throttling is needed
-        logging.info("\nEvaluating if adaptive throttling is necessary (method exponential backoff)...")
+        logging.info("Evaluating if adaptive throttling is necessary (method exponential backoff)...")
         started, throttle_attempt = time(), 0
 
         # https://distributed.dask.org/en/latest/worker-memory.html#memory-not-released-back-to-the-os
@@ -523,12 +527,12 @@ if __name__=="__main__":
             all_workers_below_memory_threshold = all(worker['metrics']['memory'] < MEMORY_UTILIZATION_THRESHOLD for worker in scheduler_info['workers'].values())
      
             if (all_workers_below_cpu_threshold and all_workers_below_memory_threshold):
-                BATCH_SIZE = int(math.ceil(BATCH_SIZE * INCREASE_FACTOR)) if int(math.ceil(BATCH_SIZE * INCREASE_FACTOR)) < MAX_BATCH_SIZE else MAX_BATCH_SIZE
+                BATCH_SIZE = int(math.ceil(BATCH_SIZE * INCREASE_FACTOR)) if int(math.ceil(BATCH_SIZE * INCREASE_FACTOR)) <= MAX_BATCH_SIZE else MAX_BATCH_SIZE
                 logging.info(f"Increasing batch size to {BATCH_SIZE}")
             else:
                 BATCH_SIZE = max(MIN_BATCH_SIZE, int(BATCH_SIZE * (1-DECREASE_FACTOR)))
                 logging.info(f"Decreasing batch size to {BATCH_SIZE}")
-                #garbage_collection(False, 'Batch Size Decrease')
+                garbage_collection(False, 'Batch Size Decrease')
 
 
             #defensive programming to ensure WAIT output list of futures are cancelled to clear memory
