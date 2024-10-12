@@ -4,21 +4,31 @@
 
 #%%
 from SLIF import *
+
+import argparse
+
 from dask.distributed import Client, LocalCluster, performance_report, wait
 from distributed import Future
 import dask
+
+import sys
 import os
 import logging
+
 from datetime import datetime
+
 from tqdm import tqdm
-import math
-import sys
 from time import time, sleep
-import numpy as np
-import itertools
+
 import random
+import math
+import numpy as np
 import pandas as pd
+
+import itertools
+
 import hashlib
+
 import pickle
 
 # Dask dashboard throws deprecation warnings w.r.t. Bokeh
@@ -30,7 +40,130 @@ from numpy import ComplexWarning
 ###################################
 # BEGIN SCRIPT CONFIGURATION HERE #
 ###################################
-DECADE_TO_PROCESS ='2015-2019'
+"""
+python topic_analysis.py --time_period "2020-2024" --data_source "C:/topic-modeling/data/tokenized-sentences/2020-2024/2020-2024_min_six_word-w-bigrams.json" --start_topics 20 --end_topics 100 --step_size 5 --num_workers 8 --max_workers 12 --num_threads 2 --max_memory "10GB" --mem_threshold 9 --max_cpu 110 --futures_batches 100 --base_batch_size 100 --max_batch_size 125 --log_dir "C:/topic-modeling/data/lda-models/2020-2024/log/" --root_dir "C:/topic-modeling/data/lda-models/2020-2024/"
+"""
+def parse_args():
+    parser = argparse.ArgumentParser(description="Script configuration via CLI")
+    parser.add_argument("--time_period",    type=str,           help="Decade to process")
+    parser.add_argument("--data_source",    type=str,           help="Path to data source JSON file")
+    parser.add_argument("--train_ratio",    type=float,     default=0.80,help="Train ratio for test-train split")
+    parser.add_argument("--start_topics",   type=int,       default=1,  help="Minimum number of topics.")
+    parser.add_argument("--end_topics",     type=int,           help="Maximum number of topics.")
+    parser.add_argument("--step_size",      type=int,           help="Value to determine how start_topic increases to end_topic, exlusive")
+    parser.add_argument("--num_workers",    type=int,       default=1,  help="The minimum number of cores to be utilized")
+    parser.add_argument("--max_workers",    type=int,       default=1,  help="The maximum number of cores to be utilized")
+    parser.add_argument("--num_threads",    type=int,       default=1,  help="The maximum number of threads to be utilized")
+    parser.add_argument("--max_memory",     type=str,           help="The maximum amount of RAM(in GB) assigned to each core")
+    parser.add_argument("--mem_threshold",  type=int,           help="The memory threshold")
+    parser.add_argument("--max_cpu",        type=int,       default=100,    help="The maximum CPU utilization threshold")
+    parser.add_argument("--mem_spill",      type=str,       default="c:/temp/slif/max_spill",    help="Directory to be used when RAM exceeds threshold")
+    parser.add_argument("--passes",         type=int,       default=15,     help="Number of passes for Gensim model")
+    parser.add_argument("--iterations",     type=int,       default= 100,   help="Number of iterations")
+    parser.add_argument("--update_every",   type=int,       default=5,      help="update_every")
+    parser.add_argument("--eval_every",     type=int,       default=5,      help="eval_every")
+    parser.add_argument("--random_state",   type=int,       default=50,     help="random_state")
+    parser.add_argument("--per_word_topics", type=bool,     default=True,   help="per word topics")
+    parser.add_argument("--futures_batches", type=int,      default=1,   help="The number of futures in a batch")
+    parser.add_argument("--base_batch_size", type=int,      default=1,    help="The number of documents to be processed in parallel")
+    parser.add_argument("--max_batch_size",  type=int,      default=1,    help="The maximum number of documents to be processed in parallel")
+    parser.add_argument("--increase_factor", type=float,    default=1.05,   help="Increase document batch size by p-percent")
+    parser.add_argument("--decrease_factor", type=float,    default=.10,    help="Decrese batch size by p-percent upon failure or timeout")
+    parser.add_argument("--max_retries",    type=int,       default=5,      help="Maximum numbewr of times to attempt to process a future")
+    parser.add_argument("--base_wait_time", type=int,       default=30,     help="Base wait time in seconds for exponential backoff")
+    parser.add_argument("--log_dir",        type=str,       default="c:/temp/slif/log",     help="Decade to process")
+    parser.add_argument("--root_dir",        type=str,       default="c:/temp/slif/",     help="Decade to process")
+
+    # Add more arguments as needed
+    return parser.parse_args()
+
+# Parse CLI arguments
+args = parse_args()
+
+# Load define time span to process
+if args.time_period: DECADE_TO_PROCESS = args.time_period
+else:
+    logging.error(f"No value was entered for decade_to_process")
+    print(f"No value was entered for decade_to_process")
+    sys.exit
+# Load data from the JSON file
+if args.data_source:DATA_SOURCE = args.data_source
+else:
+    logging.error(f"No value was entered for data_source")
+    print(f"No value was entered for data_source")
+    sys.exit
+# Define training ratio
+if args.train_ratio: TRAIN_RATIO = args.train_ratio
+# Define starting number of topics
+if args.start_topics: START_TOPICS = args.start_topics
+# Define starting number of topics
+if args.end_topics: END_TOPICS = args.end_topics
+else:
+    logging.error(f"No value was entered for end_topics")
+    print(f"No value was entered for end_topics")
+    sys.exit
+# Amount used to determine number of topics
+if args.step_size: STEP_SIZE = args.step_size
+# Number of cores
+if args.num_workers: CORES = args.num_workers
+# maximum number of cores
+if args.max_workers: MAXIMUM_CORES = args.max_workers
+# max amount of RAM per worker
+if args.max_memory: RAM_MEMORY_LIMIT = args.max_memory
+# Number of threads per core
+if args.num_threads: THREADS_PER_CORE = args.num_threads
+# max RAM assigned to each core
+if args.mem_threshold: MEMORY_UTILIZATION_THRESHOLD = args.mem_threshold * (1024 ** 3)
+# max CUP utilization
+if args.max_cpu: CPU_UTILIZATION_THRESHOLD = args.max_cpu
+# memory to spill into HDD/SDD
+if args.mem_spill: 
+    DASK_DIR = args.mem_spill
+    os.makedirs(DASK_DIR, exist_ok=True)
+# specify the number of passes for Gensim LdaModel
+if args.passes: PASSES = args.passes
+# specify the number of iterationx
+if args.iterations: ITERATIONS = args.iterations
+# Number of documents to be iterated through for each update. 
+# Set to 0 for batch learning, > 1 for online iterative learning.
+if args.update_every: UPDATE_EVERY = args.update_every
+# Log perplexity is estimated every that many updates. 
+# Setting this to one slows down training by ~2x.
+if args.eval_every: EVAL_EVERY = args.eval_every
+if args.random_state: RANDOM_STATE = args.random_state
+if args.per_word_topics: PER_WORD_TOPICS = args.per_word_topics
+# the number of documents( defined as HTML extract of <p>...</p> ) to read from the JSON source file per batch
+if args.futures_batches: FUTURES_BATCH_SIZE = args.futures_batches
+else:
+    logging.error(f"No value was entered for futures_batches")
+    print(f"No value was entered for futures_batches")
+    sys.exit
+# number of documents, value should be greater than FUTURES_BATCH_SIZE
+if args.base_batch_size: BATCH_SIZE = args.base_batch_size
+# maximum number of documents to be processed
+if args.max_batch_size: MAX_BATCH_SIZE = args.max_batch_size
+# minimum size of batch if resources are strained
+if args.futures_batches: MIN_BATCH_SIZE = math.ceil(args.futures_batches * 1.01)
+else:
+    logging.error(f"min_batch_size parameter could not be assigned value")
+    print(f"min_batch_size parameter could not be assigned value")
+    sys.exit
+# Increase batch size by p% upon success
+if args.increase_factor: INCREASE_FACTOR = args.increase_factor
+# decrease batch size by p% upon success
+if args.decrease_factor: DECREASE_FACTOR = args.decrease_factor
+# Maximum number of retries per task
+if args.max_retries: MAX_RETRIES = args.max_retries
+# Base wait time in seconds for exponential backoff
+if args.base_wait_time: BASE_WAIT_TIME = args.base_wait_time
+
+
+"""
+RAM_MEMORY_LIMIT = "10GB" # Dask diagnostics significantly overestimates RAM usage
+CPU_UTILIZATION_THRESHOLD = 110 # eg 85%
+MEMORY_UTILIZATION_THRESHOLD = 9 * (1024 ** 3)  # Convert GB to bytes
+# Specify the local directory path, spilling will be written here
+DASK_DIR = '/topic-modeling/dask-spill'
 
 # Load data from the JSON file
 DATA_SOURCE = f"C:/topic-modeling/data/tokenized-sentences/{DECADE_TO_PROCESS}/{DECADE_TO_PROCESS}_min_six_word-w-bigrams.json"
@@ -90,12 +223,8 @@ BASE_WAIT_TIME = 30     # Base wait time in seconds for exponential backoff
 TIMEOUT = None #"90 minutes"
 # timeout for Dask wait method in retry_processing() method
 EXTENDED_TIMEOUT = None #"120 minutes"
+"""
 
-
-# Ensure the LOG_DIRECTORY exists
-LOG_DIRECTORY = f"C:/topic-modeling/data/lda-models/{DECADE_TO_PROCESS}/log/"
-ROOT_DIR = f"C:/topic-modeling/data/lda-models/{DECADE_TO_PROCESS}"
-os.makedirs(LOG_DIRECTORY, exist_ok=True)
 
 
 ###############################
@@ -103,6 +232,13 @@ os.makedirs(LOG_DIRECTORY, exist_ok=True)
 # DO NOT EDIT BELOW THIS LINE #
 ###############################
 ###############################
+
+# Ensure the LOG_DIRECTORY exists
+if args.log_dir: LOG_DIRECTORY = args.log_dir
+if args.root_dir: ROOT_DIR = args.root_dir
+#LOG_DIRECTORY = f"C:/topic-modeling/data/lda-models/{DECADE_TO_PROCESS}/log/"
+#ROOT_DIR = f"C:/topic-modeling/data/lda-models/{DECADE_TO_PROCESS}"
+os.makedirs(LOG_DIRECTORY, exist_ok=True)
 
 # Define the top-level directory and subdirectories
 LOG_DIR = os.path.join(ROOT_DIR, "log")
