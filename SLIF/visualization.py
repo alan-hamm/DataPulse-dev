@@ -13,14 +13,19 @@ import logging
 # Set max_open_warning to 0 to suppress the warning
 plt.rcParams['figure.max_open_warning'] = 0 # suppress memory warning msgs re too many plots being open simultaneously
 
-def create_vis(ldaModel, corpus, dictionary, filename, CORES, PYLDA_DIR, PCOA_DIR):
+def create_vis(ldaModel, corpus, dictionary, filename, CORES, vis_root, PYLDA_DIR, PCOA_DIR):
     create_pylda = None
     create_pcoa = None
     PCoAfilename = filename
     #print("We are inside Create Vis.")
     
 
+    PYLDA_DIR = os.path.join(PYLDA_DIR,vis_root)
+    os.makedirs(PYLDA_DIR, exist_ok=True)
     IMAGEFILE = os.path.join(PYLDA_DIR,f"{filename}.html")
+    
+    PCOA_DIR = os.path.join(PCOA_DIR, vis_root)
+    os.makedirs(PCOA_DIR, exist_ok=True)
     PCoAIMAGEFILE = os.path.join(PCOA_DIR, PCoAfilename)
 
     # Disable notebook mode since we're saving to HTML.

@@ -41,7 +41,7 @@ from numpy import ComplexWarning
 # BEGIN SCRIPT CONFIGURATION HERE #
 ###################################
 """
-python topic_analysis.py --time_period "2020-2024" --data_source "C:/topic-modeling/data/tokenized-sentences/2020-2024/2020-2024_min_six_word-w-bigrams.json" --start_topics 20 --end_topics 100 --step_size 5 --num_workers 8 --max_workers 12 --num_threads 2 --max_memory "10GB" --mem_threshold 9 --max_cpu 110 --futures_batches 100 --base_batch_size 100 --max_batch_size 125 --log_dir "C:/topic-modeling/data/lda-models/2020-2024/log/" --root_dir "C:/topic-modeling/data/lda-models/2020-2024/"
+python topic_analysis.py --time_period "2015-2019" --data_source "C:/topic-modeling/data/tokenized-sentences/2015-2019/2015-2019_min_six_word-w-bigrams.json" --start_topics 20 --end_topics 100 --step_size 5 --num_workers 8 --max_workers 12 --num_threads 8 --max_memory "150GB" --mem_threshold 145 --max_cpu 110 --futures_batches 60 --base_batch_size 60 --max_batch_size 100 --log_dir "C:/topic-modeling/data/lda-models/2015-2019/log/" --root_dir "C:/topic-modeling/data/lda-models/2015-2019/"
 """
 def parse_args():
     parser = argparse.ArgumentParser(description="Script configuration via CLI")
@@ -621,7 +621,7 @@ if __name__=="__main__":
                                                         pickle.loads(result['corpus']), \
                                                         pickle.loads(result['dictionary']),
                                                         hashlib.md5(result['time'].strftime('%Y%m%d%H%M%S%f').encode()).hexdigest(), \
-                                                        CORES, PYLDA_DIR, PCOA_DIR  )
+                                                        CORES, result['text_md5'], PYLDA_DIR, PCOA_DIR  )
                         visualization_futures.append(vis_future)
 
                 logging.info(f"Executing WAIT on TRAIN and EVAL create_visualizations {len(visualization_futures)} futures.")
