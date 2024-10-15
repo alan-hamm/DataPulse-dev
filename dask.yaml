@@ -1,0 +1,19 @@
+version: 1
+disable_existing_loggers: False
+formatters:
+    simple:
+        format: '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+handlers:
+    file_handler:
+        class: logging.FileHandler
+        level: INFO
+        formatter: simple
+        filename: 'C:/topic-modeling/data/lda-models/log_all/dask_log.log'
+loggers:
+    distributed:
+        level: INFO
+        handlers: [file_handler]
+        propagate: no
+root:
+    level: NOTSET
+    handlers: [file_handler]
