@@ -1,4 +1,4 @@
-# developed traditionally in addition to pair programming
+# developed traditionally in with addition of AI assistance
 
 from .data_io import add_model_data_to_metadata
 from .utils import exponential_backoff, garbage_collection
@@ -9,11 +9,23 @@ from dask.distributed import wait
 
 
 def process_completed_futures(completed_train_futures, completed_eval_futures, num_documents, workers, \
-                               batchsize, texts_zip_dir, metadata_dir, visualization_results=None):
+                               batchsize, texts_zip_dir, metadata_dir, vis_pylda=None, vis_pcoa=None):
 
     # Create a mapping from model_data_id to visualization results
-    vis_results_map = {vis_result[0]: vis_result[1:] for vis_result in visualization_results}
-
+    pylda_results_map = {vis_result[0]: vis_result[1:] for vis_result in vis_pylda}
+    pcoa_results_map = {vis_result[0]: vis_result[1:] for vis_result in vis_pcoa}
+    # do union of items
+    #vis_results_map = dict(pylda_results_map.items() | pcoa_results_map.items())
+    vis_results_map = {}
+    for key in set(pylda_results_map) | set(pcoa_results_map):
+        pylda_result = pylda_results_map.get(key)
+        pcoa_result = pcoa_results_map.get(key)
+        
+        # You may choose what to do if one result is missing - perhaps use None or a default value
+        vis_result = (pylda_result if pylda_result is not None else (None, None),
+                    pcoa_result if pcoa_result is not None else (None, None))
+        
+        vis_results_map[key] = vis_result
     # DEBUGGING
     #if visualization_results and len(visualization_results) >= 2:
     #    print(visualization_results[0], visualization_results[1])
@@ -35,10 +47,13 @@ def process_completed_futures(completed_train_futures, completed_eval_futures, n
                     create_pylda, create_pcoa = vis_results_map[unique_id]
                     model_data['create_pylda'] = create_pylda
                     model_data['create_pcoa'] = create_pcoa
-                
-                add_model_data_to_metadata(model_data, num_documents, workers, batchsize, texts_zip_dir, metadata_dir)
         except Exception as e:
             logging.error(f"Error occurred during process_completed_futures() TRAIN: {e}")
+        try:
+            add_model_data_to_metadata(model_data, num_documents, workers, batchsize, texts_zip_dir, metadata_dir)
+        except Exception as e:
+            logging.error(f"Error occurred during process_completed_futures() add_model_data_to_metadata() TRAIN: {e}")
+
         
 
     # Process evaluation futures
@@ -57,14 +72,16 @@ def process_completed_futures(completed_train_futures, completed_eval_futures, n
                     create_pylda, create_pcoa = vis_results_map[unique_id]
                     model_data['create_pylda'] = create_pylda
                     model_data['create_pcoa'] = create_pcoa
-                
-                add_model_data_to_metadata(model_data, num_documents, workers, batchsize, texts_zip_dir, metadata_dir)
         except Exception as e:
             logging.error(f"Error occurred during process_completed_futures() EVAL: {e}")
+        try:
+            add_model_data_to_metadata(model_data, num_documents, workers, batchsize, texts_zip_dir, metadata_dir)
+        except Exception as e:
+            logging.error(f"Error occurred during process_completed_futures() add_model_data_to_metadata() EVAL: {e}")
         
                     
     #del models_data            
-    garbage_collection(False, 'process_completed_futures(...)')
+    #garbage_collection(False, 'process_completed_futures(...)')
     return completed_eval_futures, completed_train_futures
 
 
