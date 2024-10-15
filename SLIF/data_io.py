@@ -72,7 +72,7 @@ def futures_create_lda_datasets(filename, train_ratio, batch_size):
                     }
                 eval_count += len(eval_data_batch)
                 cumulative_count += eval_count
-    garbage_collection(False, "futures_create_lda_datasets(..)")
+    #garbage_collection(False, "futures_create_lda_datasets(..)")
 
 
 # Function to save text data and model to single ZIP file
@@ -216,7 +216,7 @@ def add_model_data_to_metadata(model_data, num_documents, workers, batchsize, te
 
 
     # Save updated metadata DataFrame back to Parquet file
-    garbage_collection(False, "add_model_data_to_metadata(...)")
+    #garbage_collection(False, "add_model_data_to_metadata(...)")
     df_metadata.to_parquet(parquet_file_path)
     #del df_metadata, df_new_metadata, model_data
     #garbage_collection(False, 'add_model_data_to_metadata(...)')
