@@ -1,4 +1,4 @@
-# developed traditionally in addition to pair programming
+# developed traditionally in with addition of AI assistance
 from .utils import garbage_collection
 import os 
 import numpy as np
@@ -7,26 +7,22 @@ import pyLDAvis.gensim  # Library for interactive topic model visualization
 import pyLDAvis.gensim_models as gensimvis
 import matplotlib.pyplot as plt
 import matplotlib
+import pickle
 matplotlib.use('Agg')
 
 import logging
 # Set max_open_warning to 0 to suppress the warning
 plt.rcParams['figure.max_open_warning'] = 0 # suppress memory warning msgs re too many plots being open simultaneously
 
-def create_vis(ldaModel, corpus, dictionary, filename, CORES, vis_root, PYLDA_DIR, PCOA_DIR):
+
+def create_vis_pylda(ldaModel, corpus, dictionary, filename, CORES, vis_root, PYLDA_DIR):
     create_pylda = None
-    create_pcoa = None
-    PCoAfilename = filename
     #print("We are inside Create Vis.")
     
 
     PYLDA_DIR = os.path.join(PYLDA_DIR,vis_root)
     os.makedirs(PYLDA_DIR, exist_ok=True)
     IMAGEFILE = os.path.join(PYLDA_DIR,f"{filename}.html")
-    
-    PCOA_DIR = os.path.join(PCOA_DIR, vis_root)
-    os.makedirs(PCOA_DIR, exist_ok=True)
-    PCoAIMAGEFILE = os.path.join(PCOA_DIR, PCoAfilename)
 
     # Disable notebook mode since we're saving to HTML.
     #pyLDAvis.disable_notebook()
@@ -38,6 +34,9 @@ def create_vis(ldaModel, corpus, dictionary, filename, CORES, vis_root, PYLDA_DI
         # https://github.com/bmabey/pyLDAvis/issues/69#issuecomment-311337191
         # as mentioned in the forum, use mds='mmds' instead of default js_PCoA
         # https://pyldavis.readthedocs.io/en/latest/modules/API.html#pyLDAvis.prepare
+        ldaModel = pickle.loads(ldaModel)
+        corpus = pickle.loads(corpus)
+        dictionary = pickle.loads(dictionary)
         vis = pyLDAvis.gensim.prepare(ldaModel, corpus, dictionary,  mds='mmds', n_jobs=int(CORES*(2/3)), sort_topics=False)
 
         pyLDAvis.save_html(vis, IMAGEFILE)
@@ -47,15 +46,26 @@ def create_vis(ldaModel, corpus, dictionary, filename, CORES, vis_root, PYLDA_DI
         logging.error(f"The pyLDAvis HTML could not be saved: {e}")
         create_pylda = False
 
+    #garbage_collection(False,"create_vis(...)")
+    return filename, create_pylda
+
+
+def create_vis_pcoa(ldaModel, corpus, filename, vis_root, PCOA_DIR):
+    create_pcoa = None
+    PCoAfilename = filename
+    PCOA_DIR = os.path.join(PCOA_DIR, vis_root)
+    os.makedirs(PCOA_DIR, exist_ok=True)
+    PCoAIMAGEFILE = os.path.join(PCOA_DIR, PCoAfilename)
 
     # try Jensen-Shannon Divergence & Principal Coordinate Analysis (aka Classical Multidimensional Scaling)
     topic_labels = [] # list to store topic labels
 
-    topic_distributions = [ldaModel.get_document_topics(doc, minimum_probability=0) for doc in corpus]
+    ldaModel = pickle.loads(ldaModel)
+    topic_distributions = [ldaModel.get_document_topics(doc, minimum_probability=0) for doc in pickle.loads(corpus)]
 
     # Ensure all topics are represented even if their probability is 0
     num_topics = ldaModel.num_topics
-    distributions_matrix = np.zeros((len(corpus), num_topics))
+    distributions_matrix = np.zeros((len(pickle.loads(corpus)), num_topics))
 
     # apply topic labels and extract distribution matrix
     for i, doc_topics in enumerate(topic_distributions):
@@ -109,5 +119,5 @@ def create_vis(ldaModel, corpus, dictionary, filename, CORES, vis_root, PYLDA_DI
         logging.error(f"An error occurred during PCoA transformation: {e}")
         create_pcoa=False
 
-    garbage_collection(False,"create_vis(...)")
-    return filename, create_pylda, create_pcoa
+    #garbage_collection(False,"create_vis(...)")
+    return filename, create_pcoa
