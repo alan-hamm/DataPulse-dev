@@ -1,4 +1,4 @@
-# developed traditionally in addition to pair programming
+# developed traditionally in with addition of AI assistance
 # author: alan hamm(pqn7)
 # date apr 2024
 
@@ -10,6 +10,11 @@ import argparse
 from dask.distributed import Client, LocalCluster, performance_report, wait
 from distributed import Future
 import dask
+import socket
+import tornado
+
+import yaml
+import logging.config
 
 import sys
 import os
@@ -41,7 +46,11 @@ from numpy import ComplexWarning
 # BEGIN SCRIPT CONFIGURATION HERE #
 ###################################
 """
-python topic_analysis.py --time_period "2015-2019" --data_source "C:/topic-modeling/data/tokenized-sentences/2015-2019/2015-2019_min_six_word-w-bigrams.json" --start_topics 20 --end_topics 100 --step_size 5 --num_workers 8 --max_workers 12 --num_threads 8 --max_memory "150GB" --mem_threshold 145 --max_cpu 110 --futures_batches 60 --base_batch_size 60 --max_batch_size 100 --log_dir "C:/topic-modeling/data/lda-models/2015-2019/log/" --root_dir "C:/topic-modeling/data/lda-models/2015-2019/"
+# windows cmd
+python topic_analysis.py --time_period "2015-2019" --data_source "C:/topic-modeling/data/tokenized-sentences/2015-2019/2015-2019_min_six_word-w-bigrams.json" --start_topics 20 --end_topics 100 --step_size 5 --num_workers 8 --max_workers 14 --num_threads 8 --max_memory "10" --mem_threshold 9 --max_cpu 110 --futures_batches 100 --base_batch_size 100 --max_batch_size 100 --log_dir "C:/topic-modeling/data/lda-models/2015-2019/log/" --root_dir "C:/topic-modeling/data/lda-models/2015-2019/" | findstr /V /C:"Creating and saving models" > "C:/topic-modeling/data/lda-models/2015-2019/log/terminal_output.log"
+python topic_analysis.py --time_period "2015-2019" --data_source "C:/topic-modeling/data/tokenized-sentences/2015-2019/2015-2019_min_six_word-w-bigrams.json" --start_topics 20 --end_topics 100 --step_size 5 --num_workers 8 --max_workers 14 --num_threads 8 --max_memory "10" --mem_threshold 9 --max_cpu 110 --futures_batches 100 --base_batch_size 100 --max_batch_size 100 --log_dir "C:/topic-modeling/data/lda-models/2015-2019/log/" --root_dir "C:/topic-modeling/data/lda-models/2015-2019/"
+# windows powershell
+python topic_analysis.py --time_period "2015-2019" --data_source "C:/topic-modeling/data/tokenized-sentences/2015-2019/2015-2019_min_six_word-w-bigrams.json" --start_topics 20 --end_topics 100 --step_size 5 --num_workers 8 --max_workers 14 --num_threads 8 --max_memory "10" --mem_threshold 9 --max_cpu 110 --futures_batches 100 --base_batch_size 100 --max_batch_size 100 --log_dir "C:/topic-modeling/data/lda-models/2015-2019/log/" --root_dir "C:/topic-modeling/data/lda-models/2015-2019/" | Tee-Object -FilePath "C:/topic-modeling/data/lda-models/2015-2019/log/terminal_output.log" | Select-String -Pattern "Creating and saving models" -NotMatch
 """
 def parse_args():
     parser = argparse.ArgumentParser(description="Script configuration via CLI")
@@ -60,10 +69,10 @@ def parse_args():
     parser.add_argument("--mem_spill",      type=str,       default="c:/temp/slif/max_spill",    help="Directory to be used when RAM exceeds threshold")
     parser.add_argument("--passes",         type=int,       default=15,     help="Number of passes for Gensim model")
     parser.add_argument("--iterations",     type=int,       default= 100,   help="Number of iterations")
-    parser.add_argument("--update_every",   type=int,       default=5,      help="update_every")
-    parser.add_argument("--eval_every",     type=int,       default=5,      help="eval_every")
-    parser.add_argument("--random_state",   type=int,       default=50,     help="random_state")
-    parser.add_argument("--per_word_topics", type=bool,     default=True,   help="per word topics")
+    parser.add_argument("--update_every",   type=int,       default=5,      help="Number of documents to be iterated through for each update. Default is 5. Set to 0 for batch learning, > 1 for online iterative learning.")
+    parser.add_argument("--eval_every",     type=int,       default=5,      help="Log perplexity is estimated every that many updates. Setting this to one slows down training by ~2x.")
+    parser.add_argument("--random_state",   type=int,       default=50,     help="Either a randomState object or a seed to generate one. Useful for reproducibility.")
+    parser.add_argument("--per_word_topics", type=bool,     default=True,   help=" If True, the model also computes a list of topics, sorted in descending order of most likely topics for each word, along with their phi values multiplied by the feature length (i.e. word count).")
     parser.add_argument("--futures_batches", type=int,      default=1,   help="The number of futures in a batch")
     parser.add_argument("--base_batch_size", type=int,      default=1,    help="The number of documents to be processed in parallel")
     parser.add_argument("--max_batch_size",  type=int,      default=1,    help="The maximum number of documents to be processed in parallel")
@@ -158,6 +167,28 @@ if args.max_retries: MAX_RETRIES = args.max_retries
 if args.base_wait_time: BASE_WAIT_TIME = args.base_wait_time
 
 
+####################################################
+# MUST BE DONE VIA TERMINAL WITH ADMIN PRIVILEGES  #
+####################################################
+# Set the JOBLIB_TEMP_FOLDER environment variable to your desired folder path
+# By setting a custom temporary folder, you have more control over where joblib stores its 
+# data and can avoid issues related to permissions or automatic cleanup of system temporary 
+# directories. Remember to clean up this directory periodically if joblib does not do so 
+# automatically, as it may accumulate large amounts of data over time.
+# for joblib -- via CLI to only allow writing but not deleting
+# icacls "C:\Temp\joblib" /grant "pqn7":(OI)(CI)W 
+
+# for joblib --  Modify permissions to allow deletion:
+# icacls "C:\path\to\directory" /grant "pqn7":M
+# delete folders
+# del "C:\path\to\directory\*"
+
+custom_temp_folder = f"C:/topic-modeling/data/lda-models/{DECADE_TO_PROCESS}/log/joblib"
+os.makedirs(custom_temp_folder, exist_ok=True)
+os.environ['JOBLIB_TEMP_FOLDER'] = custom_temp_folder
+
+
+
 """
 RAM_MEMORY_LIMIT = "10GB" # Dask diagnostics significantly overestimates RAM usage
 CPU_UTILIZATION_THRESHOLD = 110 # eg 85%
@@ -233,6 +264,15 @@ EXTENDED_TIMEOUT = None #"120 minutes"
 ###############################
 ###############################
 
+# to escape: distributed.nanny - WARNING - Worker process still alive after 4.0 seconds, killing
+# https://github.com/dask/dask-jobqueue/issues/391
+scheduler_options={"host":socket.gethostname()}
+
+# write Dask terminal output to file: C:/topic-modeling/data/lda-models/log_all/dask_log.log
+#with open(r'C:\Users\pqn7\OneDrive - CDC\git-a-aitch\topic-modeling-pkg\dask.yaml', 'r') as f:
+#    config = yaml.safe_load(f.read())
+#    logging.config.dictConfig(config)
+
 # Ensure the LOG_DIRECTORY exists
 if args.log_dir: LOG_DIRECTORY = args.log_dir
 if args.root_dir: ROOT_DIR = args.root_dir
@@ -266,7 +306,7 @@ now = datetime.now()
 #       %m is the two-digit month (01-12)
 #       %H%M is the hour (00-23) followed by minute (00-59) in 24hr format
 #log_filename = now.strftime('log-%w-%m-%Y-%H%M.log')
-log_filename = 'log-1600.log'
+log_filename = 'log-1210.log'
 LOGFILE = os.path.join(LOG_DIRECTORY,log_filename)
 
 # Configure logging to write to a file with this name
@@ -286,35 +326,93 @@ logging.basicConfig(
 # implemented.
 warnings.simplefilter('ignore', ComplexWarning)
 
+# Get the logger for 'distributed' package
+distributed_logger = logging.getLogger('distributed')
+
 # Disable Bokeh deprecation warnings
 warnings.filterwarnings("ignore", category=BokehDeprecationWarning)
 # Set the logging level for distributed.utils_perf to suppress warnings
 logging.getLogger('distributed.utils_perf').setLevel(logging.ERROR)
 warnings.filterwarnings("ignore", module="distributed.utils_perf")
+warnings.filterwarnings("ignore", category=DeprecationWarning, module="distributed.worker")  # Adjust the module parameter as needed
 
+# Suppress specific SettingWithCopyWarning from pyLDAvis
+# line 299: A value is trying to be set on a copy of a slice from a DataFrame.
+#   Try using .loc[row_indexer,col_indexer] = value instead
+# line 300: A value is trying to be set on a copy of a slice from a DataFrame. Try using .loc[row_indexer,col_indexer] = value instead
+warnings.filterwarnings("ignore", category=Warning, module=r"pyLDAvis\._prepare")
+
+
+# Suppress StreamClosedError warnings from Tornado
+# \Lib\site-packages\distributed\comm\tcp.py", line 225, in read
+#   frames_nosplit_nbytes_bin = await stream.read_bytes(fmt_size)
+#                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+#tornado.iostream.StreamClosedError: Stream is closed
+#warnings.filterwarnings("ignore", category=tornado.iostream.StreamClosedError)
+logging.getLogger('tornado').setLevel(logging.ERROR)
 
 # Enable serialization optimizations 
 dask.config.set(scheduler='distributed', serialize=True) #note: could this be causing the pyLDAvis creation problems??
+dask.config.set({'logging.distributed': 'error'})
+dask.config.set({"distributed.scheduler.worker-ttl": None})
+dask.config.set({'distributed.worker.daemon': False})
+
 #These settings disable automatic spilling but allow for pausing work when 80% of memory is consumed and terminating workers at 95%.
 dask.config.set({'distributed.worker.memory.target': False,
                  'distributed.worker.memory.spill': False,
                  'distributed.worker.memory.pause': 0.8
                  ,'distributed.worker.memory.terminate': 0.99})
-dask.config.set({'logging.distributed': 'error'})
-dask.config.set({"distributed.scheduler.worker-ttl": None})
 
+class NoCreatingAndSavingFilter(logging.Filter):
+    def filter(self, record):
+        return 'Creating and saving models' not in record.getMessage()
+# Set up file handler
+file_handler = logging.FileHandler(f'{LOG_DIR}/dask_distributed_err.log')
+file_handler.setLevel(logging.INFO)
+
+# Set up stream handler with filter
+stream_handler = logging.StreamHandler()
+stream_handler.setLevel(logging.INFO)
+stream_handler.addFilter(NoCreatingAndSavingFilter())
+
+# joblib produces warnings
+def log_warning(message, category, filename, lineno, file=None, line=None):
+    # Create a formatted warning message string
+    formatted_message = warnings.formatwarning(message, category, filename, lineno, line)
+    
+    # Log using the root logger or any other configured logger
+    logging.warning(formatted_message)
+
+# Override the default showwarning method with our own implementation
+warnings.showwarning = log_warning
+
+# Now configure filters for specific warnings if needed (optional)
+warnings.filterwarnings('default', category=UserWarning, message=".*resource_tracker: There appear to be.*")
+warnings.filterwarnings('default', category=UserWarning, message=".*resource_tracker:.*FileNotFoundError.*")
 
 # https://distributed.dask.org/en/latest/worker-memory.html#memory-not-released-back-to-the-os
 if __name__=="__main__":
+    # Multiprocessing (processes=True): This mode creates multiple separate Python processes, 
+    # each with its own Python interpreter and memory space. Since each process has its own GIL, 
+    # they can execute CPU-bound tasks in true parallel on multiple cores without being affected 
+    # by the GIL. This typically results in better utilization of multi-core CPUs for compute-intensive tasks.
+    
+    #Multithreading (processes=False): This mode uses threads within a single Python process for 
+    # concurrent execution. While this is efficient for I/O-bound tasks due to low overhead in 
+    # switching between threads, it's less effective for CPU-bound tasks because of Python's Global 
+    # Interpreter Lock (GIL). The GIL prevents multiple native threads from executing Python bytecodes 
+    # at once, which can limit the performance gains from multithreading when running CPU-intensive workloads.
     cluster = LocalCluster(
             n_workers=CORES,
             threads_per_worker=THREADS_PER_CORE,
-            processes=False,
+            #processes=False,
+            processes=True,
             memory_limit=RAM_MEMORY_LIMIT,
             local_directory=DASK_DIR,
             #dashboard_address=None,
             dashboard_address=":8787",
             protocol="tcp",
+            death_timeout='300s',  # Increase timeout before forced kill
     )
 
 
@@ -519,7 +617,7 @@ if __name__=="__main__":
 
         if throttle_attempt == MAX_RETRIES:
             logging.error("Maximum retries reached. The workers are still above the CPU or Memory threshold.")
-            garbage_collection(False, 'Max Retries - throttling attempt')
+            #garbage_collection(False, 'Max Retries - throttling attempt')
         else:
             logging.info("Proceeding with workload as workers are below the CPU and Memory thresholds.")
 
@@ -528,18 +626,28 @@ if __name__=="__main__":
         #if train_eval_type == 'train':
         # Submit a future for each scattered data object in the training list
         for scattered_data in scattered_train_data_futures:
-            future = client.submit(train_model, n_topics, alpha_value, beta_value, scattered_data, 'train',
-                                    RANDOM_STATE, PASSES, ITERATIONS, UPDATE_EVERY, EVAL_EVERY, CORES, PER_WORD_TOPICS)
-            train_futures.append(future)
-            logging.info(f"The training value is being appended to the train_futures list. Size: {len(train_futures)}")
+            try:
+                future = client.submit(train_model, n_topics, alpha_value, beta_value, scattered_data, 'train',
+                                            RANDOM_STATE, PASSES, ITERATIONS, UPDATE_EVERY, EVAL_EVERY, CORES, PER_WORD_TOPICS)
+                train_futures.append(future)
+                logging.info(f"The training value is being appended to the train_futures list. Size: {len(train_futures)}")
+                pass
+            except Exception as e:
+                distributed_logger.exception("An error occurred in train_model() Dask operation")
+                distributed_logger.exception(f"TYPE: train -- n_topics: {n_topics}, alpha: {alpha_value}, beta: {beta_value}")
 
         # Submit a future for each scattered data object in the evaluation list
         #if train_eval_type == 'eval':
         for scattered_data in scattered_eval_data_futures:
-            future = client.submit(train_model, n_topics, alpha_value, beta_value, scattered_data, 'eval',
-                                    RANDOM_STATE, PASSES, ITERATIONS, UPDATE_EVERY, EVAL_EVERY, CORES, PER_WORD_TOPICS)
-            eval_futures.append(future)
-            logging.info(f"The evaluation value is being appended to the eval_futures list. Size: {len(eval_futures)}")
+            try:
+                future = client.submit(train_model, n_topics, alpha_value, beta_value, scattered_data, 'eval',
+                                        RANDOM_STATE, PASSES, ITERATIONS, UPDATE_EVERY, EVAL_EVERY, CORES, PER_WORD_TOPICS)
+                eval_futures.append(future)
+                logging.info(f"The evaluation value is being appended to the eval_futures list. Size: {len(eval_futures)}")
+                pass
+            except Exception as e:
+                distributed_logger.exception("An error occurred in train_model() Dask operation")
+                distributed_logger.exception(f"TYPE: eval -- n_topics: {n_topics}, alpha: {alpha_value}, beta: {beta_value}")              
         #garbage_collection(False, 'client.submit(train_model(...) train and eval)')
 
 
@@ -555,12 +663,19 @@ if __name__=="__main__":
                 started = time()
 
                 # Wait for completion of eval_futures
-                done_eval, not_done_eval = wait(eval_futures, timeout=None)  # return_when='FIRST_COMPLETED'
-                logging.info(f"This is the size of the done_eval list: {len(done_eval)} and this is the size of the not_done_eval list: {len(not_done_eval)}")
+                try:
+                    done_eval, not_done_eval = wait(eval_futures, timeout=None)  # return_when='FIRST_COMPLETED'
+                    logging.info(f"This is the size of the done_eval list: {len(done_eval)} and this is the size of the not_done_eval list: {len(not_done_eval)}")
+                except Exception as e:
+                    distributed_logger.exception("EVAL_FUTURES wait:  An error occurred while gathering results from train_model() Dask operation")
 
-                # Wait for completion of train_futures
-                done_train, not_done_train = wait(train_futures, timeout=None)  # return_when='FIRST_COMPLETED'
-                logging.info(f"This is the size of the done_train list: {len(done_train)} and this is the size of the not_done_train list: {len(not_done_train)}")
+                try:
+                    # Wait for completion of train_futures
+                    done_train, not_done_train = wait(train_futures, timeout=None)  # return_when='FIRST_COMPLETED'
+                    logging.info(f"This is the size of the done_train list: {len(done_train)} and this is the size of the not_done_train list: {len(not_done_train)}")
+                except Exception as e:
+                    distributed_logger.exception("TRAIN_FUTURES wait:  An error occurred while gathering results from train_model() Dask operation")
+
 
                 done = done_train.union(done_eval)
                 not_done = not_done_eval.union(not_done_train)
@@ -598,43 +713,77 @@ if __name__=="__main__":
             time_of_vis_call = time_of_vis_call.strftime('%Y%m%d%H%M%S%f')
             PERFORMANCE_TRAIN_LOG = os.path.join(IMAGE_DIR, f"vis_perf_{time_of_vis_call}.html")
             del time_of_vis_call
-
             with performance_report(filename=PERFORMANCE_TRAIN_LOG):
                 logging.info("In holding pattern until process TRAIN and EVAL visualizations completes.")
                 started = time()
                 # To get the results from the completed futures
                 logging.info("Gathering TRAIN and EVAL futures.")
-                results_train = [d.result() for d in done_train if  isinstance(d, Future)]       
-                results_eval = [d.result() for d in done_eval if  isinstance(d, Future)]       
+                results_train = [d.result() for d in done_train if isinstance(d, Future)]
+                results_eval = [d.result() for d in done_eval if isinstance(d, Future)]
                 results = results_train + results_eval
-                logging.info(f"Completed TRAIN and EVAL gathering {len(results)} futures.") 
-                if len(results) != (len(done_train) + len(done_eval)):
-                    logging.error(f"All DONE({len(results)}) futures could not be resolved.")
-
+                logging.info(f"Completed TRAIN and EVAL gathering {len(results)} futures.")
+                
                 # Now you can process these results and submit new tasks based on them
-                visualization_futures = []
-                #results = completed_train_futures + completed_eval_futures
-                for r in results:
-                    for result in r:
-                        # Process your result here and define a new task based on it
-                        vis_future = client.submit(create_vis, pickle.loads(result['lda_model']), \
-                                                        pickle.loads(result['corpus']), \
-                                                        pickle.loads(result['dictionary']),
-                                                        hashlib.md5(result['time'].strftime('%Y%m%d%H%M%S%f').encode()).hexdigest(), \
-                                                        CORES, result['text_md5'], PYLDA_DIR, PCOA_DIR  )
-                        visualization_futures.append(vis_future)
+                visualization_futures_pylda = []
+                visualization_futures_pcoa = []
+                
+                processed_results = set()  # Use a set to track processed result hashes
+                
+                for result_group in results:
+                    # Assuming each 'result_group' is an iterable (list) of result dictionaries
+                    for result in result_group:
+                        # Create a unique identifier based on the time hash of the result
+                        unique_id = hashlib.md5(result['time'].strftime('%Y%m%d%H%M%S%f').encode()).hexdigest()
+                        
+                        # Check if we've already processed this unique_id
+                        if unique_id not in processed_results:
+                            processed_results.add(unique_id)  # Mark as processed
+                            
+                            try:
+                                vis_future_pylda = client.submit(create_vis_pylda,
+                                                                result['lda_model'],
+                                                                result['corpus'],
+                                                                result['dictionary'],
+                                                                unique_id,
+                                                                CORES,
+                                                                result['text_md5'],
+                                                                PYLDA_DIR)
+                                visualization_futures_pylda.append(vis_future_pylda)
+                            except Exception as e:
+                                logging.error(f"An error occurred in create_vis_pylda() Dask operation: {e}")
+                                logging.error(f"TYPE: pyLDA -- MD5: {result['text_md5']}")
+                            
+                            try:
+                                vis_future_pcoa = client.submit(create_vis_pcoa,
+                                                                result['lda_model'],
+                                                                result['corpus'],
+                                                                unique_id,
+                                                                result['text_md5'],
+                                                                PCOA_DIR)
+                                visualization_futures_pcoa.append(vis_future_pcoa)
+                            except Exception as e:
+                                logging.error(f"An error occurred in create_vis_pcoa() Dask operation: {e}")
+                                logging.error(f"TYPE: PCoA -- MD5{result['text_md5']}")
 
-                logging.info(f"Executing WAIT on TRAIN and EVAL create_visualizations {len(visualization_futures)} futures.")
+                logging.info(f"Executing WAIT on TRAIN and EVAL pyLDA create_visualizations {len(visualization_futures_pylda)} futures.")
+                logging.info(f"Executing WAIT on TRAIN and EVAL PCoA create_visualizations {len(visualization_futures_pcoa)} futures.")
+
                 # Wait for all visualization tasks to complete
-                done_visualizations, not_done_visualizations = wait(visualization_futures)
-                if len(not_done_visualizations) > 0:
-                    logging.error(f"All TRAIN and EVAL visualizations couldn't be generated. There were {len(not_done_visualizations)} not created.")
+                done_viz_futures_pylda, not_done_viz_futures_pylda = wait(visualization_futures_pylda)
+                done_viz_futures_pcoa, not_done_viz_futures_pcoa = wait(visualization_futures_pcoa)
+                #done_visualizations, not_done_visualizations = wait(visualization_futures_pylda + visualization_futures_pcoa)
+                if len(not_done_viz_futures_pylda) > 0:
+                    logging.error(f"All TRAIN and EVAL pyLDA visualizations couldn't be generated. There were {len(not_done_viz_futures_pylda)} not created.")
+                if len(not_done_viz_futures_pcoa) > 0:
+                    logging.error(f"All TRAIN and EVAL PCoA visualizations couldn't be generated. There were {len(not_done_viz_futures_pcoa)} not created.")
 
                 # Gather the results from the completed visualization tasks
                 logging.info("Gathering TRAIN and EVAL completed visualization results futures.")
-                completed_visualization_results = [future.result() for future in done_visualizations]
+                completed_pylda_vis = [future.result() for future in done_viz_futures_pylda]
+                completed_pcoa_vis = [future.result() for future in done_viz_futures_pcoa]
+
                 #del completed_visualization_results
-                logging.info(f"Completed gathering {len(completed_visualization_results)} TRAIN and EVAL visualization results futures.")
+                logging.info(f"Completed gathering {len(completed_pylda_vis)+len(completed_pcoa_vis)} TRAIN and EVAL visualization results futures.")
 
                 elapsed_time = round(((time() - started) / 60), 2)
                 logging.info(f"Create visualizations for TRAIN and EVAL data completed in {elapsed_time} minutes")
@@ -653,7 +802,8 @@ if __name__=="__main__":
                                                                                         BATCH_SIZE, \
                                                                                         TEXTS_ZIP_DIR, \
                                                                                         METADATA_DIR, \
-                                                                                        visualization_results=completed_visualization_results)
+                                                                                        vis_pylda=completed_pylda_vis,
+                                                                                        vis_pcoa=completed_pcoa_vis)
             progress_bar.update(len(done))
 
 
@@ -668,21 +818,21 @@ if __name__=="__main__":
             else:
                 BATCH_SIZE = max(MIN_BATCH_SIZE, int(BATCH_SIZE * (1-DECREASE_FACTOR)))
                 logging.info(f"Decreasing batch size to {BATCH_SIZE}")
-                garbage_collection(False, 'Batch Size Decrease')
+                #garbage_collection(False, 'Batch Size Decrease')
 
 
             #defensive programming to ensure WAIT output list of futures are cancelled to clear memory
-            for f in done: client.cancel(f)
-            for f in done_train: client.cancel(f)
-            for f in completed_visualization_results: client.cancel(f)
-            for f in visualization_futures: client.cancel(f)
-            for f in done_visualizations: client.cancel(f)
-            for f in not_done_visualizations: client.cancel(f)
+            #for f in done: client.cancel(f)
+            #for f in done_train: client.cancel(f)
+            #for f in completed_visualization_results: client.cancel(f)
+            #for f in visualization_futures: client.cancel(f)
+            #for f in done_visualizations: client.cancel(f)
+            #for f in not_done_visualizations: client.cancel(f)
 
             
-            del done, not_done, done_train, done_eval, not_done_eval, not_done_train
-            del visualization_futures, done_visualizations, not_done_visualizations
-            garbage_collection(False,'End of a batch being processed.')
+            #del done, not_done, done_train, done_eval, not_done_eval, not_done_train
+            #del visualization_futures, done_visualizations, not_done_visualizations
+            #garbage_collection(False,'End of a batch being processed.')
             client.rebalance()
          
     #garbage_collection(False, "Cleaning WAIT -> done, not_done")     
@@ -691,11 +841,11 @@ if __name__=="__main__":
     # After all loops have finished running...
     if len(train_futures) > 0 or len(eval_futures) > 0:
         print("we are in the first IF statement for retry_processing()")
-        failed_model_params = retry_processing(train_futures, eval_futures, TIMEOUT)
+        failed_model_params = retry_processing(train_futures, eval_futures, "10 minutes")
     
     #defensive programming to ensure WAIT output list of futures are empty
-    for f in train_futures: client.cancel(f)
-    for f in eval_futures: client.cancel(f)
+    #for f in train_futures: client.cancel(f)
+    #for f in eval_futures: client.cancel(f)
 
     # Now give one more chance with extended timeout only to those that were incomplete previously
     if len(failed_model_params) > 0:
@@ -710,8 +860,12 @@ if __name__=="__main__":
             n_topics, alpha_value, beta_value = params
             
             #with performance_report(filename=PERFORMANCE_TRAIN_LOG):
-            future_train_retry = client.submit(train_model, n_topics, alpha_value, beta_value, scattered_train_data_futures, 'train')
-            future_eval_retry = client.submit(train_model, n_topics, alpha_value, beta_value, scattered_eval_data_futures, 'eval')
+            try:
+                future_train_retry = client.submit(train_model, n_topics, alpha_value, beta_value, scattered_train_data_futures, 'train')
+                future_eval_retry = client.submit(train_model, n_topics, alpha_value, beta_value, scattered_eval_data_futures, 'eval')
+                pass
+            except Exception as e:
+                distributed_logger.exception("An error occurred in Dask operation")
 
             retry_train_futures.append(future_train_retry)
             retry_eval_futures.append(future_eval_retry)
@@ -728,14 +882,15 @@ if __name__=="__main__":
 
         # Process completed ones after reattempting
         num_workers = len(client.scheduler_info()["workers"])
-        completed_eval_futures, completed_train_futures = process_completed_futures(retry_train_futures, \
-                                                                                    retry_eval_futures, \
-                                                                                    (len(retry_train_futures)+len(retry_eval_futures)), \
-                                                                                    num_workers, \
-                                                                                    BATCH_SIZE, \
-                                                                                    TEXTS_ZIP_DIR, \
-                                                                                    METADATA_DIR, \
-                                                                                    visualization_results=completed_visualization_results)
+        completed_eval_futures, completed_train_futures = process_completed_futures(completed_train_futures, \
+                                                                                        completed_eval_futures, \
+                                                                                        (len(completed_eval_futures)+len(completed_train_futures)), \
+                                                                                        num_workers, \
+                                                                                        BATCH_SIZE, \
+                                                                                        TEXTS_ZIP_DIR, \
+                                                                                        METADATA_DIR, \
+                                                                                        vis_pylda=completed_pylda_vis,
+                                                                                        vis_pcoa=completed_pcoa_vis)
 
         # Record parameters of still incomplete futures after reattempting for later review
         #for future in not_done:
