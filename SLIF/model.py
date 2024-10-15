@@ -1,4 +1,4 @@
-# developed traditionally in addition to pair programming
+# developed traditionally in with addition of AI assistance
 from .utils import garbage_collection
 import pandas as pd
 from dask.distributed import as_completed
@@ -9,11 +9,11 @@ from dask.distributed import progress
 from distributed import Future
 from dask.delayed import Delayed # Decorator for creating delayed objects in Dask computations
 #from dask.distributed import as_completed
-#from dask.bag import Bag
-#from dask import delayed
-#from dask import persist
+from dask.bag import Bag
+from dask import delayed
+from dask import persist
 import dask.config
-from dask.distributed import performance_report, wait #, as_completed #,print
+from dask.distributed import performance_report, wait, as_completed #,print
 from distributed import get_worker
 import logging
 from gensim.models import LdaModel  # Implements LDA for topic modeling using the Gensim library
@@ -26,6 +26,7 @@ import numpy as np
 
 from .alpha_eta import calculate_numeric_alpha, calculate_numeric_beta
 
+# https://examples.dask.org/applications/embarrassingly-parallel.html
 def train_model(n_topics: int, alpha_str: list, beta_str: list, data: list, train_eval: str, 
                 random_state: int, passes: int, iterations: int, update_every: int, eval_every: int, cores: int,
                 per_word_topics: bool):
@@ -36,8 +37,8 @@ def train_model(n_topics: int, alpha_str: list, beta_str: list, data: list, trai
 
         #print("this is an investigation into the full datafile")
         #pp.pprint(full_datafile)
-        # Convert the Delayed object to a Dask Bag and compute it to get the actual data
         try:
+            # Compute several dask collections at once.
             streaming_documents = dask.compute(*data)
             chunksize = max(1,int(len(streaming_documents) // 5))
             #print("these are the streaming documents")
@@ -208,7 +209,7 @@ def train_model(n_topics: int, alpha_str: list, beta_str: list, data: list, trai
         }
 
         models_data.append(current_increment_data)
-        garbage_collection(False, 'train_model(...)')
+        #garbage_collection(False, 'train_model(...)')
         #del batch_documents, streaming_documents, lda_model_gensim, dictionary_batch, current_increment_data #, vis, success
 
         return models_data
