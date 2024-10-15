@@ -1,4 +1,4 @@
-# developed traditionally in addition to pair programming
+# developed traditionally in with addition of AI assistance
 # author: alan hamm(pqn7)
 # date apr 2024
 
@@ -9,7 +9,7 @@ from .process_futures import retry_processing, process_completed_futures, handle
 
 from .model import train_model
 from .alpha_eta import calculate_numeric_alpha, calculate_numeric_beta, validate_alpha_beta
-from .visualization import create_vis
+from .visualization import create_vis_pylda, create_vis_pcoa
 
 
 # Define what should be imported with "from my_lda_library import *"
@@ -33,7 +33,8 @@ __all__ = [
     'validate_alpha_beta',
 
     # visualization
-    'create_vis',
+    'create_vis_pylda',
+    'create_vis_pcoa',
 
     # process_futures
     'retry_processing',
