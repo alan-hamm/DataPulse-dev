@@ -47,10 +47,9 @@ from numpy import ComplexWarning
 ###################################
 """
 # windows cmd
-python topic_analysis.py --time_period "2015-2019" --data_source "C:/topic-modeling/data/tokenized-sentences/2015-2019/2015-2019_min_six_word-w-bigrams.json" --start_topics 20 --end_topics 100 --step_size 5 --num_workers 8 --max_workers 14 --num_threads 8 --max_memory "10" --mem_threshold 9 --max_cpu 110 --futures_batches 100 --base_batch_size 100 --max_batch_size 100 --log_dir "C:/topic-modeling/data/lda-models/2015-2019/log/" --root_dir "C:/topic-modeling/data/lda-models/2015-2019/" | findstr /V /C:"Creating and saving models" > "C:/topic-modeling/data/lda-models/2015-2019/log/terminal_output.log"
-python topic_analysis.py --time_period "2015-2019" --data_source "C:/topic-modeling/data/tokenized-sentences/2015-2019/2015-2019_min_six_word-w-bigrams.json" --start_topics 20 --end_topics 100 --step_size 5 --num_workers 8 --max_workers 14 --num_threads 8 --max_memory "10" --mem_threshold 9 --max_cpu 110 --futures_batches 100 --base_batch_size 100 --max_batch_size 100 --log_dir "C:/topic-modeling/data/lda-models/2015-2019/log/" --root_dir "C:/topic-modeling/data/lda-models/2015-2019/"
-# windows powershell
-python topic_analysis.py --time_period "2015-2019" --data_source "C:/topic-modeling/data/tokenized-sentences/2015-2019/2015-2019_min_six_word-w-bigrams.json" --start_topics 20 --end_topics 100 --step_size 5 --num_workers 8 --max_workers 14 --num_threads 8 --max_memory "10" --mem_threshold 9 --max_cpu 110 --futures_batches 100 --base_batch_size 100 --max_batch_size 100 --log_dir "C:/topic-modeling/data/lda-models/2015-2019/log/" --root_dir "C:/topic-modeling/data/lda-models/2015-2019/" | Tee-Object -FilePath "C:/topic-modeling/data/lda-models/2015-2019/log/terminal_output.log" | Select-String -Pattern "Creating and saving models" -NotMatch
+python topic_analysis.py --time_period "2015-2019" --data_source "C:/topic-modeling/data/tokenized-sentences/2015-2019/2015-2019_min_six_word-w-bigrams.json" --start_topics 20 --end_topics 100 --step_size 5 --num_workers 8 --max_workers 14 --num_threads 8 --max_memory "10GB" --mem_threshold 9 --max_cpu 110 --futures_batches 100 --base_batch_size 100 --max_batch_size 130 --log_dir "C:/topic-modeling/data/lda-models/2015-2019/log/" --root_dir "C:/topic-modeling/data/lda-models/2015-2019/" 2>"C:/topic-modeling/data/lda-models/2015-2019/log/terminal_output.txt"
+python topic_analysis.py --time_period "moby-dick" --data_source "C:/topic-modeling/data/tokenized-sentences/moby-dick/moby-dick-w-bigrams.json" --start_topics 20 --end_topics 100 --step_size 5 --num_workers 8 --max_workers 14 --num_threads 8 --max_memory "10GB" --mem_threshold 9 --max_cpu 110 --futures_batches 100 --base_batch_size 100 --max_batch_size 130 --log_dir "C:/topic-modeling/data/lda-models/moby-dick/log" --root_dir "C:/topic-modeling/data/lda-models/moby-dick/" 2>"C:/topic-modeling/data/lda-models/moby-dick/log/terminal_output.txt"
+python topic_analysis.py --time_period "proust" --data_source "C:/topic-modeling/data/tokenized-sentences/proust/In-Search-of-Lost-Time-w-bigrams.json" --start_topics 100 --end_topics 1200 --step_size 50 --num_workers 8 --max_workers 14 --num_threads 8 --max_memory "10GB" --mem_threshold 9 --max_cpu 100 --futures_batches 100 --base_batch_size 100 --max_batch_size 130 --log_dir "C:/topic-modeling/data/lda-models/proust/log" --root_dir "C:/topic-modeling/data/lda-models/proust/" 2>"C:/topic-modeling/data/lda-models/proust/log/terminal_output.txt"
 """
 def parse_args():
     parser = argparse.ArgumentParser(description="Script configuration via CLI")
@@ -188,76 +187,6 @@ os.makedirs(custom_temp_folder, exist_ok=True)
 os.environ['JOBLIB_TEMP_FOLDER'] = custom_temp_folder
 
 
-
-"""
-RAM_MEMORY_LIMIT = "10GB" # Dask diagnostics significantly overestimates RAM usage
-CPU_UTILIZATION_THRESHOLD = 110 # eg 85%
-MEMORY_UTILIZATION_THRESHOLD = 9 * (1024 ** 3)  # Convert GB to bytes
-# Specify the local directory path, spilling will be written here
-DASK_DIR = '/topic-modeling/dask-spill'
-
-# Load data from the JSON file
-DATA_SOURCE = f"C:/topic-modeling/data/tokenized-sentences/{DECADE_TO_PROCESS}/{DECADE_TO_PROCESS}_min_six_word-w-bigrams.json"
-# test-train split
-TRAIN_RATIO = .80
-
-# Define the range of number of topics for LDA and step size
-START_TOPICS = 20
-END_TOPICS = 120
-STEP_SIZE = 5
-
-# define the decade that is being modelled 
-DECADE = DECADE_TO_PROCESS
-
-# In the case of this machine, since it has an Intel Core i9 processor with 8 physical cores (16 threads with Hyper-Threading), 
-# it would be appropriate to set the number of workers in Dask Distributed LocalCluster to 8 or slightly lower to allow some CPU 
-# resources for other tasks running on your system.
-# https://www.intel.com/content/www/us/en/products/sku/228439/intel-core-i912950hx-processor-30m-cache-up-to-5-00-ghz/specifications.html
-CORES = 10
-MAXIMUM_CORES = 12
-THREADS_PER_CORE = 2
-RAM_MEMORY_LIMIT = "10GB" # Dask diagnostics significantly overestimates RAM usage
-CPU_UTILIZATION_THRESHOLD = 110 # eg 85%
-MEMORY_UTILIZATION_THRESHOLD = 9 * (1024 ** 3)  # Convert GB to bytes
-# Specify the local directory path, spilling will be written here
-DASK_DIR = '/topic-modeling/dask-spill'
-
-# specify the number of passes for Gensim LdaModel
-PASSES = 15
-# specify the number of iterations
-ITERATIONS = 50
-# Number of documents to be iterated through for each update. 
-# Set to 0 for batch learning, > 1 for online iterative learning.
-UPDATE_EVERY = 5
-# Log perplexity is estimated every that many updates. 
-# Setting this to one slows down training by ~2x.
-EVAL_EVERY = 10
-RANDOM_STATE = 75
-PER_WORD_TOPICS = True
-
-
-# the number of documents( defined as HTML extract of <p>...</p> ) to read from the JSON source file per batch
-FUTURES_BATCH_SIZE = 50
-
-# Constants for adaptive batching and retries
-# Number of futures to process per iteration
-BATCH_SIZE = 50 # number of documents, value should be greater than FUTURES_BATCH_SIZE
-MAX_BATCH_SIZE = 60 # maximum number of documents to be processed
-MIN_BATCH_SIZE = math.ceil(FUTURES_BATCH_SIZE * 1.01) # minimum size of batch if resources are strained
-INCREASE_FACTOR = 1.05  # Increase batch size by p% upon success
-DECREASE_FACTOR = .10 # Decrease batch size by p% upon failure or timeout
-MAX_RETRIES = 5        # Maximum number of retries per task
-BASE_WAIT_TIME = 30     # Base wait time in seconds for exponential backoff
-
-
-# timeout for Dask wait method
-TIMEOUT = None #"90 minutes"
-# timeout for Dask wait method in retry_processing() method
-EXTENDED_TIMEOUT = None #"120 minutes"
-"""
-
-
-
 ###############################
 ###############################
 # DO NOT EDIT BELOW THIS LINE #
@@ -306,7 +235,7 @@ now = datetime.now()
 #       %m is the two-digit month (01-12)
 #       %H%M is the hour (00-23) followed by minute (00-59) in 24hr format
 #log_filename = now.strftime('log-%w-%m-%Y-%H%M.log')
-log_filename = 'log-1210.log'
+log_filename = 'log-0250.log'
 LOGFILE = os.path.join(LOG_DIRECTORY,log_filename)
 
 # Configure logging to write to a file with this name
@@ -590,12 +519,13 @@ if __name__=="__main__":
     future_to_params = {}
 
     TOTAL_COMBINATIONS = len(random_combinations) * (len(scattered_train_data_futures) + len(scattered_eval_data_futures) )
-    progress_bar = tqdm(total=TOTAL_COMBINATIONS, desc="Creating and saving models")
+    progress_bar = tqdm(total=TOTAL_COMBINATIONS, desc="Creating and saving models", file=sys.stdout)
     # Iterate over the combinations and submit tasks
-    num_iter = 0
+    num_iter = len(random_combinations)
     for n_topics, alpha_value, beta_value, train_eval_type in random_combinations:
         #print(f"this is the number of for loop iterations: {num_iter}")
-        num_iter+=1
+        num_iter-=1
+        #print(f"We are on iteration number: {num_iter}")
         # determine if throttling is needed
         logging.info("Evaluating if adaptive throttling is necessary (method exponential backoff)...")
         started, throttle_attempt = time(), 0
@@ -652,7 +582,7 @@ if __name__=="__main__":
 
 
         # Check if it's time to process futures based on BATCH_SIZE
-        if (len(train_futures) + len(eval_futures)) >= BATCH_SIZE:
+        if (len(train_futures) + len(eval_futures)) >= BATCH_SIZE or num_iter == 0:
             time_of_vis_call = pd.to_datetime('now')
             time_of_vis_call = time_of_vis_call.strftime('%Y%m%d%H%M%S%f')
             PERFORMANCE_TRAIN_LOG = os.path.join(LOG_DIR, f"train_perf_{time_of_vis_call}.html")
@@ -820,19 +750,8 @@ if __name__=="__main__":
                 logging.info(f"Decreasing batch size to {BATCH_SIZE}")
                 #garbage_collection(False, 'Batch Size Decrease')
 
-
-            #defensive programming to ensure WAIT output list of futures are cancelled to clear memory
-            #for f in done: client.cancel(f)
-            #for f in done_train: client.cancel(f)
-            #for f in completed_visualization_results: client.cancel(f)
-            #for f in visualization_futures: client.cancel(f)
-            #for f in done_visualizations: client.cancel(f)
-            #for f in not_done_visualizations: client.cancel(f)
-
-            
-            #del done, not_done, done_train, done_eval, not_done_eval, not_done_train
-            #del visualization_futures, done_visualizations, not_done_visualizations
-            #garbage_collection(False,'End of a batch being processed.')
+            eval_futures.clear()
+            train_futures.clear()
             client.rebalance()
          
     #garbage_collection(False, "Cleaning WAIT -> done, not_done")     
