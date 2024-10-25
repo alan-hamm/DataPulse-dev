@@ -13,12 +13,12 @@ import dask
 import socket
 import tornado
 
-import yaml
+import yaml # used for logging configuration file
+import logging
 import logging.config
 
 import sys
 import os
-import logging
 
 from datetime import datetime
 
@@ -39,6 +39,8 @@ import pickle
 # Dask dashboard throws deprecation warnings w.r.t. Bokeh
 import warnings
 from bokeh.util.deprecation import BokehDeprecationWarning
+
+# pyLDAvis throws errors when using jc_PCoA(instead use MMD5)
 from numpy import ComplexWarning
 
 
@@ -47,23 +49,24 @@ from numpy import ComplexWarning
 ###################################
 """
 # windows cmd
-python topic_analysis.py --time_period "2015-2019" --data_source "C:/topic-modeling/data/tokenized-sentences/2015-2019/2015-2019_min_six_word-w-bigrams.json" --start_topics 20 --end_topics 100 --step_size 5 --num_workers 8 --max_workers 14 --num_threads 8 --max_memory "10GB" --mem_threshold 9 --max_cpu 110 --futures_batches 100 --base_batch_size 100 --max_batch_size 130 --log_dir "C:/topic-modeling/data/lda-models/2015-2019/log/" --root_dir "C:/topic-modeling/data/lda-models/2015-2019/" 2>"C:/topic-modeling/data/lda-models/2015-2019/log/terminal_output.txt"
-python topic_analysis.py --time_period "moby-dick" --data_source "C:/topic-modeling/data/tokenized-sentences/moby-dick/moby-dick-w-bigrams.json" --start_topics 20 --end_topics 100 --step_size 5 --num_workers 8 --max_workers 14 --num_threads 8 --max_memory "10GB" --mem_threshold 9 --max_cpu 110 --futures_batches 100 --base_batch_size 100 --max_batch_size 130 --log_dir "C:/topic-modeling/data/lda-models/moby-dick/log" --root_dir "C:/topic-modeling/data/lda-models/moby-dick/" 2>"C:/topic-modeling/data/lda-models/moby-dick/log/terminal_output.txt"
-python topic_analysis.py --time_period "proust" --data_source "C:/topic-modeling/data/tokenized-sentences/proust/In-Search-of-Lost-Time-w-bigrams.json" --start_topics 100 --end_topics 1200 --step_size 50 --num_workers 8 --max_workers 14 --num_threads 8 --max_memory "10GB" --mem_threshold 9 --max_cpu 100 --futures_batches 100 --base_batch_size 100 --max_batch_size 130 --log_dir "C:/topic-modeling/data/lda-models/proust/log" --root_dir "C:/topic-modeling/data/lda-models/proust/" 2>"C:/topic-modeling/data/lda-models/proust/log/terminal_output.txt"
+python topic_analysis.py --time_period "2015-2019" --data_source "C:/topic-modeling/data/tokenized-sentences/2015-2019/2015-2019_min_six_word-w-bigrams.json" --start_topics 20 --end_topics 100 --step_size 5 --num_workers 8 --max_workers 14 --num_threads 8 --max_memory "5GB" --mem_threshold 4 --max_cpu 110 --futures_batches 100 --base_batch_size 100 --max_batch_size 130 --log_dir "C:/topic-modeling/data/lda-models/2015-2019/log/" --root_dir "C:/topic-modeling/data/lda-models/2015-2019/" 2>"C:/topic-modeling/data/lda-models/2015-2019/log/terminal_output.txt"
+python topic_analysis.py --time_period "moby-dick" --data_source "C:/topic-modeling/data/tokenized-sentences/moby-dick/moby-dick-w-bigrams.json" --start_topics 20 --end_topics 100 --step_size 5 --num_workers 8 --max_workers 14 --num_threads 8 --max_memory "5GB" --mem_threshold 4 --max_cpu 110 --futures_batches 100 --base_batch_size 100 --max_batch_size 130 --log_dir "C:/topic-modeling/data/lda-models/moby-dick/log" --root_dir "C:/topic-modeling/data/lda-models/moby-dick/" 2>"C:/topic-modeling/data/lda-models/moby-dick/log/terminal_output.txt"
+python topic_analysis.py --time_period "proust" --data_source "C:/topic-modeling/data/tokenized-sentences/proust/In-Search-of-Lost-Time-w-bigrams.json" --start_topics 100 --end_topics 1200 --step_size 50 --num_workers 8 --max_workers 14 --num_threads 8 --max_memory "5GB" --mem_threshold 4 --max_cpu 100 --futures_batches 100 --base_batch_size 100 --max_batch_size 130 --log_dir "C:/topic-modeling/data/lda-models/proust/log" --root_dir "C:/topic-modeling/data/lda-models/proust/" 2>"C:/topic-modeling/data/lda-models/proust/log/terminal_output.txt"
+python topic_analysis.py --time_period "war-and-peace" --data_source "C:/topic-modeling/data/tokenized-sentences/war-and-peace/war-and-peace-w-bigrams.json" --start_topics 20 --end_topics 100 --step_size 5 --num_workers 8 --max_workers 14 --num_threads 8 --max_memory "5GB" --mem_threshold 4 --max_cpu 100 --futures_batches 100 --base_batch_size 100 --max_batch_size 130 --log_dir "C:/topic-modeling/data/lda-models/war-and-peace/log" --root_dir "C:/topic-modeling/data/lda-models/war-and-peace/" 2>"C:/topic-modeling/data/lda-models/war-and-peace/log/terminal_output.txt"
 """
 def parse_args():
     parser = argparse.ArgumentParser(description="Script configuration via CLI")
-    parser.add_argument("--time_period",    type=str,           help="Decade to process")
-    parser.add_argument("--data_source",    type=str,           help="Path to data source JSON file")
+    parser.add_argument("--time_period",    type=str,           help="Decade to process") #no default
+    parser.add_argument("--data_source",    type=str,           help="Path to data source JSON file") #no default
     parser.add_argument("--train_ratio",    type=float,     default=0.80,help="Train ratio for test-train split")
-    parser.add_argument("--start_topics",   type=int,       default=1,  help="Minimum number of topics.")
-    parser.add_argument("--end_topics",     type=int,           help="Maximum number of topics.")
-    parser.add_argument("--step_size",      type=int,           help="Value to determine how start_topic increases to end_topic, exlusive")
+    parser.add_argument("--start_topics",   type=int,       default=1,   help="Minimum number of topics.")
+    parser.add_argument("--end_topics",     type=int,           help="Maximum number of topics.") #no default
+    parser.add_argument("--step_size",      type=int,           help="Value to determine how start_topic increases to end_topic, exlusive") #no default
     parser.add_argument("--num_workers",    type=int,       default=1,  help="The minimum number of cores to be utilized")
     parser.add_argument("--max_workers",    type=int,       default=1,  help="The maximum number of cores to be utilized")
     parser.add_argument("--num_threads",    type=int,       default=1,  help="The maximum number of threads to be utilized")
-    parser.add_argument("--max_memory",     type=str,           help="The maximum amount of RAM(in GB) assigned to each core")
-    parser.add_argument("--mem_threshold",  type=int,           help="The memory threshold")
+    parser.add_argument("--max_memory",     type=str,           help="The maximum amount of RAM(in GB) assigned to each core") #no default
+    parser.add_argument("--mem_threshold",  type=int,           help="The memory threshold") #no default
     parser.add_argument("--max_cpu",        type=int,       default=100,    help="The maximum CPU utilization threshold")
     parser.add_argument("--mem_spill",      type=str,       default="c:/temp/slif/max_spill",    help="Directory to be used when RAM exceeds threshold")
     parser.add_argument("--passes",         type=int,       default=15,     help="Number of passes for Gensim model")
@@ -72,15 +75,15 @@ def parse_args():
     parser.add_argument("--eval_every",     type=int,       default=5,      help="Log perplexity is estimated every that many updates. Setting this to one slows down training by ~2x.")
     parser.add_argument("--random_state",   type=int,       default=50,     help="Either a randomState object or a seed to generate one. Useful for reproducibility.")
     parser.add_argument("--per_word_topics", type=bool,     default=True,   help=" If True, the model also computes a list of topics, sorted in descending order of most likely topics for each word, along with their phi values multiplied by the feature length (i.e. word count).")
-    parser.add_argument("--futures_batches", type=int,      default=1,   help="The number of futures in a batch")
+    parser.add_argument("--futures_batches", type=int,      default=1,    help="The number of futures in a batch")
     parser.add_argument("--base_batch_size", type=int,      default=1,    help="The number of documents to be processed in parallel")
     parser.add_argument("--max_batch_size",  type=int,      default=1,    help="The maximum number of documents to be processed in parallel")
     parser.add_argument("--increase_factor", type=float,    default=1.05,   help="Increase document batch size by p-percent")
     parser.add_argument("--decrease_factor", type=float,    default=.10,    help="Decrese batch size by p-percent upon failure or timeout")
     parser.add_argument("--max_retries",    type=int,       default=5,      help="Maximum numbewr of times to attempt to process a future")
     parser.add_argument("--base_wait_time", type=int,       default=30,     help="Base wait time in seconds for exponential backoff")
-    parser.add_argument("--log_dir",        type=str,       default="c:/temp/slif/log",     help="Decade to process")
-    parser.add_argument("--root_dir",        type=str,       default="c:/temp/slif/",     help="Decade to process")
+    parser.add_argument("--log_dir",        type=str,       default=os.path.expanduser("~/temp/slif/log"), help="Log directory output")
+    parser.add_argument("--root_dir",       type=str,       default=os.path.expanduser("~/temp/slif/"),    help="Root directory")
 
     # Add more arguments as needed
     return parser.parse_args()
@@ -304,21 +307,6 @@ stream_handler = logging.StreamHandler()
 stream_handler.setLevel(logging.INFO)
 stream_handler.addFilter(NoCreatingAndSavingFilter())
 
-# joblib produces warnings
-def log_warning(message, category, filename, lineno, file=None, line=None):
-    # Create a formatted warning message string
-    formatted_message = warnings.formatwarning(message, category, filename, lineno, line)
-    
-    # Log using the root logger or any other configured logger
-    logging.warning(formatted_message)
-
-# Override the default showwarning method with our own implementation
-warnings.showwarning = log_warning
-
-# Now configure filters for specific warnings if needed (optional)
-warnings.filterwarnings('default', category=UserWarning, message=".*resource_tracker: There appear to be.*")
-warnings.filterwarnings('default', category=UserWarning, message=".*resource_tracker:.*FileNotFoundError.*")
-
 # https://distributed.dask.org/en/latest/worker-memory.html#memory-not-released-back-to-the-os
 if __name__=="__main__":
     # Multiprocessing (processes=True): This mode creates multiple separate Python processes, 
@@ -334,7 +322,6 @@ if __name__=="__main__":
     cluster = LocalCluster(
             n_workers=CORES,
             threads_per_worker=THREADS_PER_CORE,
-            #processes=False,
             processes=True,
             memory_limit=RAM_MEMORY_LIMIT,
             local_directory=DASK_DIR,
@@ -364,21 +351,21 @@ if __name__=="__main__":
 
     # Check if the Dask client is connected to a scheduler:
     if client.status == "running":
-        print("Dask client is connected to a scheduler.")
+        logging.info("Dask client is connected to a scheduler.")
         # Scatter the embedding vectors across Dask workers
     else:
-        print("Dask client is not connected to a scheduler.")
-        print("The system is shutting down.")
+        logging.error("Dask client is not connected to a scheduler.")
+        logging.error("The system is shutting down.")
         client.close()
         cluster.close()
         sys.exit()
 
     # Check if Dask workers are running:
     if len(client.scheduler_info()["workers"]) > 0:
-        print(f"{CORES} Dask workers are running.")
+        logging.info(f"{CORES} Dask workers are running.")
     else:
-        print("No Dask workers are running.")
-        print("The system is shutting down.")
+        logging.error("No Dask workers are running.")
+        logging.error("The system is shutting down.")
         client.close()
         cluster.close()
         sys.exit()
@@ -563,8 +550,8 @@ if __name__=="__main__":
                 logging.info(f"The training value is being appended to the train_futures list. Size: {len(train_futures)}")
                 pass
             except Exception as e:
-                distributed_logger.exception("An error occurred in train_model() Dask operation")
-                distributed_logger.exception(f"TYPE: train -- n_topics: {n_topics}, alpha: {alpha_value}, beta: {beta_value}")
+                logging.error("An error occurred in train_model() Dask operation")
+                logging.error(f"TYPE: train -- n_topics: {n_topics}, alpha: {alpha_value}, beta: {beta_value}")
 
         # Submit a future for each scattered data object in the evaluation list
         #if train_eval_type == 'eval':
@@ -576,8 +563,8 @@ if __name__=="__main__":
                 logging.info(f"The evaluation value is being appended to the eval_futures list. Size: {len(eval_futures)}")
                 pass
             except Exception as e:
-                distributed_logger.exception("An error occurred in train_model() Dask operation")
-                distributed_logger.exception(f"TYPE: eval -- n_topics: {n_topics}, alpha: {alpha_value}, beta: {beta_value}")              
+                logging.error("An error occurred in train_model() Dask operation")
+                logging.error(f"TYPE: eval -- n_topics: {n_topics}, alpha: {alpha_value}, beta: {beta_value}")              
         #garbage_collection(False, 'client.submit(train_model(...) train and eval)')
 
 
