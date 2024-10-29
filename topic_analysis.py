@@ -52,7 +52,7 @@ from numpy import ComplexWarning
 python topic_analysis.py --time_period "2015-2019" --data_source "C:/topic-modeling/data/tokenized-sentences/2015-2019/2015-2019_min_six_word-w-bigrams.json" --start_topics 20 --end_topics 100 --step_size 5 --num_workers 8 --max_workers 14 --num_threads 8 --max_memory "5GB" --mem_threshold 4 --max_cpu 110 --futures_batches 100 --base_batch_size 100 --max_batch_size 130 --log_dir "C:/topic-modeling/data/lda-models/2015-2019/log/" --root_dir "C:/topic-modeling/data/lda-models/2015-2019/" 2>"C:/topic-modeling/data/lda-models/2015-2019/log/terminal_output.txt"
 python topic_analysis.py --time_period "moby-dick" --data_source "C:/topic-modeling/data/tokenized-sentences/moby-dick/moby-dick-w-bigrams.json" --start_topics 20 --end_topics 100 --step_size 5 --num_workers 8 --max_workers 14 --num_threads 8 --max_memory "5GB" --mem_threshold 4 --max_cpu 110 --futures_batches 100 --base_batch_size 100 --max_batch_size 130 --log_dir "C:/topic-modeling/data/lda-models/moby-dick/log" --root_dir "C:/topic-modeling/data/lda-models/moby-dick/" 2>"C:/topic-modeling/data/lda-models/moby-dick/log/terminal_output.txt"
 python topic_analysis.py --time_period "proust" --data_source "C:/topic-modeling/data/tokenized-sentences/proust/In-Search-of-Lost-Time-w-bigrams.json" --start_topics 100 --end_topics 1200 --step_size 50 --num_workers 8 --max_workers 14 --num_threads 8 --max_memory "5GB" --mem_threshold 4 --max_cpu 100 --futures_batches 100 --base_batch_size 100 --max_batch_size 130 --log_dir "C:/topic-modeling/data/lda-models/proust/log" --root_dir "C:/topic-modeling/data/lda-models/proust/" 2>"C:/topic-modeling/data/lda-models/proust/log/terminal_output.txt"
-python topic_analysis.py --time_period "war-and-peace" --data_source "C:/topic-modeling/data/tokenized-sentences/war-and-peace/war-and-peace-w-bigrams.json" --start_topics 20 --end_topics 100 --step_size 5 --num_workers 8 --max_workers 14 --num_threads 8 --max_memory "5GB" --mem_threshold 4 --max_cpu 100 --futures_batches 100 --base_batch_size 100 --max_batch_size 130 --log_dir "C:/topic-modeling/data/lda-models/war-and-peace/log" --root_dir "C:/topic-modeling/data/lda-models/war-and-peace/" 2>"C:/topic-modeling/data/lda-models/war-and-peace/log/terminal_output.txt"
+python topic_analysis.py --time_period "war-and-peace" --data_source "C:/topic-modeling/data/tokenized-sentences/war-and-peace/war-and-peace-w-bigrams.json" --start_topics 20 --end_topics 100 --step_size 5 --num_workers 8 --max_workers 14 --num_threads 8 --max_memory "5GB" --mem_threshold 4 --max_cpu 100 --futures_batches 100 --base_batch_size 50 --max_batch_size 100 --log_dir "C:/topic-modeling/data/lda-models/war-and-peace/log" --root_dir "C:/topic-modeling/data/lda-models/war-and-peace/" 2>"C:/topic-modeling/data/lda-models/war-and-peace/log/terminal_output.txt"
 """
 def parse_args():
     parser = argparse.ArgumentParser(description="Script configuration via CLI")
@@ -723,7 +723,12 @@ if __name__=="__main__":
                                                                                         vis_pcoa=completed_pcoa_vis)
             progress_bar.update(len(done))
 
-
+            for f in completed_eval_futures: client.cancel(f)
+            for f in completed_train_futures: client.cancel(f)
+            for f in completed_pcoa_vis: client.cancel(f)
+            for f in completed_pylda_vis: client.cancel(f)
+            del completed_eval_futures, completed_train_futures, completed_pcoa_vis, completed_pylda_vis
+            
             # monitor system resource usage and adjust batch size accordingly
             scheduler_info = client.scheduler_info()
             all_workers_below_cpu_threshold = all(worker['metrics']['cpu'] < CPU_UTILIZATION_THRESHOLD for worker in scheduler_info['workers'].values())
