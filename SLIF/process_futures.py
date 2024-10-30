@@ -47,6 +47,9 @@ def process_completed_futures(completed_train_futures, completed_eval_futures, n
                     create_pylda, create_pcoa = vis_results_map[unique_id]
                     model_data['create_pylda'] = create_pylda
                     model_data['create_pcoa'] = create_pcoa
+                    model_data['num_documents'] = num_documents
+                    model_data['batch_size'] = batchsize
+                    model_data['num_workers'] = workers
         except Exception as e:
             logging.error(f"Error occurred during process_completed_futures() TRAIN: {e}")
         try:
@@ -72,6 +75,9 @@ def process_completed_futures(completed_train_futures, completed_eval_futures, n
                     create_pylda, create_pcoa = vis_results_map[unique_id]
                     model_data['create_pylda'] = create_pylda
                     model_data['create_pcoa'] = create_pcoa
+                    model_data['num_documents'] = num_documents
+                    model_data['batch_size'] = batchsize
+                    model_data['num_workers'] = workers
         except Exception as e:
             logging.error(f"Error occurred during process_completed_futures() EVAL: {e}")
         try:
