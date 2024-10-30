@@ -177,8 +177,8 @@ def train_model(n_topics: int, alpha_str: list, beta_str: list, data: list, trai
                 'time_key': hashlib.md5(time_of_method_call.strftime('%Y%m%d%H%M%S%f').encode()).hexdigest(),
                 'type': train_eval,
                 'num_workers': 0, # this value is set to 0 which will signify an error in assignment of adaptive-scaling worker count assigned in process_completed()
-                'batch_size': -1,
-                'num_documents': -1, 
+                'batch_size': len(corpus_batch),
+                'num_documents': len(streaming_documents), 
                 'text': [string_result],
                 'text_json': pickle.dumps(batch_documents),
                 'text_sha256': hashlib.sha256(string_result.encode()).hexdigest(),
