@@ -637,7 +637,19 @@ if __name__=="__main__":
                 logging.info("Gathering TRAIN and EVAL futures.")
                 results_train = [d.result() for d in done_train if isinstance(d, Future)]
                 results_eval = [d.result() for d in done_eval if isinstance(d, Future)]
-                results = results_train + results_eval
+                
+                # results_train and results_eval are lists of lists of dictionaries
+                for result_list in results_train:
+                    for result_dict in result_list:
+                        result_dict['type'] = 'train'
+
+                for result_list in results_eval:
+                    for result_dict in result_list:
+                        result_dict['type'] = 'eval'
+
+                # combine results with additional key 'type'
+                results = [result_dict for sublist in (results_train + results_eval) for result_dict in sublist]
+
                 logging.info(f"Completed TRAIN and EVAL gathering {len(results)} futures.")
                 
                 # Now you can process these results and submit new tasks based on them
@@ -646,41 +658,37 @@ if __name__=="__main__":
                 
                 processed_results = set()  # Use a set to track processed result hashes
                 
-                for result_group in results:
-                    # Assuming each 'result_group' is an iterable (list) of result dictionaries
-                    for result in result_group:
-                        # Create a unique identifier based on the time hash of the result
-                        unique_id = hashlib.md5(result['time'].strftime('%Y%m%d%H%M%S%f').encode()).hexdigest()
-                        
-                        # Check if we've already processed this unique_id
-                        if unique_id not in processed_results:
-                            processed_results.add(unique_id)  # Mark as processed
+                for result_dict in results:
+                    unique_id = hashlib.md5(result_dict['time'].strftime('%Y%m%d%H%M%S%f').encode()).hexdigest()
+                    
+                    if unique_id not in processed_results:
+                        processed_results.add(unique_id)
                             
-                            try:
-                                vis_future_pylda = client.submit(create_vis_pylda,
-                                                                result['lda_model'],
-                                                                result['corpus'],
-                                                                result['dictionary'],
-                                                                unique_id,
-                                                                CORES,
-                                                                result['text_md5'],
-                                                                PYLDA_DIR)
-                                visualization_futures_pylda.append(vis_future_pylda)
-                            except Exception as e:
-                                logging.error(f"An error occurred in create_vis_pylda() Dask operation: {e}")
-                                logging.error(f"TYPE: pyLDA -- MD5: {result['text_md5']}")
-                            
-                            try:
-                                vis_future_pcoa = client.submit(create_vis_pcoa,
-                                                                result['lda_model'],
-                                                                result['corpus'],
-                                                                unique_id,
-                                                                result['text_md5'],
-                                                                PCOA_DIR)
-                                visualization_futures_pcoa.append(vis_future_pcoa)
-                            except Exception as e:
-                                logging.error(f"An error occurred in create_vis_pcoa() Dask operation: {e}")
-                                logging.error(f"TYPE: PCoA -- MD5{result['text_md5']}")
+                        try:
+                            vis_future_pylda = client.submit(create_vis_pylda,
+                                                            result_dict['lda_model'],
+                                                            result_dict['corpus'],
+                                                            result_dict['dictionary'],
+                                                            unique_id,
+                                                            CORES,
+                                                            result_dict['text_md5'],
+                                                            PYLDA_DIR)
+                            visualization_futures_pylda.append(vis_future_pylda)
+                        except Exception as e:
+                                    logging.error(f"An error occurred in create_vis_pylda() Dask operation: {e}")
+                                    logging.error(f"TYPE: pyLDA -- MD5: {result_dict['text_md5']}")
+
+                        try:
+                            vis_future_pcoa = client.submit(create_vis_pcoa,
+                                                            result_dict['lda_model'],
+                                                            result_dict['corpus'],
+                                                            unique_id,
+                                                            result_dict['text_md5'],
+                                                            PCOA_DIR)
+                            visualization_futures_pcoa.append(vis_future_pcoa)
+                        except Exception as e:
+                                    logging.error(f"An error occurred in create_vis_pcoa() Dask operation: {e}")
+                                    logging.error(f"TYPE: PCoA -- MD5{result_dict['text_md5']}")
 
                 logging.info(f"Executing WAIT on TRAIN and EVAL pyLDA create_visualizations {len(visualization_futures_pylda)} futures.")
                 logging.info(f"Executing WAIT on TRAIN and EVAL PCoA create_visualizations {len(visualization_futures_pcoa)} futures.")
@@ -710,8 +718,9 @@ if __name__=="__main__":
             # END PROCESS VISUALIZATIONS
             #############################            
             
-
+            started = time()
             num_workers = len(client.scheduler_info()["workers"])
+            logging.info(f"Writing processed completed futures to disk.")
             completed_eval_futures, completed_train_futures = process_completed_futures(completed_train_futures, \
                                                                                         completed_eval_futures, \
                                                                                         (len(completed_eval_futures)+len(completed_train_futures)), \
@@ -721,7 +730,12 @@ if __name__=="__main__":
                                                                                         METADATA_DIR, \
                                                                                         vis_pylda=completed_pylda_vis,
                                                                                         vis_pcoa=completed_pcoa_vis)
+            
+            elapsed_time = round(((time() - started) / 60), 2)
+            logging.info(f"Finished write processed completed futures to disk in  {elapsed_time} minutes")
+
             progress_bar.update(len(done))
+
 
             for f in completed_eval_futures: client.cancel(f)
             for f in completed_train_futures: client.cancel(f)
