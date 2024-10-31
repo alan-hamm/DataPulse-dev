@@ -2,6 +2,7 @@
 
 from .data_io import add_model_data_to_metadata
 from .utils import exponential_backoff, garbage_collection
+from .WriteToPostgres import add_model_data_to_database, create_dynamic_table_class, create_table_if_not_exists
 
 from time import sleep
 import logging
@@ -9,7 +10,7 @@ from dask.distributed import wait
 
 
 def process_completed_futures(completed_train_futures, completed_eval_futures, num_documents, workers, \
-                               batchsize, texts_zip_dir, metadata_dir, vis_pylda=None, vis_pcoa=None):
+                               batchsize, texts_zip_dir, metadata_dir=None, vis_pylda=None, vis_pcoa=None):
 
     # Create a mapping from model_data_id to visualization results
     pylda_results_map = {vis_result[0]: vis_result[1:] for vis_result in vis_pylda}
@@ -45,19 +46,21 @@ def process_completed_futures(completed_train_futures, completed_eval_futures, n
                 if unique_id in vis_results_map:
                     #print(f"We are in the process_completed mapping time hash key.")
                     create_pylda, create_pcoa = vis_results_map[unique_id]
-                    model_data['create_pylda'] = create_pylda
-                    model_data['create_pcoa'] = create_pcoa
+                    model_data['create_pylda'] = create_pylda[0]
+                    model_data['create_pcoa'] = create_pcoa[0]
                     model_data['num_documents'] = num_documents
                     model_data['batch_size'] = batchsize
                     model_data['num_workers'] = workers
         except Exception as e:
             logging.error(f"Error occurred during process_completed_futures() TRAIN: {e}")
         try:
-            add_model_data_to_metadata(model_data, num_documents, workers, batchsize, texts_zip_dir, metadata_dir)
+            #add_model_data_to_metadata(model_data, num_documents, workers, batchsize, texts_zip_dir, metadata_dir)
+                DynamicModelMetadata = create_dynamic_table_class('my_dynamic_table')
+                create_table_if_not_exists(DynamicModelMetadata, "postgresql://postgres:admin@localhost:5432/SLIF")
+                add_model_data_to_database(model_data, 'my_dynamic_table', "postgresql://postgres:admin@localhost:5432/SLIF",
+                                        num_documents, workers, batchsize, texts_zip_dir)
         except Exception as e:
             logging.error(f"Error occurred during process_completed_futures() add_model_data_to_metadata() TRAIN: {e}")
-
-        
 
     # Process evaluation futures
     #vis_futures = []
@@ -73,15 +76,19 @@ def process_completed_futures(completed_train_futures, completed_eval_futures, n
                 # Retrieve visualization results using filename hash as key
                 if unique_id in vis_results_map:
                     create_pylda, create_pcoa = vis_results_map[unique_id]
-                    model_data['create_pylda'] = create_pylda
-                    model_data['create_pcoa'] = create_pcoa
+                    model_data['create_pylda'] = create_pylda[0]
+                    model_data['create_pcoa'] = create_pcoa[0]
                     model_data['num_documents'] = num_documents
                     model_data['batch_size'] = batchsize
                     model_data['num_workers'] = workers
         except Exception as e:
             logging.error(f"Error occurred during process_completed_futures() EVAL: {e}")
         try:
-            add_model_data_to_metadata(model_data, num_documents, workers, batchsize, texts_zip_dir, metadata_dir)
+            #add_model_data_to_metadata(model_data, num_documents, workers, batchsize, texts_zip_dir, metadata_dir)
+            DynamicModelMetadata = create_dynamic_table_class('my_dynamic_table')
+            create_table_if_not_exists(DynamicModelMetadata, "postgresql://postgres:admin@localhost:5432/SLIF")
+            add_model_data_to_database(model_data, 'my_dynamic_table', "postgresql://postgres:admin@localhost:5432/SLIF",
+                                        num_documents, workers, batchsize, texts_zip_dir)
         except Exception as e:
             logging.error(f"Error occurred during process_completed_futures() add_model_data_to_metadata() EVAL: {e}")
         
