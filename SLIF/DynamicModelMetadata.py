@@ -87,3 +87,53 @@ engine_example = create_engine(engine_example_uri)
 
 # Create all tables stored in this metadata (if they don't exist)
 Base.metadata.create_all(engine_example)
+
+
+
+
+
+
+
+ # Define a class that describes the table structure
+    attributes = {
+        '__tablename__' : table_name,
+        'time_key' : Column(String, primary_key=True, nullable=False),
+        'type' : Column(String),
+        'num_workers' : Column(Integer),
+        'batch_size' : Column(Integer),
+        'num_documents' : Column(Integer),
+        'text' : Column(JSON) , # text is a list of file paths
+        'text_json' : Column(JSON),  # text_json is a list of lists of tokenized sentences
+        'text_sha256' : Column(String),
+        'text_md5' : Column(String),
+        'convergence' : Column(Float(precision=32)),
+        'perplexity' : Column(Float(precision=32)),
+        'coherence' : Column(Float(precision=32)),
+        'topics' : Column(Integer),
+            
+        # alpha_str and beta_str are categorical string representations; store them as strings
+        'alpha_str' : Column(String),
+        'n_alpha' : Column(Float(precision=32)),
+
+        # beta_str is similar to alpha_str; n_beta is a numerical representation of beta
+        'beta_str' : Column(String),
+        'n_beta' :  Column(Float(precision=32)),
+
+        # passes, iterations, update_every, eval_every, chunksize and random_state are integers
+        'passes' : Column(Integer),
+        'iterations' : Column(Integer),
+        'update_every' : Column(Integer),
+        'eval_every' : Column(Integer),
+        'chunksize' : Column(Integer),
+        'random_state' : Column(Integer),
+
+        'per_word_topics' : Column(Boolean),
+        'top_words' : Column(TEXT) , # Assuming top_words is a long string or JSON serializable
+            
+        'create_pylda' : Column(Boolean) ,
+        'create_pcoa' : Column(Boolean),
+
+        # Enforce datetime type for time fields
+        'time' : Column(DateTime),
+        'end_time' : Column(DateTime)
+    }
