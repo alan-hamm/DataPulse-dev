@@ -285,12 +285,17 @@ warnings.filterwarnings("ignore", category=Warning, module=r"pyLDAvis\._prepare"
 logging.getLogger('tornado').setLevel(logging.ERROR)
 
 # Get the logger for 'sqlalchemy.engine' which is used by SQLAlchemy to log SQL queries
-# Since we're configuring this after setting up the root logger, it will inherit its handlers,
-# meaning it will also log to 'myapp.log' and not print anything on console.
 sqlalchemy_logger = logging.getLogger('sqlalchemy.engine')
 
-# If you want sqlalchemy.engine logs at WARNING or higher levels instead of INFO,
-# uncomment the following line:
+# Remove all handlers associated with 'sqlalchemy.engine' (this includes StreamHandler)
+for handler in sqlalchemy_logger.handlers[:]:
+    sqlalchemy_logger.removeHandler(handler)
+
+# Add a NullHandler to prevent default StreamHandler from being added later on
+null_handler = logging.NullHandler()
+sqlalchemy_logger.addHandler(null_handler)
+
+# Optionally set a higher level if you want to ignore INFO logs from sqlalchemy.engine
 # sqlalchemy_logger.setLevel(logging.WARNING)
 
 # Enable serialization optimizations 
