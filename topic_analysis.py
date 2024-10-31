@@ -48,16 +48,10 @@ from numpy import ComplexWarning
 ###################################
 # BEGIN SCRIPT CONFIGURATION HERE #
 ###################################
-"""
-# windows cmd
-python topic_analysis.py --time_period "2015-2019" --data_source "C:/topic-modeling/data/tokenized-sentences/2015-2019/2015-2019_min_six_word-w-bigrams.json" --start_topics 20 --end_topics 100 --step_size 5 --num_workers 8 --max_workers 14 --num_threads 8 --max_memory "5GB" --mem_threshold 4 --max_cpu 110 --futures_batches 100 --base_batch_size 100 --max_batch_size 130 --log_dir "C:/topic-modeling/data/lda-models/2015-2019/log/" --root_dir "C:/topic-modeling/data/lda-models/2015-2019/" 2>"C:/topic-modeling/data/lda-models/2015-2019/log/terminal_output.txt"
-python topic_analysis.py --time_period "moby-dick" --data_source "C:/topic-modeling/data/tokenized-sentences/moby-dick/moby-dick-w-bigrams.json" --start_topics 20 --end_topics 100 --step_size 5 --num_workers 8 --max_workers 14 --num_threads 8 --max_memory "5GB" --mem_threshold 4 --max_cpu 110 --futures_batches 100 --base_batch_size 100 --max_batch_size 130 --log_dir "C:/topic-modeling/data/lda-models/moby-dick/log" --root_dir "C:/topic-modeling/data/lda-models/moby-dick/" 2>"C:/topic-modeling/data/lda-models/moby-dick/log/terminal_output.txt"
-python topic_analysis.py --time_period "proust" --data_source "C:/topic-modeling/data/tokenized-sentences/proust/In-Search-of-Lost-Time-w-bigrams.json" --start_topics 100 --end_topics 1200 --step_size 50 --num_workers 8 --max_workers 14 --num_threads 8 --max_memory "5GB" --mem_threshold 4 --max_cpu 100 --futures_batches 100 --base_batch_size 100 --max_batch_size 130 --log_dir "C:/topic-modeling/data/lda-models/proust/log" --root_dir "C:/topic-modeling/data/lda-models/proust/" 2>"C:/topic-modeling/data/lda-models/proust/log/terminal_output.txt"
-python topic_analysis.py --time_period "war-and-peace" --data_source "C:/topic-modeling/data/tokenized-sentences/war-and-peace/war-and-peace-w-bigrams.json" --start_topics 20 --end_topics 100 --step_size 5 --num_workers 8 --max_workers 14 --num_threads 8 --max_memory "5GB" --mem_threshold 4 --max_cpu 100 --futures_batches 100 --base_batch_size 50 --max_batch_size 100 --log_dir "C:/topic-modeling/data/lda-models/war-and-peace/log" --root_dir "C:/topic-modeling/data/lda-models/war-and-peace/" 2>"C:/topic-modeling/data/lda-models/war-and-peace/log/terminal_output.txt"
-"""
+
 def parse_args():
     parser = argparse.ArgumentParser(description="Script configuration via CLI")
-    parser.add_argument("--time_period",    type=str,           help="Decade to process") #no default
+    parser.add_argument("--corpus_label",    type=str,           help="The label of the corpus") #no default
     parser.add_argument("--data_source",    type=str,           help="Path to data source JSON file") #no default
     parser.add_argument("--train_ratio",    type=float,     default=0.80,help="Train ratio for test-train split")
     parser.add_argument("--start_topics",   type=int,       default=1,   help="Minimum number of topics.")
@@ -69,7 +63,7 @@ def parse_args():
     parser.add_argument("--max_memory",     type=str,           help="The maximum amount of RAM(in GB) assigned to each core") #no default
     parser.add_argument("--mem_threshold",  type=int,           help="The memory threshold") #no default
     parser.add_argument("--max_cpu",        type=int,       default=100,    help="The maximum CPU utilization threshold")
-    parser.add_argument("--mem_spill",      type=str,       default="c:/temp/slif/max_spill",    help="Directory to be used when RAM exceeds threshold")
+    parser.add_argument("--mem_spill",      type=str,       default=os.path.expanduser("~/temp/slif/max_spill"),    help="Directory to be used when RAM exceeds threshold")
     parser.add_argument("--passes",         type=int,       default=15,     help="Number of passes for Gensim model")
     parser.add_argument("--iterations",     type=int,       default= 100,   help="Number of iterations")
     parser.add_argument("--update_every",   type=int,       default=5,      help="Number of documents to be iterated through for each update. Default is 5. Set to 0 for batch learning, > 1 for online iterative learning.")
@@ -93,10 +87,10 @@ def parse_args():
 args = parse_args()
 
 # Load define time span to process
-if args.time_period: DECADE_TO_PROCESS = args.time_period
+if args.corpus_label: CORPUS_LABEL = args.corpus_label
 else:
-    logging.error(f"No value was entered for decade_to_process")
-    print(f"No value was entered for decade_to_process")
+    logging.error(f"No value was entered for corpus_label")
+    print(f"No value was entered for corpus_label")
     sys.exit
 # Load data from the JSON file
 if args.data_source:DATA_SOURCE = args.data_source
@@ -169,7 +163,7 @@ if args.max_retries: MAX_RETRIES = args.max_retries
 # Base wait time in seconds for exponential backoff
 if args.base_wait_time: BASE_WAIT_TIME = args.base_wait_time
 
-custom_temp_folder = f"C:/topic-modeling/data/lda-models/{DECADE_TO_PROCESS}/log/joblib"
+custom_temp_folder = f"C:/topic-modeling/data/lda-models/{CORPUS_TO_PROCESS}/log/joblib"
 os.makedirs(custom_temp_folder, exist_ok=True)
 os.environ['JOBLIB_TEMP_FOLDER'] = custom_temp_folder
 
