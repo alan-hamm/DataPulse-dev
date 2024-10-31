@@ -17,15 +17,6 @@ from .utils import garbage_collection
 
 Base = declarative_base()
 
-# Get the logger for 'sqlalchemy.engine' which is used by SQLAlchemy to log SQL queries
-# Since we're configuring this after setting up the root logger, it will inherit its handlers,
-# meaning it will also log to 'myapp.log' and not print anything on console.
-sqlalchemy_logger = logging.getLogger('sqlalchemy.engine')
-
-# If you want sqlalchemy.engine logs at WARNING or higher levels instead of INFO,
-# uncomment the following line:
-# sqlalchemy_logger.setLevel(logging.WARNING)
-
 # Function to save text data and model to single ZIP file
 def save_to_zip(time, top_folder, text_data, text_json, ldamodel, corpus, dictionary, texts_zip_dir):
     # Generate a unique filename based on current timestamp
@@ -172,7 +163,7 @@ def add_model_data_to_database(model_data, table_name, database_uri,
         texts_zipped.append(zip_path)
 
     # Create an engine using the provided DATABASE_URI
-    engine = create_engine(database_uri, echo=True)
+    engine = create_engine(database_uri, echo=False)
     
     # Create a session factory bound to this engine
     Session = sessionmaker(bind=engine)
