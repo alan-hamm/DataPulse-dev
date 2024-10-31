@@ -169,26 +169,10 @@ if args.max_retries: MAX_RETRIES = args.max_retries
 # Base wait time in seconds for exponential backoff
 if args.base_wait_time: BASE_WAIT_TIME = args.base_wait_time
 
-
-####################################################
-# MUST BE DONE VIA TERMINAL WITH ADMIN PRIVILEGES  #
-####################################################
-# Set the JOBLIB_TEMP_FOLDER environment variable to your desired folder path
-# By setting a custom temporary folder, you have more control over where joblib stores its 
-# data and can avoid issues related to permissions or automatic cleanup of system temporary 
-# directories. Remember to clean up this directory periodically if joblib does not do so 
-# automatically, as it may accumulate large amounts of data over time.
-# for joblib -- via CLI to only allow writing but not deleting
-# icacls "C:\Temp\joblib" /grant "pqn7":(OI)(CI)W 
-
-# for joblib --  Modify permissions to allow deletion:
-# icacls "C:\path\to\directory" /grant "pqn7":M
-# delete folders
-# del "C:\path\to\directory\*"
-
 custom_temp_folder = f"C:/topic-modeling/data/lda-models/{DECADE_TO_PROCESS}/log/joblib"
 os.makedirs(custom_temp_folder, exist_ok=True)
 os.environ['JOBLIB_TEMP_FOLDER'] = custom_temp_folder
+
 
 
 ###############################
@@ -201,16 +185,9 @@ os.environ['JOBLIB_TEMP_FOLDER'] = custom_temp_folder
 # https://github.com/dask/dask-jobqueue/issues/391
 scheduler_options={"host":socket.gethostname()}
 
-# write Dask terminal output to file: C:/topic-modeling/data/lda-models/log_all/dask_log.log
-#with open(r'C:\Users\pqn7\OneDrive - CDC\git-a-aitch\topic-modeling-pkg\dask.yaml', 'r') as f:
-#    config = yaml.safe_load(f.read())
-#    logging.config.dictConfig(config)
-
 # Ensure the LOG_DIRECTORY exists
 if args.log_dir: LOG_DIRECTORY = args.log_dir
 if args.root_dir: ROOT_DIR = args.root_dir
-#LOG_DIRECTORY = f"C:/topic-modeling/data/lda-models/{DECADE_TO_PROCESS}/log/"
-#ROOT_DIR = f"C:/topic-modeling/data/lda-models/{DECADE_TO_PROCESS}"
 os.makedirs(LOG_DIRECTORY, exist_ok=True)
 
 # Define the top-level directory and subdirectories
@@ -348,10 +325,6 @@ if __name__=="__main__":
     for worker_id, worker_info in workers_info.items():
         worker_info["memory_limit"] = RAM_MEMORY_LIMIT
 
-    # Verify that memory limits have been set correctly
-    #for worker_id, worker_info in workers_info.items():
-    #    print(f"Worker {worker_id}: Memory Limit - {worker_info['memory_limit']}")
-
     # Check if the Dask client is connected to a scheduler:
     if client.status == "running":
         logging.info("Dask client is connected to a scheduler.")
@@ -380,9 +353,6 @@ if __name__=="__main__":
     
     scattered_train_data_futures = []
     scattered_eval_data_futures = []
-
-    #whole_train_dataset = None
-    #whole_eval_dataset = None
 
     # Process each batch as it is generated
     for batch_info in futures_create_lda_datasets(DATA_SOURCE, TRAIN_RATIO, FUTURES_BATCH_SIZE):
@@ -415,19 +385,9 @@ if __name__=="__main__":
         else:
             print("There are documents not being scattered across the workers.")
 
-        # Update the progress bar with the cumulative count of samples processed
-        #pbar.update(batch_info['cumulative_count'] - pbar.n)
-        #pbar.update(len(batch_info['data']))
-    
-    #pbar.close()  # Ensure closure of the progress bar
-
     print(f"Completed creation of training and evaluation documents in {round((time() - started)/60,2)} minutes.\n")
-    #print(f"The size of the TRAIN scatter: {len(scattered_train_data_futures)}.")
-    #print(f"The size of the EVAL scatter: {len(scattered_eval_data_futures)}.")
     print("Data scatter complete...\n")
-    #garbage_collection(False, 'scattering training and eval data')
-    #del scattered_future
-    #del whole_train_dataset, whole_eval_dataset # these variables are not used at all
+
 
     train_futures = []  # List to store futures for training
     eval_futures = []  # List to store futures for evaluation
@@ -541,9 +501,6 @@ if __name__=="__main__":
         else:
             logging.info("Proceeding with workload as workers are below the CPU and Memory thresholds.")
 
-        #logging.info(f"for LdaModel hyperparameters combination -- type: {train_eval_type}, topic: {n_topics}, ALPHA: {alpha_value} and ETA {beta_value}")
-        # Submit a future for each scattered data object in the training list
-        #if train_eval_type == 'train':
         # Submit a future for each scattered data object in the training list
         for scattered_data in scattered_train_data_futures:
             try:
@@ -750,13 +707,6 @@ if __name__=="__main__":
             logging.info(f"Finished write processed completed futures to disk in  {elapsed_time} minutes")
 
             progress_bar.update(len(done))
-
-
-            #for f in completed_eval_futures: client.cancel(f)
-            #for f in completed_train_futures: client.cancel(f)
-            #for f in completed_pcoa_vis: client.cancel(f)
-            #for f in completed_pylda_vis: client.cancel(f)
-            #del completed_eval_futures, completed_train_futures, completed_pcoa_vis, completed_pylda_vis
             
             # monitor system resource usage and adjust batch size accordingly
             scheduler_info = client.scheduler_info()

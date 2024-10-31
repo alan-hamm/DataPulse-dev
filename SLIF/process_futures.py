@@ -1,4 +1,4 @@
-# developed traditionally in with addition of AI assistance
+# developed traditionally with addition of AI assistance
 
 from .data_io import add_model_data_to_metadata
 from .utils import exponential_backoff, garbage_collection

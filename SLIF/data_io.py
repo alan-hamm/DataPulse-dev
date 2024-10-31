@@ -1,4 +1,4 @@
-# developed traditionally in addition to pair programming
+# developed traditionally with AI-assisted programming
 import os
 from json import load
 from random import shuffle
@@ -55,13 +55,9 @@ def futures_create_lda_datasets(filename, train_ratio, batch_size):
             
         if (eval_count < num_samples or train_count >= num_train_samples):
             # Yield an evaluation batch
-            #print("we are in the method to create the futures trying to create the eval data.")
-            #print(f"the eval count is {eval_count} and the train count is {train_count} and the num train samples is {num_train_samples}\n")
             eval_indices_batch = indices[eval_count:eval_count + batch_size]
             eval_data_batch = [data[idx] for idx in eval_indices_batch]
-            #print(f"This is the size of the eval_data_batch from the create futures method {len(eval_data_batch)}\n")
             if len(eval_data_batch) > 0:
-                #print(f"Yielding evaluation batch: {eval_count} to {eval_count + len(eval_data_batch)}") # ... existing code for yielding evaluation batch ...
                 yield {
                     'type': 'eval',
                     'data': eval_data_batch,
@@ -95,7 +91,6 @@ def save_to_zip(time, top_folder, text_data, text_json, ldamodel, corpus, dictio
 
 # Function to add new model data to metadata Parquet file
 def add_model_data_to_metadata(model_data, num_documents, workers, batchsize, texts_zip_dir, metadata_dir):
-    #print("we are in the add_model_data_to_metadata method()")
     # Save large body of text to zip and update model_data reference
     texts_zipped = []
     
@@ -133,9 +128,6 @@ def add_model_data_to_metadata(model_data, num_documents, workers, batchsize, te
         'perplexity': 'float32',
         'coherence': 'float32',
         'topics': int,
-        # Use pd.Categorical.dtype for categorical columns
-        # Ensure alpha and beta are already categorical when passed into this function
-        # They should not be wrapped again with CategoricalDtype here.
         'alpha_str': str,
         'n_alpha': 'float32',
         'beta_str': str,
@@ -160,8 +152,6 @@ def add_model_data_to_metadata(model_data, num_documents, workers, batchsize, te
 
     
     try:
-        #df_new_metadata = pd.DataFrame({key: [value] if not isinstance(value, list) else value 
-        #                                for key, value in model_data.items()}).astype(expected_dtypes)
         # Create a new DataFrame without enforcing dtypes initially
         df_new_metadata = pd.DataFrame({key: [value] if not isinstance(value, list) else value 
                                         for key, value in model_data.items()})
@@ -172,13 +162,9 @@ def add_model_data_to_metadata(model_data, num_documents, workers, batchsize, te
             df_new_metadata[col_name] = df_new_metadata[col_name].astype('float32')
             
         df_new_metadata['topics'] = df_new_metadata['topics'].astype(int)
-        #df_new_metadata['time'] = pd.to_datetime(df_new_metadata['time'])
         df_new_metadata['batch_size'] = batchsize
         df_new_metadata['num_workers'] = workers
         df_new_metadata['num_documents'] = num_documents
-        #df_new_metadata['create_pylda'] = pylda_success
-        #df_new_metadata['create_pcoa'] = pcoa_success
-        # drop lda model from dataframe
         df_new_metadata = df_new_metadata.drop('dictionary', axis=1)
         df_new_metadata = df_new_metadata.drop('corpus', axis=1)
         df_new_metadata = df_new_metadata.drop('lda_model', axis=1)
@@ -187,7 +173,6 @@ def add_model_data_to_metadata(model_data, num_documents, workers, batchsize, te
     except ValueError as e:
         # Initialize an error message list
         error_messages = [f"Error converting model_data to DataFrame with enforced dtypes: {e}"]
-        
         
         # Iterate over each item in model_data to collect its key, expected dtype, and actual value
         for key, value in model_data.items():
@@ -216,9 +201,4 @@ def add_model_data_to_metadata(model_data, num_documents, workers, batchsize, te
 
 
     # Save updated metadata DataFrame back to Parquet file
-    #garbage_collection(False, "add_model_data_to_metadata(...)")
     df_metadata.to_parquet(parquet_file_path)
-    #del df_metadata, df_new_metadata, model_data
-    #garbage_collection(False, 'add_model_data_to_metadata(...)')
-    #print("\nthis is the value of the parquet file")
-    #print(df_metadata)

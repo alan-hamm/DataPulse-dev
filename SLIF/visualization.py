@@ -1,4 +1,4 @@
-# developed traditionally in with addition of AI assistance
+# developed traditionally with addition of AI assistance
 from .utils import garbage_collection
 import os 
 import numpy as np
@@ -26,9 +26,6 @@ def create_vis_pylda(ldaModel, corpus, dictionary, topics, filename, CORES, vis_
     os.makedirs(PYLDA_DIR, exist_ok=True)
     IMAGEFILE = os.path.join(PYLDA_DIR,f"{filename}.html")
 
-    # Disable notebook mode since we're saving to HTML.
-    #pyLDAvis.disable_notebook()
-    
     # Prepare the visualization data.
     # Note: sort_topics=False will prevent reordering topics after training.
     try:

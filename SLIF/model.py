@@ -1,4 +1,5 @@
-# developed traditionally in with addition of AI assistance
+# developed traditionally with addition of AI assistance
+
 from .utils import garbage_collection
 import pandas as pd
 from dask.distributed import as_completed
@@ -35,20 +36,13 @@ def train_model(n_topics: int, alpha_str: list, beta_str: list, data: list, trai
         corpus_batch = []
         time_of_method_call = pd.to_datetime('now')
 
-        #print("this is an investigation into the full datafile")
-        #pp.pprint(full_datafile)
         try:
             # Compute several dask collections at once.
             streaming_documents = dask.compute(*data)
             chunksize = max(1,int(len(streaming_documents) // 5))
-            #print("these are the streaming documents")
-            #print(streaming_documents)
-            #garbage_collection(False, 'train_model(): streaming_documents = dask.compute(*data)')
         except Exception as e:
             logging.error(f"Error computing streaming_documents data: {e}")
             raise
-        #print(f"This is the dtype for 'streaming_documents' {type(streaming_documents)}.\n")  # Should output <class 'tuple'>
-        #print(streaming_documents[0][0])     # Check the first element to see if it's as expected
 
         # Select documents for current batch
         batch_documents = streaming_documents
@@ -59,15 +53,8 @@ def train_model(n_topics: int, alpha_str: list, beta_str: list, data: list, trai
             #print("The dictionary was cretaed.")
         except TypeError:
             print("Error: The data structure is not correct.")
-        #else:
-        #    print("Dictionary created successfully!")
 
-        #if isinstance(batch_documents[0], list) and all(isinstance(doc, list) for doc in batch_documents[0]):
-        #bow_out = dictionary_batch.doc2bow(batch_documents[0])
         flattened_batch = [item for sublist in batch_documents for item in sublist]
-        #bow_out = dictionary_batch.doc2bow(flattened_batch)
-        #else:
-        #    raise ValueError(f"Expected batch_documents[0] to be a list of token lists. Instead received {type(batch_documents[0])} with value {batch_documents[0]}\n")
 
         # Iterate over each document in batch_documents
         number_of_documents = 0
@@ -78,17 +65,7 @@ def train_model(n_topics: int, alpha_str: list, beta_str: list, data: list, trai
             corpus_batch.append(bow_out)
             number_of_documents += 1
         logging.info(f"There was a total of {number_of_documents} documents added to the corpus_batch.")
-            
-        #logger.info(f"HERE IS THE TEXT for corpus_batch using LOGGER: {corpus_batch}\n")
-        #except Exception as e:
-        #    logger.error(f"An unexpected error occurred with BOW_OUT: {e}")
-                
-        #if isinstance(texts_out[0], list):
-        #    texts_batch.append(texts_out[0])
-        #else:
-        #    logging.error("Expected texts_out to be a list of strings (words), got:", texts_out[0])
-        #    raise ValueError("Expected texts_out to be a list of strings (words), got:", texts_out[0])
-                
+              
         n_alpha = calculate_numeric_alpha(alpha_str, n_topics)
         n_beta = calculate_numeric_beta(beta_str, n_topics)
         try:
@@ -142,7 +119,6 @@ def train_model(n_topics: int, alpha_str: list, beta_str: list, data: list, trai
                 #sys.exit()
 
         # Get top topics with their coherence scores
-        #topics_as_word_lists=[]
         topics = lda_model_gensim.top_topics(texts=batch_documents, processes=math.floor(cores*(1/3)))
         # Extract the words as strings from each topic representation
         topic_words = []
@@ -150,12 +126,6 @@ def train_model(n_topics: int, alpha_str: list, beta_str: list, data: list, trai
             topic_representation = topic[0]
             words = [word for _, word in topic_representation]
             topic_words.append(words)
-            
-            # Append this list of words for current topic to the main list
-            #topics_as_word_lists.append(topic_words)
-            
-        #print(f"type: {train_eval}, coherence: {coherence_score}, n_topics: {n_topics}, n_alpha: {n_alpha}, alpha_str: {alpha_str}, n_beta: {n_beta}, beta_str: {beta_str}")
-        #logging.info(f"type: {train_eval}, coherence: {coherence_score}, n_topics: {n_topics}, alpha_str: {alpha_str}, beta_str: {beta_str}, batch documents: {batch_documents}")     
 
         # transform list of tokens comprising the doc into a single string
         string_result = ' '.join(map(str, flattened_batch))
@@ -167,10 +137,6 @@ def train_model(n_topics: int, alpha_str: list, beta_str: list, data: list, trai
         # Convert numeric alpha value to string if necessary
         if isinstance(alpha_str, float):
             alpha_str = str(alpha_str)   
-
-        # get time to complete function
-        #time_to_complete = (datetime.now() - time_of_method_call).total_seconds()
-        #formatted_time = time_to_complete.strftime("%H:%M:%S.%f")
 
         # add key for MD5 of json file(same as you did with text_md5)
         time_hash = hashlib.md5(time_of_method_call.strftime('%Y%m%d%H%M%S%f').encode()).hexdigest()
@@ -212,7 +178,5 @@ def train_model(n_topics: int, alpha_str: list, beta_str: list, data: list, trai
         }
 
         models_data.append(current_increment_data)
-        #garbage_collection(False, 'train_model(...)')
-        #del batch_documents, streaming_documents, lda_model_gensim, dictionary_batch, current_increment_data #, vis, success
 
         return models_data

@@ -1,4 +1,4 @@
-# developed traditionally in with addition of AI assistance
+# developed traditionally with addition of AI assistance
 # author: alan hamm(pqn7)
 # date apr 2024
 
