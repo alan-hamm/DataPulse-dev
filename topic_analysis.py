@@ -16,6 +16,7 @@ import tornado
 import yaml # used for logging configuration file
 import logging
 import logging.config
+import sqlalchemy
 
 import sys
 import os
@@ -283,29 +284,26 @@ warnings.filterwarnings("ignore", category=Warning, module=r"pyLDAvis\._prepare"
 #warnings.filterwarnings("ignore", category=tornado.iostream.StreamClosedError)
 logging.getLogger('tornado').setLevel(logging.ERROR)
 
+# Get the logger for 'sqlalchemy.engine' which is used by SQLAlchemy to log SQL queries
+# Since we're configuring this after setting up the root logger, it will inherit its handlers,
+# meaning it will also log to 'myapp.log' and not print anything on console.
+sqlalchemy_logger = logging.getLogger('sqlalchemy.engine')
+
+# If you want sqlalchemy.engine logs at WARNING or higher levels instead of INFO,
+# uncomment the following line:
+# sqlalchemy_logger.setLevel(logging.WARNING)
+
 # Enable serialization optimizations 
 dask.config.set(scheduler='distributed', serialize=True) #note: could this be causing the pyLDAvis creation problems??
 dask.config.set({'logging.distributed': 'error'})
 dask.config.set({"distributed.scheduler.worker-ttl": None})
 dask.config.set({'distributed.worker.daemon': False})
 
-#These settings disable automatic spilling but allow for pausing work when 80% of memory is consumed and terminating workers at 95%.
+#These settings disable automatic spilling but allow for pausing work when 80% of memory is consumed and terminating workers at 99%.
 dask.config.set({'distributed.worker.memory.target': False,
                  'distributed.worker.memory.spill': False,
                  'distributed.worker.memory.pause': 0.8
                  ,'distributed.worker.memory.terminate': 0.99})
-
-class NoCreatingAndSavingFilter(logging.Filter):
-    def filter(self, record):
-        return 'Creating and saving models' not in record.getMessage()
-# Set up file handler
-file_handler = logging.FileHandler(f'{LOG_DIR}/dask_distributed_err.log')
-file_handler.setLevel(logging.INFO)
-
-# Set up stream handler with filter
-stream_handler = logging.StreamHandler()
-stream_handler.setLevel(logging.INFO)
-stream_handler.addFilter(NoCreatingAndSavingFilter())
 
 # https://distributed.dask.org/en/latest/worker-memory.html#memory-not-released-back-to-the-os
 if __name__=="__main__":
@@ -635,8 +633,18 @@ if __name__=="__main__":
                 started = time()
                 # To get the results from the completed futures
                 logging.info("Gathering TRAIN and EVAL futures.")
+                results_train_len = len(done_train)
+                results_eval_len = len(done_eval)
                 results_train = [d.result() for d in done_train if isinstance(d, Future)]
                 results_eval = [d.result() for d in done_eval if isinstance(d, Future)]
+                if results_train_len != len(done_train):
+                    missing = results_train_len - len(done_train)
+                    missing = abs(missing)
+                    logging.error(f"There are {missing} removed TRAIN visualizations.")
+                if results_eval_len != len(done_eval):
+                    missing = results_eval_len - len(done_eval)
+                    missing = abs(missing)
+                    logging.error(f"There are {missing} removed TRAIN visualizations.")
                 
                 # results_train and results_eval are lists of lists of dictionaries
                 for result_list in results_train:
@@ -669,6 +677,7 @@ if __name__=="__main__":
                                                             result_dict['lda_model'],
                                                             result_dict['corpus'],
                                                             result_dict['dictionary'],
+                                                            result_dict['topics'],
                                                             unique_id,
                                                             CORES,
                                                             result_dict['text_md5'],
@@ -682,6 +691,7 @@ if __name__=="__main__":
                             vis_future_pcoa = client.submit(create_vis_pcoa,
                                                             result_dict['lda_model'],
                                                             result_dict['corpus'],
+                                                            result_dict['topics'],
                                                             unique_id,
                                                             result_dict['text_md5'],
                                                             PCOA_DIR)
@@ -737,11 +747,11 @@ if __name__=="__main__":
             progress_bar.update(len(done))
 
 
-            for f in completed_eval_futures: client.cancel(f)
-            for f in completed_train_futures: client.cancel(f)
-            for f in completed_pcoa_vis: client.cancel(f)
-            for f in completed_pylda_vis: client.cancel(f)
-            del completed_eval_futures, completed_train_futures, completed_pcoa_vis, completed_pylda_vis
+            #for f in completed_eval_futures: client.cancel(f)
+            #for f in completed_train_futures: client.cancel(f)
+            #for f in completed_pcoa_vis: client.cancel(f)
+            #for f in completed_pylda_vis: client.cancel(f)
+            #del completed_eval_futures, completed_train_futures, completed_pcoa_vis, completed_pylda_vis
             
             # monitor system resource usage and adjust batch size accordingly
             scheduler_info = client.scheduler_info()
