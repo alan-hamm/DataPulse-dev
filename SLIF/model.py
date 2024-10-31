@@ -173,8 +173,11 @@ def train_model(n_topics: int, alpha_str: list, beta_str: list, data: list, trai
         #formatted_time = time_to_complete.strftime("%H:%M:%S.%f")
 
         # add key for MD5 of json file(same as you did with text_md5)
+        time_hash = hashlib.md5(time_of_method_call.strftime('%Y%m%d%H%M%S%f').encode()).hexdigest()
+        text_hash = hashlib.md5(pd.to_datetime('now').strftime('%Y%m%d%H%M%S%f').encode()).hexdigest()
+        string_time = text_hash.strip() + time_hash.strip()
         current_increment_data = {
-                'time_key': hashlib.md5(time_of_method_call.strftime('%Y%m%d%H%M%S%f').encode()).hexdigest(),
+                'time_key': string_time,
                 'type': train_eval,
                 'num_workers': 0, # this value is set to 0 which will signify an error in assignment of adaptive-scaling worker count assigned in process_completed()
                 'batch_size': -1,

@@ -13,8 +13,8 @@ def process_completed_futures(completed_train_futures, completed_eval_futures, n
                                batchsize, texts_zip_dir, metadata_dir=None, vis_pylda=None, vis_pcoa=None):
 
     # Create a mapping from model_data_id to visualization results
-    pylda_results_map = {vis_result[0]: vis_result[1:] for vis_result in vis_pylda}
-    pcoa_results_map = {vis_result[0]: vis_result[1:] for vis_result in vis_pcoa}
+    pylda_results_map = {vis_result[0]: vis_result[1:] for vis_result in vis_pylda if vis_result}
+    pcoa_results_map = {vis_result[0]: vis_result[1:] for vis_result in vis_pcoa if vis_result}
     # do union of items
     #vis_results_map = dict(pylda_results_map.items() | pcoa_results_map.items())
     vis_results_map = {}
@@ -22,6 +22,9 @@ def process_completed_futures(completed_train_futures, completed_eval_futures, n
         pylda_result = pylda_results_map.get(key)
         pcoa_result = pcoa_results_map.get(key)
         
+        # Debug output
+        #logging.info(f"Key: {key}, PyLDA Result: {pylda_result}, PCoA Result: {pcoa_result}")
+
         # You may choose what to do if one result is missing - perhaps use None or a default value
         vis_result = (pylda_result if pylda_result is not None else (None, None),
                     pcoa_result if pcoa_result is not None else (None, None))
@@ -51,13 +54,14 @@ def process_completed_futures(completed_train_futures, completed_eval_futures, n
                     model_data['num_documents'] = num_documents
                     model_data['batch_size'] = batchsize
                     model_data['num_workers'] = workers
+                    #logging.info(f"TRAIN Assigned 'create_pylda': {model_data['create_pylda']}, 'create_pcoa': {model_data['create_pcoa']}")
         except Exception as e:
             logging.error(f"Error occurred during process_completed_futures() TRAIN: {e}")
         try:
             #add_model_data_to_metadata(model_data, num_documents, workers, batchsize, texts_zip_dir, metadata_dir)
-                DynamicModelMetadata = create_dynamic_table_class('my_dynamic_table')
+                DynamicModelMetadata = create_dynamic_table_class('war_and_peace')
                 create_table_if_not_exists(DynamicModelMetadata, "postgresql://postgres:admin@localhost:5432/SLIF")
-                add_model_data_to_database(model_data, 'my_dynamic_table', "postgresql://postgres:admin@localhost:5432/SLIF",
+                add_model_data_to_database(model_data, 'war_and_peace', "postgresql://postgres:admin@localhost:5432/SLIF",
                                         num_documents, workers, batchsize, texts_zip_dir)
         except Exception as e:
             logging.error(f"Error occurred during process_completed_futures() add_model_data_to_metadata() TRAIN: {e}")
@@ -71,7 +75,7 @@ def process_completed_futures(completed_train_futures, completed_eval_futures, n
                 models_data = [models_data]  # Ensure it is a list
 
             for model_data in models_data:
-                unique_id = model_data['time']
+                unique_id = model_data['time_key']
                 
                 # Retrieve visualization results using filename hash as key
                 if unique_id in vis_results_map:
@@ -81,13 +85,14 @@ def process_completed_futures(completed_train_futures, completed_eval_futures, n
                     model_data['num_documents'] = num_documents
                     model_data['batch_size'] = batchsize
                     model_data['num_workers'] = workers
+                    #logging.info(f"EVAL Assigned 'create_pylda': {model_data['create_pylda']}, 'create_pcoa': {model_data['create_pcoa']}")
         except Exception as e:
             logging.error(f"Error occurred during process_completed_futures() EVAL: {e}")
         try:
             #add_model_data_to_metadata(model_data, num_documents, workers, batchsize, texts_zip_dir, metadata_dir)
-            DynamicModelMetadata = create_dynamic_table_class('my_dynamic_table')
+            DynamicModelMetadata = create_dynamic_table_class('war_and_peace')
             create_table_if_not_exists(DynamicModelMetadata, "postgresql://postgres:admin@localhost:5432/SLIF")
-            add_model_data_to_database(model_data, 'my_dynamic_table', "postgresql://postgres:admin@localhost:5432/SLIF",
+            add_model_data_to_database(model_data, 'war_and_peace', "postgresql://postgres:admin@localhost:5432/SLIF",
                                         num_documents, workers, batchsize, texts_zip_dir)
         except Exception as e:
             logging.error(f"Error occurred during process_completed_futures() add_model_data_to_metadata() EVAL: {e}")

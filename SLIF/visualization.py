@@ -20,7 +20,9 @@ def create_vis_pylda(ldaModel, corpus, dictionary, topics, filename, CORES, vis_
     #print("We are inside Create Vis.")
     
     topics_dir = os.path.join(PYLDA_DIR, f"number_of_topics-{topics}")
+    #PYLDA_DIR = os.path.join(topics_dir,vis_root)
     PYLDA_DIR = os.path.join(topics_dir,vis_root)
+    #PYLDA_DIR = os.path.join(PYLDA_DIR,vis_root)
     os.makedirs(PYLDA_DIR, exist_ok=True)
     IMAGEFILE = os.path.join(PYLDA_DIR,f"{filename}.html")
 
@@ -47,7 +49,7 @@ def create_vis_pylda(ldaModel, corpus, dictionary, topics, filename, CORES, vis_
         create_pylda = False
 
     #garbage_collection(False,"create_vis(...)")
-    return filename, create_pylda
+    return (filename, create_pylda)
 
 
 def create_vis_pcoa(ldaModel, corpus, topics, filename, vis_root, PCOA_DIR):
@@ -55,7 +57,9 @@ def create_vis_pcoa(ldaModel, corpus, topics, filename, vis_root, PCOA_DIR):
     PCoAfilename = filename
 
     topics_dir = os.path.join(PCOA_DIR, f"number_of_topics-{topics}")
+    #PCOA_DIR = os.path.join(topics_dir, vis_root)
     PCOA_DIR = os.path.join(topics_dir, vis_root)
+    #PCOA_DIR = os.path.join(PCOA_DIR, vis_root)
     os.makedirs(PCOA_DIR, exist_ok=True)
     PCoAIMAGEFILE = os.path.join(PCOA_DIR, PCoAfilename)
 
@@ -122,4 +126,4 @@ def create_vis_pcoa(ldaModel, corpus, topics, filename, vis_root, PCOA_DIR):
         create_pcoa=False
 
     #garbage_collection(False,"create_vis(...)")
-    return filename, create_pcoa
+    return (filename, create_pcoa)

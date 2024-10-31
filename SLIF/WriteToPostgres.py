@@ -20,7 +20,7 @@ Base = declarative_base()
 # Function to save text data and model to single ZIP file
 def save_to_zip(time, top_folder, text_data, text_json, ldamodel, corpus, dictionary, texts_zip_dir):
     # Generate a unique filename based on current timestamp
-    timestamp_str = hashlib.md5(time.strftime('%Y%m%d%H%M%S%f').encode()).hexdigest()
+    timestamp_str = time
     text_zip_filename = f"{timestamp_str}.zip"
     
     # Write the text content and model to a zip file within TEXTS_ZIP_DIR
@@ -54,13 +54,13 @@ def create_dynamic_table_class(table_name):
     attributes = {
         '__tablename__' : table_name,
         '__table_args__': {'extend_existing': True},
-        'time_key' : Column(String, primary_key=True, nullable=False),
+        'time_key' : Column(TEXT, primary_key=True, nullable=False),
         'type' : Column(String),
         'num_workers' : Column(Integer),
         'batch_size' : Column(Integer),
         'num_documents' : Column(Integer),
         'text' : Column(TEXT) , # text is a list of file paths
-        'text_json' : Column(TEXT),  # text_json is a list of lists of tokenized sentences
+        'text_json' : Column(LargeBinary),  # text_json is a MD5 of input text_json document
         'text_sha256' : Column(String),
         'text_md5' : Column(String),
         'convergence' : Column(Float(precision=32)),
@@ -157,7 +157,7 @@ def add_model_data_to_database(model_data, table_name, database_uri,
     #for text_list in model_data['text']:
     for text_list in model_data['text']:
         combined_text = ''.join([''.join(sent) for sent in text_list])  # Combine all sentences into one string
-        zip_path = save_to_zip(model_data['time'], document_dir, combined_text, \
+        zip_path = save_to_zip(model_data['time_key'], document_dir, combined_text, \
                                model_data['text_json'], model_data['lda_model'], \
                                model_data['corpus'], model_data['dictionary'], texts_zip_dir)
         texts_zipped.append(zip_path)
@@ -182,10 +182,10 @@ def add_model_data_to_database(model_data, table_name, database_uri,
         new_model_data = {key: val for key, val in model_data.items() if key not in ['lda_model', 'corpus', 'dictionary']}
         
         # Log type information before insertion
-        logging.info(f"Type of 'create_pylda' before insertion: {type(model_data['create_pylda'])}")
-        logging.info(f"Type of 'create_pylda' before insertion: {model_data['create_pylda']}")
-        logging.info(f"Type of 'create_pcoa' before insertion: {type(model_data['create_pcoa'])}")
-        logging.info(f"Type of 'create_pcoa' before insertion: {model_data['create_pcoa']}")
+        logging.info(f"Type of 'create_pylda' before insertion: {type(new_model_data['create_pylda'])}")
+        logging.info(f"Type of 'create_pylda' before insertion: {new_model_data['create_pylda']}")
+        logging.info(f"Type of 'create_pcoa' before insertion: {type(new_model_data['create_pcoa'])}")
+        logging.info(f"Type of 'create_pcoa' before insertion: {new_model_data['create_pcoa']}")
 
         # Create an instance of the dynamic table class with model_data
         record = DynamicModel(**new_model_data)

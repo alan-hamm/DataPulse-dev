@@ -672,7 +672,7 @@ if __name__=="__main__":
                 processed_results = set()  # Use a set to track processed result hashes
                 
                 for result_dict in results:
-                    unique_id = hashlib.md5(result_dict['time'].strftime('%Y%m%d%H%M%S%f').encode()).hexdigest()
+                    unique_id = result_dict['time_key']
                     
                     if unique_id not in processed_results:
                         processed_results.add(unique_id)
@@ -683,9 +683,9 @@ if __name__=="__main__":
                                                             result_dict['corpus'],
                                                             result_dict['dictionary'],
                                                             result_dict['topics'],
-                                                            unique_id,
-                                                            CORES,
-                                                            result_dict['text_md5'],
+                                                            unique_id,  # filename
+                                                            CORES,  
+                                                            result_dict['text_md5'], # vis_root
                                                             PYLDA_DIR)
                             visualization_futures_pylda.append(vis_future_pylda)
                         except Exception as e:
@@ -696,9 +696,9 @@ if __name__=="__main__":
                             vis_future_pcoa = client.submit(create_vis_pcoa,
                                                             result_dict['lda_model'],
                                                             result_dict['corpus'],
-                                                            result_dict['topics'],
-                                                            unique_id,
-                                                            result_dict['text_md5'],
+                                                            result_dict['topics'], # set f'number_of_topics-{topics}'
+                                                            unique_id, # filename
+                                                            result_dict['text_md5'], #vis_root
                                                             PCOA_DIR)
                             visualization_futures_pcoa.append(vis_future_pcoa)
                         except Exception as e:
