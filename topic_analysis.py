@@ -50,122 +50,113 @@ from numpy import ComplexWarning
 ###################################
 
 def parse_args():
+    """Parse command-line arguments for configuring the topic analysis script."""
     parser = argparse.ArgumentParser(description="Script configuration via CLI")
-    parser.add_argument("--corpus_label",    type=str,           help="The label of the corpus") #no default
-    parser.add_argument("--data_source",    type=str,           help="Path to data source JSON file") #no default
-    parser.add_argument("--train_ratio",    type=float,     default=0.80,help="Train ratio for test-train split")
-    parser.add_argument("--start_topics",   type=int,       default=1,   help="Minimum number of topics.")
-    parser.add_argument("--end_topics",     type=int,           help="Maximum number of topics.") #no default
-    parser.add_argument("--step_size",      type=int,           help="Value to determine how start_topic increases to end_topic, exlusive") #no default
-    parser.add_argument("--num_workers",    type=int,       default=1,  help="The minimum number of cores to be utilized")
-    parser.add_argument("--max_workers",    type=int,       default=1,  help="The maximum number of cores to be utilized")
-    parser.add_argument("--num_threads",    type=int,       default=1,  help="The maximum number of threads to be utilized")
-    parser.add_argument("--max_memory",     type=str,           help="The maximum amount of RAM(in GB) assigned to each core") #no default
-    parser.add_argument("--mem_threshold",  type=int,           help="The memory threshold") #no default
-    parser.add_argument("--max_cpu",        type=int,       default=100,    help="The maximum CPU utilization threshold")
-    parser.add_argument("--mem_spill",      type=str,       default=os.path.expanduser("~/temp/slif/max_spill"),    help="Directory to be used when RAM exceeds threshold")
-    parser.add_argument("--passes",         type=int,       default=15,     help="Number of passes for Gensim model")
-    parser.add_argument("--iterations",     type=int,       default= 100,   help="Number of iterations")
-    parser.add_argument("--update_every",   type=int,       default=5,      help="Number of documents to be iterated through for each update. Default is 5. Set to 0 for batch learning, > 1 for online iterative learning.")
-    parser.add_argument("--eval_every",     type=int,       default=5,      help="Log perplexity is estimated every that many updates. Setting this to one slows down training by ~2x.")
-    parser.add_argument("--random_state",   type=int,       default=50,     help="Either a randomState object or a seed to generate one. Useful for reproducibility.")
-    parser.add_argument("--per_word_topics", type=bool,     default=True,   help=" If True, the model also computes a list of topics, sorted in descending order of most likely topics for each word, along with their phi values multiplied by the feature length (i.e. word count).")
-    parser.add_argument("--futures_batches", type=int,      default=1,    help="The number of futures in a batch")
-    parser.add_argument("--base_batch_size", type=int,      default=1,    help="The number of documents to be processed in parallel")
-    parser.add_argument("--max_batch_size",  type=int,      default=1,    help="The maximum number of documents to be processed in parallel")
-    parser.add_argument("--increase_factor", type=float,    default=1.05,   help="Increase document batch size by p-percent")
-    parser.add_argument("--decrease_factor", type=float,    default=.10,    help="Decrese batch size by p-percent upon failure or timeout")
-    parser.add_argument("--max_retries",    type=int,       default=5,      help="Maximum numbewr of times to attempt to process a future")
-    parser.add_argument("--base_wait_time", type=int,       default=30,     help="Base wait time in seconds for exponential backoff")
-    parser.add_argument("--log_dir",        type=str,       default=os.path.expanduser("~/temp/slif/log"), help="Log directory output")
-    parser.add_argument("--root_dir",       type=str,       default=os.path.expanduser("~/temp/slif/"),    help="Root directory")
+    parser.add_argument("--corpus_label", type=str, help="Unique label for the corpus being processed (used in output naming)")
+    parser.add_argument("--data_source", type=str, help="Path to the JSON file containing source data for analysis")
+    parser.add_argument("--train_ratio", type=float, help="Proportion of data to use for training in the train-test split (e.g., 0.8)")
+    parser.add_argument("--start_topics", type=int, help="Minimum number of topics to evaluate in the model")
+    parser.add_argument("--end_topics", type=int, help="Maximum number of topics to evaluate in the model")
+    parser.add_argument("--step_size", type=int, help="Increment value to increase topic count from start_topics to end_topics")
+    parser.add_argument("--num_workers", type=int, help="Minimum number of CPU cores to use for parallel processing")
+    parser.add_argument("--max_workers", type=int, help="Maximum number of CPU cores to use for parallel processing")
+    parser.add_argument("--num_threads", type=int, help="Maximum number of threads per core")
+    parser.add_argument("--max_memory", type=int, help="Maximum RAM allocated per core, in gigabytes (GB)")
+    parser.add_argument("--mem_threshold", type=int, help="Memory usage threshold (in GB) to trigger memory spill")
+    parser.add_argument("--max_cpu", type=int, help="Maximum allowed CPU utilization percentage")
+    parser.add_argument("--mem_spill", type=str, help="Directory for temporary storage when RAM usage exceeds threshold")
+    parser.add_argument("--passes", type=int, help="Number of passes over the data for the Gensim topic model")
+    parser.add_argument("--iterations", type=int, help="Number of iterations for the topic model to converge")
+    parser.add_argument("--update_every", type=int, help="Frequency (in documents) for updating topic model parameters")
+    parser.add_argument("--eval_every", type=int, help="Frequency (in iterations) to evaluate perplexity and log progress")
+    parser.add_argument("--random_state", type=int, help="Random seed for reproducibility of model results")
+    parser.add_argument("--per_word_topics", type=bool, help="If True, computes a list of topics for each word in the model")
+    parser.add_argument("--futures_batches", type=int, help="Number of futures to process in a single batch for concurrency")
+    parser.add_argument("--base_batch_size", type=int, help="Base number of documents to process in parallel")
+    parser.add_argument("--max_batch_size", type=int, help="Maximum number of documents to process in parallel")
+    parser.add_argument("--increase_factor", type=float, help="Percentage increase for batch size scaling on successful processing")
+    parser.add_argument("--decrease_factor", type=float, help="Percentage decrease for batch size scaling on failure")
+    parser.add_argument("--max_retries", type=int, help="Maximum retry attempts for processing each batch")
+    parser.add_argument("--base_wait_time", type=int, help="Initial wait time in seconds for exponential backoff on retries")
+    parser.add_argument("--log_dir", type=str, help="Directory for saving log files")
+    parser.add_argument("--root_dir", type=str, help="Root directory for project output and temporary files")
 
-    # Add more arguments as needed
     return parser.parse_args()
 
 # Parse CLI arguments
 args = parse_args()
 
-# Load define time span to process
-if args.corpus_label: CORPUS_LABEL = args.corpus_label
-else:
-    logging.error(f"No value was entered for corpus_label")
-    print(f"No value was entered for corpus_label")
-    sys.exit
-# Load data from the JSON file
-if args.data_source:DATA_SOURCE = args.data_source
-else:
-    logging.error(f"No value was entered for data_source")
-    print(f"No value was entered for data_source")
-    sys.exit
-# Define training ratio
-if args.train_ratio: TRAIN_RATIO = args.train_ratio
-# Define starting number of topics
-if args.start_topics: START_TOPICS = args.start_topics
-# Define starting number of topics
-if args.end_topics: END_TOPICS = args.end_topics
-else:
-    logging.error(f"No value was entered for end_topics")
-    print(f"No value was entered for end_topics")
-    sys.exit
-# Amount used to determine number of topics
-if args.step_size: STEP_SIZE = args.step_size
-# Number of cores
-if args.num_workers: CORES = args.num_workers
-# maximum number of cores
-if args.max_workers: MAXIMUM_CORES = args.max_workers
-# max amount of RAM per worker
-if args.max_memory: RAM_MEMORY_LIMIT = args.max_memory
-# Number of threads per core
-if args.num_threads: THREADS_PER_CORE = args.num_threads
-# max RAM assigned to each core
-if args.mem_threshold: MEMORY_UTILIZATION_THRESHOLD = args.mem_threshold * (1024 ** 3)
-# max CUP utilization
-if args.max_cpu: CPU_UTILIZATION_THRESHOLD = args.max_cpu
-# memory to spill into HDD/SDD
-if args.mem_spill: 
-    DASK_DIR = args.mem_spill
-    os.makedirs(DASK_DIR, exist_ok=True)
-# specify the number of passes for Gensim LdaModel
-if args.passes: PASSES = args.passes
-# specify the number of iterationx
-if args.iterations: ITERATIONS = args.iterations
-# Number of documents to be iterated through for each update. 
-# Set to 0 for batch learning, > 1 for online iterative learning.
-if args.update_every: UPDATE_EVERY = args.update_every
-# Log perplexity is estimated every that many updates. 
-# Setting this to one slows down training by ~2x.
-if args.eval_every: EVAL_EVERY = args.eval_every
-if args.random_state: RANDOM_STATE = args.random_state
-if args.per_word_topics: PER_WORD_TOPICS = args.per_word_topics
-# the number of documents( defined as HTML extract of <p>...</p> ) to read from the JSON source file per batch
-if args.futures_batches: FUTURES_BATCH_SIZE = args.futures_batches
-else:
-    logging.error(f"No value was entered for futures_batches")
-    print(f"No value was entered for futures_batches")
-    sys.exit
-# number of documents, value should be greater than FUTURES_BATCH_SIZE
-if args.base_batch_size: BATCH_SIZE = args.base_batch_size
-# maximum number of documents to be processed
-if args.max_batch_size: MAX_BATCH_SIZE = args.max_batch_size
-# minimum size of batch if resources are strained
-if args.futures_batches: MIN_BATCH_SIZE = math.ceil(args.futures_batches * 1.01)
-else:
-    logging.error(f"min_batch_size parameter could not be assigned value")
-    print(f"min_batch_size parameter could not be assigned value")
-    sys.exit
-# Increase batch size by p% upon success
-if args.increase_factor: INCREASE_FACTOR = args.increase_factor
-# decrease batch size by p% upon success
-if args.decrease_factor: DECREASE_FACTOR = args.decrease_factor
-# Maximum number of retries per task
-if args.max_retries: MAX_RETRIES = args.max_retries
-# Base wait time in seconds for exponential backoff
-if args.base_wait_time: BASE_WAIT_TIME = args.base_wait_time
+# Define required arguments with corresponding error messages
+required_args = {
+    "corpus_label": "No value was entered for corpus_label",
+    "data_source": "No value was entered for data_source",
+    "end_topics": "No value was entered for end_topics",
+    "step_size": "No value was entered for step_size",
+    "max_memory": "No value was entered for max_memory",
+    "mem_threshold": "No value was entered for mem_threshold",
+    "futures_batches": "No value was entered for futures_batches",
+}
 
-custom_temp_folder = f"C:/topic-modeling/data/lda-models/{CORPUS_TO_PROCESS}/log/joblib"
-os.makedirs(custom_temp_folder, exist_ok=True)
-os.environ['JOBLIB_TEMP_FOLDER'] = custom_temp_folder
+# Check for required arguments and log error if missing
+for arg, error_msg in required_args.items():
+    if getattr(args, arg) is None:
+        logging.error(error_msg)
+        print(error_msg)
+        sys.exit(1)
+
+# Load and define parameters based on arguments or apply defaults
+CORPUS_LABEL = args.corpus_label
+DATA_SOURCE = args.data_source
+TRAIN_RATIO = args.train_ratio if args.train_ratio is not None else 0.80
+START_TOPICS = args.start_topics if args.start_topics is not None else 1
+END_TOPICS = args.end_topics
+STEP_SIZE = args.step_size
+CORES = args.num_workers if args.num_workers is not None else 1
+MAXIMUM_CORES = args.max_workers if args.max_workers is not None else 1
+THREADS_PER_CORE = args.num_threads if args.num_threads is not None else 1
+# Convert max_memory to a string with "GB" suffix for compatibility with Dask LocalCluster() object
+RAM_MEMORY_LIMIT = f"{args.max_memory}GB" if args.max_memory is not None else "4GB"  # Default to "4GB" if not provided
+MEMORY_UTILIZATION_THRESHOLD = (args.mem_threshold * (1024 ** 3)) if args.mem_threshold else 4 * (1024 ** 3)
+CPU_UTILIZATION_THRESHOLD = args.max_cpu if args.max_cpu is not None else 100
+DASK_DIR = args.mem_spill if args.mem_spill else os.path.expanduser("~/temp/slif/max_spill")
+os.makedirs(DASK_DIR, exist_ok=True)
+
+# Model configurations
+PASSES = args.passes if args.passes is not None else 15
+ITERATIONS = args.iterations if args.iterations is not None else 100
+UPDATE_EVERY = args.update_every if args.update_every is not None else 5
+EVAL_EVERY = args.eval_every if args.eval_every is not None else 5
+RANDOM_STATE = args.random_state if args.random_state is not None else 50
+PER_WORD_TOPICS = args.per_word_topics if args.per_word_topics is not None else True
+
+# Batch configurations
+FUTURES_BATCH_SIZE = args.futures_batches
+BATCH_SIZE = args.base_batch_size if args.base_batch_size is not None else FUTURES_BATCH_SIZE
+MAX_BATCH_SIZE = args.max_batch_size if args.max_batch_size is not None else FUTURES_BATCH_SIZE * 10
+MIN_BATCH_SIZE = math.ceil(FUTURES_BATCH_SIZE * 1.01)
+
+# Batch size adjustments and retry logic
+INCREASE_FACTOR = args.increase_factor if args.increase_factor is not None else 1.05
+DECREASE_FACTOR = args.decrease_factor if args.decrease_factor is not None else 0.10
+MAX_RETRIES = args.max_retries if args.max_retries is not None else 5
+BASE_WAIT_TIME = args.base_wait_time if args.base_wait_time is not None else 30
+
+# Ensure required directories exist
+ROOT_DIR = args.root_dir or os.path.expanduser("~/temp/slif/")
+LOG_DIRECTORY = args.log_dir or os.path.join(ROOT_DIR, "log")
+IMAGE_DIR = os.path.join(ROOT_DIR, "visuals")
+PYLDA_DIR = os.path.join(IMAGE_DIR, 'pyLDAvis')
+PCOA_DIR = os.path.join(IMAGE_DIR, 'PCoA')
+METADATA_DIR = os.path.join(ROOT_DIR, "metadata")
+TEXTS_ZIP_DIR = os.path.join(ROOT_DIR, "texts_zip")
+
+for directory in [ROOT_DIR, LOG_DIRECTORY, IMAGE_DIR, PYLDA_DIR, PCOA_DIR, METADATA_DIR, TEXTS_ZIP_DIR]:
+    os.makedirs(directory, exist_ok=True)
+
+# Set JOBLIB_TEMP_FOLDER based on ROOT_DIR and CORPUS_LABEL
+JOBLIB_TEMP_FOLDER = os.path.join(ROOT_DIR, "log", "joblib") if CORPUS_LABEL else os.path.join(ROOT_DIR, "log", "joblib")
+os.makedirs(JOBLIB_TEMP_FOLDER, exist_ok=True)
+os.environ['JOBLIB_TEMP_FOLDER'] = JOBLIB_TEMP_FOLDER
 
 
 
