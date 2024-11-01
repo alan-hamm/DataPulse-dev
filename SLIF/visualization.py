@@ -1,4 +1,7 @@
-# developed traditionally with addition of AI assistance
+# Developed traditionally with the addition of AI assistance
+# Author: Alan Hamm (pqn7)
+# Date: April 2024
+
 from .utils import garbage_collection
 import os 
 import numpy as np

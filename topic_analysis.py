@@ -1,6 +1,6 @@
-# developed traditionally in with addition of AI assistance
-# author: alan hamm(pqn7)
-# date apr 2024
+# Developed traditionally with the addition of AI assistance
+# Author: Alan Hamm (pqn7)
+# Date: April 2024
 
 #%%
 from SLIF import *

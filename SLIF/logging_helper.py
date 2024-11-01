@@ -1,3 +1,7 @@
+# Developed traditionally with the addition of AI assistance
+# Author: Alan Hamm (pqn7)
+# Date: April 2024
+
 import os
 import logging
 from datetime import datetime

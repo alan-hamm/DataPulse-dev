@@ -1,4 +1,6 @@
-# developed traditionally with addition of AI assistance
+# Developed traditionally with the addition of AI assistance
+# Author: Alan Hamm (pqn7)
+# Date: April 2024
 
 from .data_io import add_model_data_to_metadata
 from .utils import exponential_backoff, garbage_collection
