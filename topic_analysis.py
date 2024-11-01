@@ -196,16 +196,17 @@ os.makedirs(TEXTS_ZIP_DIR, exist_ok=True)
 # Get the current date and time for log filename
 now = datetime.now()
 
-import multiprocessing
+# Redirect stderr to the file
+sys.stderr = open(f"{LOG_DIRECTORY}/stderr_out.txt", "w")
 
 LOGFILE = os.path.join(LOG_DIRECTORY, "log.log")
 lock = multiprocessing.Lock()
 
-# Run archive only if main process
+# Archive log only once if running in main process
 if multiprocessing.current_process().name == 'MainProcess':
     archive_log(lock, LOGFILE, LOG_DIRECTORY)
 
-# Configure logging for main and worker processes
+# Configure logging at the start of the script
 logging.basicConfig(
     filename=LOGFILE,
     filemode='a',
@@ -213,7 +214,17 @@ logging.basicConfig(
     datefmt='%Y-%m-%d %H:%M:%S',
     level=logging.INFO
 )
-logger = logging.getLogger("topic_analysis_logger")
+
+try:
+    # Main script logic
+    logger = logging.getLogger("topic_analysis_logger")
+    logger.info("Starting main script logic.")
+    
+    # Add additional code here...
+
+finally:
+    # Ensure the logger is closed on script exit or interruption
+    close_logger(logger)
 
 
 ##########################################

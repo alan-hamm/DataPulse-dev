@@ -33,10 +33,18 @@ def exponential_backoff(attempt, BASE_WAIT_TIME=None):
 def archive_log(lock, LOGFILE, LOG_DIRECTORY):
     """Archive log if it already exists."""
     if os.path.exists(LOGFILE):
+        ARCHIVE_DIR = f"{LOG_DIRECTORY}/archived_logs"
+        os.makedirs(ARCHIVE_DIR, exist_ok=True)
         creation_time = os.path.getctime(LOGFILE)
         creation_date = datetime.fromtimestamp(creation_time).strftime('%Y-%m-%d_%H-%M-%S')
-        archived_logfile = os.path.join(LOG_DIRECTORY, f"log_{creation_date}.log")
+        archived_logfile = os.path.join(ARCHIVE_DIR, f"log_{creation_date}.log")
         
         # Rename with a lock to prevent multiple access
         with lock:
             os.rename(LOGFILE, archived_logfile)
+
+def close_logger(logger):
+    handlers = logger.handlers[:]
+    for handler in handlers:
+        handler.close()
+        logger.removeHandler(handler)
