@@ -12,6 +12,7 @@ from distributed import Future
 import dask
 import socket
 import tornado
+import re
 
 import yaml # used for logging configuration file
 import logging
@@ -44,7 +45,7 @@ from bokeh.util.deprecation import BokehDeprecationWarning
 # pyLDAvis throws errors when using jc_PCoA(instead use MMD5)
 from numpy import ComplexWarning
 
-import multiprocessing
+#import multiprocessing
 
 ###################################
 # BEGIN SCRIPT CONFIGURATION HERE #
@@ -52,43 +53,75 @@ import multiprocessing
 
 def parse_args():
     """Parse command-line arguments for configuring the topic analysis script."""
-    parser = argparse.ArgumentParser(description="Script configuration via CLI")
-    parser.add_argument("--corpus_label", type=str, help="Unique label for the corpus being processed (used in output naming)")
-    parser.add_argument("--data_source", type=str, help="Path to the JSON file containing source data for analysis")
-    parser.add_argument("--train_ratio", type=float, help="Proportion of data to use for training in the train-test split (e.g., 0.8)")
-    parser.add_argument("--start_topics", type=int, help="Minimum number of topics to evaluate in the model")
-    parser.add_argument("--end_topics", type=int, help="Maximum number of topics to evaluate in the model")
-    parser.add_argument("--step_size", type=int, help="Increment value to increase topic count from start_topics to end_topics")
-    parser.add_argument("--num_workers", type=int, help="Minimum number of CPU cores to use for parallel processing")
-    parser.add_argument("--max_workers", type=int, help="Maximum number of CPU cores to use for parallel processing")
-    parser.add_argument("--num_threads", type=int, help="Maximum number of threads per core")
-    parser.add_argument("--max_memory", type=int, help="Maximum RAM allocated per core, in gigabytes (GB)")
-    parser.add_argument("--mem_threshold", type=int, help="Memory usage threshold (in GB) to trigger memory spill")
-    parser.add_argument("--max_cpu", type=int, help="Maximum allowed CPU utilization percentage")
-    parser.add_argument("--mem_spill", type=str, help="Directory for temporary storage when RAM usage exceeds threshold")
-    parser.add_argument("--passes", type=int, help="Number of passes over the data for the Gensim topic model")
-    parser.add_argument("--iterations", type=int, help="Number of iterations for the topic model to converge")
-    parser.add_argument("--update_every", type=int, help="Frequency (in documents) for updating topic model parameters")
-    parser.add_argument("--eval_every", type=int, help="Frequency (in iterations) to evaluate perplexity and log progress")
-    parser.add_argument("--random_state", type=int, help="Random seed for reproducibility of model results")
-    parser.add_argument("--per_word_topics", type=bool, help="If True, computes a list of topics for each word in the model")
-    parser.add_argument("--futures_batches", type=int, help="Number of futures to process in a single batch for concurrency")
-    parser.add_argument("--base_batch_size", type=int, help="Base number of documents to process in parallel")
-    parser.add_argument("--max_batch_size", type=int, help="Maximum number of documents to process in parallel")
-    parser.add_argument("--increase_factor", type=float, help="Percentage increase for batch size scaling on successful processing")
-    parser.add_argument("--decrease_factor", type=float, help="Percentage decrease for batch size scaling on failure")
-    parser.add_argument("--max_retries", type=int, help="Maximum retry attempts for processing each batch")
-    parser.add_argument("--base_wait_time", type=int, help="Initial wait time in seconds for exponential backoff on retries")
-    parser.add_argument("--log_dir", type=str, help="Directory for saving log files")
-    parser.add_argument("--root_dir", type=str, help="Root directory for project output and temporary files")
+    parser = argparse.ArgumentParser(description="Configure the topic analysis script using command-line arguments.")
+    
+    # Database Connection Arguments
+    parser.add_argument("--username", type=str, help="Username for accessing the PostgreSQL database.")
+    parser.add_argument("--password", type=str, help="Password for the specified PostgreSQL username.")
+    parser.add_argument("--host", type=str, help="Hostname or IP address of the PostgreSQL server (e.g., 'localhost' or '192.168.1.1').")
+    parser.add_argument("--port", type=int, help="Port number for the PostgreSQL server (default is 5432).")
+    parser.add_argument("--database", type=str, help="Name of the PostgreSQL database to connect to.")
+    
+    # Corpus and Data Arguments
+    parser.add_argument("--corpus_label", type=str, help="Unique label used to identify the corpus in outputs and logs. Must be suitable as a PostgreSQL table name.")
+    parser.add_argument("--data_source", type=str, help="File path to the JSON file containing the data for analysis.")
+    parser.add_argument("--train_ratio", type=float, help="Fraction of data to use for training (e.g., 0.8 for 80% training and 20% testing).")
 
-    return parser.parse_args()
+    # Topic Modeling Parameters
+    parser.add_argument("--start_topics", type=int, help="Starting number of topics for evaluation.")
+    parser.add_argument("--end_topics", type=int, help="Ending number of topics for evaluation.")
+    parser.add_argument("--step_size", type=int, help="Incremental step size for increasing the topic count between start_topics and end_topics.")
+
+    # System Resource Management
+    parser.add_argument("--num_workers", type=int, help="Minimum number of CPU cores to utilize for parallel processing.")
+    parser.add_argument("--max_workers", type=int, help="Maximum number of CPU cores allocated for parallel processing.")
+    parser.add_argument("--num_threads", type=int, help="Maximum number of threads per core for efficient use of resources.")
+    parser.add_argument("--max_memory", type=int, help="Maximum RAM (in GB) allowed per core for processing.")
+    parser.add_argument("--mem_threshold", type=int, help="Memory usage threshold (in GB) to trigger data spill to disk.")
+    parser.add_argument("--max_cpu", type=int, help="Maximum CPU utilization percentage to prevent overuse of resources.")
+    parser.add_argument("--mem_spill", type=str, help="Directory for temporarily storing data when memory limits are exceeded.")
+
+    # Gensim Model Settings
+    parser.add_argument("--passes", type=int, help="Number of complete passes through the data for the Gensim topic model.")
+    parser.add_argument("--iterations", type=int, help="Total number of iterations for the model to converge.")
+    parser.add_argument("--update_every", type=int, help="Frequency (in number of documents) to update model parameters during training.")
+    parser.add_argument("--eval_every", type=int, help="Frequency (in iterations) for evaluating model perplexity and logging progress.")
+    parser.add_argument("--random_state", type=int, help="Seed value to ensure reproducibility of results.")
+    parser.add_argument("--per_word_topics", type=bool, help="Whether to compute per-word topic probabilities (True/False).")
+
+    # Batch Processing Parameters
+    parser.add_argument("--futures_batches", type=int, help="Number of batches to process concurrently.")
+    parser.add_argument("--base_batch_size", type=int, help="Initial number of documents processed in parallel in each batch.")
+    parser.add_argument("--max_batch_size", type=int, help="Maximum batch size, representing the upper limit of documents processed in parallel.")
+    parser.add_argument("--increase_factor", type=float, help="Percentage increase in batch size after successful processing.")
+    parser.add_argument("--decrease_factor", type=float, help="Percentage decrease in batch size after failed processing.")
+    parser.add_argument("--max_retries", type=int, help="Maximum attempts to retry failed batch processing.")
+    parser.add_argument("--base_wait_time", type=int, help="Initial wait time in seconds for exponential backoff during retries.")
+
+    # Directories and Logging
+    parser.add_argument("--log_dir", type=str, help="Directory path for saving log files.")
+    parser.add_argument("--root_dir", type=str, help="Root directory for saving project outputs, metadata, and temporary files.")
+
+    args = parser.parse_args()
+
+    # Validate corpus_label against PostgreSQL table naming conventions
+    if args.corpus_label:
+        if not re.match(r'^[a-z][a-z0-9_]{0,62}$', args.corpus_label):
+            error_msg = "Invalid corpus_label: must start with a lowercase letter, can only contain lowercase letters, numbers, and underscores, and be up to 63 characters long."
+            logging.error(error_msg)
+            print(error_msg)
+            sys.exit(1)
+
+    return args
 
 # Parse CLI arguments
 args = parse_args()
 
 # Define required arguments with corresponding error messages
 required_args = {
+    "username": "No value was entered for username",
+    "password": "No value was entered for password",
+    "database": "No value was entered for database",
     "corpus_label": "No value was entered for corpus_label",
     "data_source": "No value was entered for data_source",
     "end_topics": "No value was entered for end_topics",
@@ -106,6 +139,13 @@ for arg, error_msg in required_args.items():
         sys.exit(1)
 
 # Load and define parameters based on arguments or apply defaults
+USERNAME = args.username
+PASSWORD = args.password
+HOST = args.host if args.host is not None else "localhost"
+PORT = args.port if args.port is not None else 5432
+DATABASE = args.database
+CONNECTION_STRING = f"postgresql://{USERNAME}:{PASSWORD}@{HOST}:{PORT}/{DATABASE}"
+
 CORPUS_LABEL = args.corpus_label
 DATA_SOURCE = args.data_source
 TRAIN_RATIO = args.train_ratio if args.train_ratio is not None else 0.80
@@ -160,7 +200,6 @@ os.makedirs(JOBLIB_TEMP_FOLDER, exist_ok=True)
 os.environ['JOBLIB_TEMP_FOLDER'] = JOBLIB_TEMP_FOLDER
 
 
-
 ###############################
 ###############################
 # DO NOT EDIT BELOW THIS LINE #
@@ -174,7 +213,12 @@ scheduler_options={"host":socket.gethostname()}
 # Ensure the LOG_DIRECTORY exists
 if args.log_dir: LOG_DIRECTORY = args.log_dir
 if args.root_dir: ROOT_DIR = args.root_dir
+os.makedirs(ROOT_DIR, exist_ok=True)
 os.makedirs(LOG_DIRECTORY, exist_ok=True)
+
+
+#print("Script started successfully.")
+#sys.exit(0)
 
 # Define the top-level directory and subdirectories
 LOG_DIR = os.path.join(ROOT_DIR, "log")
@@ -192,24 +236,29 @@ os.makedirs(PCOA_DIR, exist_ok=True)
 os.makedirs(METADATA_DIR, exist_ok=True)
 os.makedirs(TEXTS_ZIP_DIR, exist_ok=True)
 
+# Redirect stderr to the file
+sys.stderr = open(f"{LOG_DIR}/stderr.txt", "w")
 
 # Get the current date and time for log filename
 now = datetime.now()
 
-# Redirect stderr to the file
-sys.stderr = open(f"{LOG_DIRECTORY}/stderr.txt", "w")
+# Format the date and time as per your requirement
+# Note: %w is the day of the week as a decimal (0=Sunday, 6=Saturday)
+#       %Y is the four-digit year
+#       %m is the two-digit month (01-12)
+#       %H%M is the hour (00-23) followed by minute (00-59) in 24hr format
+#log_filename = now.strftime('log-%w-%m-%Y-%H%M.log')
+log_filename = 'log-0250.log'
+LOGFILE = os.path.join(LOG_DIRECTORY,log_filename)
 
-LOGFILE = os.path.join(LOG_DIRECTORY, "log.log")
-lock = multiprocessing.Lock()
-
-# Set up logging using setup_logging at the start of the script
-logger = setup_logging(log_dir=LOG_DIRECTORY, log_filename="log.log")
-logger.info("Starting main script logic.")
-
-# Archive log only once if running in main process
-if multiprocessing.current_process().name == 'MainProcess':
-    archive_log(lock, logger, LOGFILE, LOG_DIRECTORY)
-
+# Configure logging to write to a file with this name
+logging.basicConfig(
+    filename=LOGFILE,
+    filemode='a',  # Append mode if you want to keep adding to the same file during the day
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S',
+    level=logging.INFO
+)
 
 ##########################################
 # Filter out the specific warning message
@@ -258,6 +307,10 @@ sqlalchemy_logger.addHandler(null_handler)
 # Optionally set a higher level if you want to ignore INFO logs from sqlalchemy.engine
 # sqlalchemy_logger.setLevel(logging.WARNING)
 
+# Archive log only once if running in main process
+#if multiprocessing.current_process().name == 'MainProcess':
+#archive_log(logger, LOGFILE, LOG_DIR)
+
 # Enable serialization optimizations 
 dask.config.set(scheduler='distributed', serialize=True) #note: could this be causing the pyLDAvis creation problems??
 dask.config.set({'logging.distributed': 'error'})
@@ -269,6 +322,8 @@ dask.config.set({'distributed.worker.memory.target': False,
                  'distributed.worker.memory.spill': False,
                  'distributed.worker.memory.pause': 0.8
                  ,'distributed.worker.memory.terminate': 0.99})
+
+
 
 # https://distributed.dask.org/en/latest/worker-memory.html#memory-not-released-back-to-the-os
 if __name__=="__main__":
@@ -676,7 +731,8 @@ if __name__=="__main__":
             started = time()
             num_workers = len(client.scheduler_info()["workers"])
             logging.info(f"Writing processed completed futures to disk.")
-            completed_eval_futures, completed_train_futures = process_completed_futures(completed_train_futures, \
+            completed_eval_futures, completed_train_futures = process_completed_futures(CONNECTION_STRING, \
+                                                                                        completed_train_futures, \
                                                                                         completed_eval_futures, \
                                                                                         (len(completed_eval_futures)+len(completed_train_futures)), \
                                                                                         num_workers, \
@@ -755,7 +811,8 @@ if __name__=="__main__":
 
         # Process completed ones after reattempting
         num_workers = len(client.scheduler_info()["workers"])
-        completed_eval_futures, completed_train_futures = process_completed_futures(completed_train_futures, \
+        completed_eval_futures, completed_train_futures = process_completed_futures(CONNECTION_STRING, \
+                                                                                    completed_train_futures, \
                                                                                         completed_eval_futures, \
                                                                                         (len(completed_eval_futures)+len(completed_train_futures)), \
                                                                                         num_workers, \
@@ -785,6 +842,3 @@ if __name__=="__main__":
             
     client.close()
     cluster.close()
-
-    # Final cleanup of logger at the end of the script
-    close_logger(logger)
