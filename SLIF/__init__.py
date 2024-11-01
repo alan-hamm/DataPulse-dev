@@ -8,10 +8,12 @@ from .utils import garbage_collection,  exponential_backoff
 from .process_futures import retry_processing, process_completed_futures, handle_failed_future
 
 from .model import train_model
-from .alpha_eta import calculate_numeric_alpha, calculate_numeric_beta, validate_alpha_beta
+from .alpha_eta import calculate_numeric_alpha, calculate_numeric_beta, validate_alpha_beta, calculate_alpha_beta
 from .visualization import create_vis_pylda, create_vis_pcoa
 
 from .WriteToPostgres import save_to_zip, create_dynamic_table_class, create_table_if_not_exists, add_model_data_to_database
+
+from .yaml_loader import join, getenv, get_current_time
 
 
 # Define what should be imported with "from my_lda_library import *"
@@ -26,6 +28,11 @@ __all__ = [
     'garbage_collection',
     'exponential_backoff',
 
+    #yaml_loader
+    'join', 
+    'getenv', 
+    'get_current_time',
+
     # model
     'train_model',
 
@@ -33,6 +40,7 @@ __all__ = [
     'calculate_numeric_alpha',
     'calculate_numeric_beta',
     'validate_alpha_beta',
+    'calculate_alpha_beta',
 
     # visualization
     'create_vis_pylda',
