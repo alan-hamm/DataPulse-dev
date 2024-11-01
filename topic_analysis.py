@@ -248,8 +248,15 @@ sys.stderr = open(f"{LOG_DIR}/stderr.log", "w")
 #       %m is the two-digit month (01-12)
 #       %H%M is the hour (00-23) followed by minute (00-59) in 24hr format
 #log_filename = now.strftime('log-%w-%m-%Y-%H%M.log')
-log_filename = 'log-0250.log'
-LOGFILE = os.path.join(LOG_DIRECTORY,log_filename)
+#log_filename = 'log-0250.log'
+# Check if the environment variable is already set
+if 'LOG_START_TIME' not in os.environ:
+    os.environ['LOG_START_TIME'] = datetime.now().strftime('%w-%m-%Y-%H%M')
+
+# Use the fixed timestamp from the environment variable
+log_filename = f"log-{os.environ['LOG_START_TIME']}.log"
+LOG_FILENAME = os.path.join(LOG_DIRECTORY, log_filename)
+LOGFILE = os.path.join(LOG_DIRECTORY,LOG_FILENAME)
 
 # Configure logging to write to a file with this name
 logging.basicConfig(
