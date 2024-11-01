@@ -2,7 +2,6 @@
 # Author: Alan Hamm (pqn7)
 # Date: April 2024
 
-from .data_io import add_model_data_to_metadata
 from .utils import exponential_backoff, garbage_collection
 from .WriteToPostgres import add_model_data_to_database, create_dynamic_table_class, create_table_if_not_exists
 
@@ -11,8 +10,9 @@ import logging
 from dask.distributed import wait
 
 
-def process_completed_futures(completed_train_futures, completed_eval_futures, num_documents, workers, \
-                               batchsize, texts_zip_dir, metadata_dir=None, vis_pylda=None, vis_pcoa=None):
+def process_completed_futures(connection_string, 
+                                corpus_label, completed_train_futures, completed_eval_futures, num_documents, workers, \
+                                batchsize, texts_zip_dir, metadata_dir=None, vis_pylda=None, vis_pcoa=None):
 
     # Create a mapping from model_data_id to visualization results
     pylda_results_map = {vis_result[0]: vis_result[1:] for vis_result in vis_pylda if vis_result}
@@ -60,13 +60,12 @@ def process_completed_futures(completed_train_futures, completed_eval_futures, n
         except Exception as e:
             logging.error(f"Error occurred during process_completed_futures() TRAIN: {e}")
         try:
-            #add_model_data_to_metadata(model_data, num_documents, workers, batchsize, texts_zip_dir, metadata_dir)
-                DynamicModelMetadata = create_dynamic_table_class('war_and_peace')
-                create_table_if_not_exists(DynamicModelMetadata, "postgresql://postgres:admin@localhost:5432/SLIF")
-                add_model_data_to_database(model_data, 'war_and_peace', "postgresql://postgres:admin@localhost:5432/SLIF",
+                DynamicModelMetadata = create_dynamic_table_class(corpus_label)
+                create_table_if_not_exists(DynamicModelMetadata, connection_string)
+                add_model_data_to_database(model_data, corpus_label, connection_string,
                                         num_documents, workers, batchsize, texts_zip_dir)
         except Exception as e:
-            logging.error(f"Error occurred during process_completed_futures() add_model_data_to_metadata() TRAIN: {e}")
+            logging.error(f"Error occurred during process_completed_futures() add_model_data_to_database() TRAIN: {e}")
 
     # Process evaluation futures
     #vis_futures = []
@@ -91,13 +90,12 @@ def process_completed_futures(completed_train_futures, completed_eval_futures, n
         except Exception as e:
             logging.error(f"Error occurred during process_completed_futures() EVAL: {e}")
         try:
-            #add_model_data_to_metadata(model_data, num_documents, workers, batchsize, texts_zip_dir, metadata_dir)
-            DynamicModelMetadata = create_dynamic_table_class('war_and_peace')
-            create_table_if_not_exists(DynamicModelMetadata, "postgresql://postgres:admin@localhost:5432/SLIF")
-            add_model_data_to_database(model_data, 'war_and_peace', "postgresql://postgres:admin@localhost:5432/SLIF",
+            DynamicModelMetadata = create_dynamic_table_class(corpus_label)
+            create_table_if_not_exists(DynamicModelMetadata, connection_string)
+            add_model_data_to_database(model_data, corpus_label, connection_string,
                                         num_documents, workers, batchsize, texts_zip_dir)
         except Exception as e:
-            logging.error(f"Error occurred during process_completed_futures() add_model_data_to_metadata() EVAL: {e}")
+            logging.error(f"Error occurred during process_completed_futures() add_model_data_to_database() EVAL: {e}")
         
                     
     #del models_data            
