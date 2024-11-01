@@ -1,9 +1,9 @@
-# developed traditionally with addition of AI assistance
-# author: alan hamm(pqn7)
-# date apr 2024
+# Developed traditionally with the addition of AI assistance
+# Author: Alan Hamm (pqn7)
+# Date: April 2024
 
 # Import key functions and classes from submodules to allow easy access at the package level
-from .data_io import get_num_records, futures_create_lda_datasets, add_model_data_to_metadata
+from .data_io import get_num_records, futures_create_lda_datasets
 from .utils import garbage_collection,  exponential_backoff
 from .logging_helper import archive_log, close_logger, setup_logging
 from .process_futures import retry_processing, process_completed_futures, handle_failed_future
@@ -22,8 +22,6 @@ __all__ = [
     # data_io
     'get_num_records',
     'futures_create_lda_datasets',
-    #'save_to_zip',
-    'add_model_data_to_metadata',
 
     # utils
     'garbage_collection',
