@@ -10,8 +10,7 @@ import logging
 from dask.distributed import wait
 
 
-def process_completed_futures(connection_string, 
-                                corpus_label, completed_train_futures, completed_eval_futures, num_documents, workers, \
+def process_completed_futures(connection_string, corpus_label, completed_train_futures, completed_eval_futures, num_documents, workers, \
                                 batchsize, texts_zip_dir, metadata_dir=None, vis_pylda=None, vis_pcoa=None):
 
     # Create a mapping from model_data_id to visualization results

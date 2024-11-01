@@ -237,10 +237,10 @@ os.makedirs(METADATA_DIR, exist_ok=True)
 os.makedirs(TEXTS_ZIP_DIR, exist_ok=True)
 
 # Redirect stderr to the file
-sys.stderr = open(f"{LOG_DIR}/stderr.txt", "w")
+sys.stderr = open(f"{LOG_DIR}/stderr.log", "w")
 
 # Get the current date and time for log filename
-now = datetime.now()
+#now = datetime.now()
 
 # Format the date and time as per your requirement
 # Note: %w is the day of the week as a decimal (0=Sunday, 6=Saturday)
@@ -732,7 +732,8 @@ if __name__=="__main__":
             num_workers = len(client.scheduler_info()["workers"])
             logging.info(f"Writing processed completed futures to disk.")
             completed_eval_futures, completed_train_futures = process_completed_futures(CONNECTION_STRING, \
-                                                                                        completed_train_futures, \
+                                                                                    CORPUS_LABEL, \
+                                                                                    completed_train_futures, \
                                                                                         completed_eval_futures, \
                                                                                         (len(completed_eval_futures)+len(completed_train_futures)), \
                                                                                         num_workers, \
@@ -812,6 +813,7 @@ if __name__=="__main__":
         # Process completed ones after reattempting
         num_workers = len(client.scheduler_info()["workers"])
         completed_eval_futures, completed_train_futures = process_completed_futures(CONNECTION_STRING, \
+                                                                                    CORPUS_LABEL, \
                                                                                     completed_train_futures, \
                                                                                         completed_eval_futures, \
                                                                                         (len(completed_eval_futures)+len(completed_train_futures)), \
