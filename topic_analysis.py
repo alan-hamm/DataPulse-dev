@@ -197,34 +197,18 @@ os.makedirs(TEXTS_ZIP_DIR, exist_ok=True)
 now = datetime.now()
 
 # Redirect stderr to the file
-sys.stderr = open(f"{LOG_DIRECTORY}/stderr_out.txt", "w")
+sys.stderr = open(f"{LOG_DIRECTORY}/stderr.txt", "w")
 
 LOGFILE = os.path.join(LOG_DIRECTORY, "log.log")
 lock = multiprocessing.Lock()
 
+# Set up logging using setup_logging at the start of the script
+logger = setup_logging(log_dir=LOG_DIRECTORY, log_filename="log.log")
+logger.info("Starting main script logic.")
+
 # Archive log only once if running in main process
 if multiprocessing.current_process().name == 'MainProcess':
-    archive_log(lock, LOGFILE, LOG_DIRECTORY)
-
-# Configure logging at the start of the script
-logging.basicConfig(
-    filename=LOGFILE,
-    filemode='a',
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S',
-    level=logging.INFO
-)
-
-try:
-    # Main script logic
-    logger = logging.getLogger("topic_analysis_logger")
-    logger.info("Starting main script logic.")
-    
-    # Add additional code here...
-
-finally:
-    # Ensure the logger is closed on script exit or interruption
-    close_logger(logger)
+    archive_log(lock, logger, LOGFILE, LOG_DIRECTORY)
 
 
 ##########################################
@@ -802,3 +786,5 @@ if __name__=="__main__":
     client.close()
     cluster.close()
 
+    # Final cleanup of logger at the end of the script
+    close_logger(logger)

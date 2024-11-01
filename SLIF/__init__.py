@@ -5,7 +5,7 @@
 # Import key functions and classes from submodules to allow easy access at the package level
 from .data_io import get_num_records, futures_create_lda_datasets, add_model_data_to_metadata
 from .utils import garbage_collection,  exponential_backoff
-from .logging_helper import archive_log, close_logger, close_stderr, setup_logging
+from .logging_helper import archive_log, close_logger, setup_logging
 from .process_futures import retry_processing, process_completed_futures, handle_failed_future
 
 from .model import train_model
@@ -32,7 +32,6 @@ __all__ = [
     #logging_helper
     'archive_log', 
     'close_logger', 
-    'close_stderr',
     'setup_logging',
 
     #yaml_loader
