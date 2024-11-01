@@ -44,6 +44,7 @@ from bokeh.util.deprecation import BokehDeprecationWarning
 # pyLDAvis throws errors when using jc_PCoA(instead use MMD5)
 from numpy import ComplexWarning
 
+import multiprocessing
 
 ###################################
 # BEGIN SCRIPT CONFIGURATION HERE #
@@ -195,23 +196,25 @@ os.makedirs(TEXTS_ZIP_DIR, exist_ok=True)
 # Get the current date and time for log filename
 now = datetime.now()
 
-# Format the date and time as per your requirement
-# Note: %w is the day of the week as a decimal (0=Sunday, 6=Saturday)
-#       %Y is the four-digit year
-#       %m is the two-digit month (01-12)
-#       %H%M is the hour (00-23) followed by minute (00-59) in 24hr format
-#log_filename = now.strftime('log-%w-%m-%Y-%H%M.log')
-log_filename = 'log-0250.log'
-LOGFILE = os.path.join(LOG_DIRECTORY,log_filename)
+import multiprocessing
 
-# Configure logging to write to a file with this name
+LOGFILE = os.path.join(LOG_DIRECTORY, "log.log")
+lock = multiprocessing.Lock()
+
+# Run archive only if main process
+if multiprocessing.current_process().name == 'MainProcess':
+    archive_log(lock, LOGFILE, LOG_DIRECTORY)
+
+# Configure logging for main and worker processes
 logging.basicConfig(
     filename=LOGFILE,
-    filemode='a',  # Append mode if you want to keep adding to the same file during the day
+    filemode='a',
     format='%(asctime)s - %(levelname)s - %(message)s',
     datefmt='%Y-%m-%d %H:%M:%S',
     level=logging.INFO
 )
+logger = logging.getLogger("topic_analysis_logger")
+
 
 ##########################################
 # Filter out the specific warning message
