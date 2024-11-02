@@ -3,7 +3,7 @@
 # Date: April 2024
 
 from .utils import exponential_backoff, garbage_collection
-from .WriteToPostgres import add_model_data_to_database, create_dynamic_table_class, create_table_if_not_exists
+from .write_to_postgres import add_model_data_to_database, create_dynamic_table_class, create_table_if_not_exists
 
 from time import sleep
 import logging
