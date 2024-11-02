@@ -1,6 +1,19 @@
-# Developed traditionally with the addition of AI assistance
-# Author: Alan Hamm (pqn7)
+# logging_helper.py - Logging Setup and Configuration Functions
+# Author: Alan Hamm
 # Date: April 2024
+#
+# Description:
+# This script defines helper functions to set up structured logging for the Scalable LDA Insights Framework (SLIF),
+# including directory creation, log rotation, and file locking to ensure concurrency-safe logging.
+#
+# Functions:
+# - setup_logging: Configures a rotating file handler and clears existing handlers to prevent duplicates.
+#
+# Dependencies:
+# - Python libraries: logging, os, datetime, shutil
+# - External libraries: filelock (for handling concurrent logging)
+#
+# Developed with AI assistance.
 
 import os
 import logging

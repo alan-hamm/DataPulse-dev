@@ -1,6 +1,22 @@
-# Developed traditionally with the addition of AI assistance
-# Author: Alan Hamm (pqn7)
+# write_to_postgres.py - Database Utilities for SLIF
+# Author: Alan Hamm
 # Date: April 2024
+#
+# Description:
+# This script provides functions for interacting with a PostgreSQL database within the Scalable LDA Insights Framework (SLIF).
+# It includes utilities for dynamically creating tables, inserting LDA model data, and managing database connections,
+# leveraging SQLAlchemy for ORM capabilities.
+#
+# Functions:
+# - Table creation: Defines functions for dynamically creating tables to store model data.
+# - Data insertion: Includes methods for inserting large datasets efficiently using Dask and SQLAlchemy.
+# - Connection management: Manages database connections and sessions.
+#
+# Dependencies:
+# - Python libraries: os, json, random, hashlib, zipfile, logging, numpy, pandas
+# - Database libraries: sqlalchemy, dask.dataframe
+#
+# Developed with AI assistance.
 
 import os
 from json import load

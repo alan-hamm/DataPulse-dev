@@ -1,6 +1,20 @@
-# Developed traditionally with the addition of AI assistance
-# Author: Alan Hamm (pqn7)
+# utils.py - Utility Functions for SLIF
+# Author: Alan Hamm
 # Date: April 2024
+#
+# Description:
+# This script provides a collection of utility functions for the Scalable LDA Insights Framework (SLIF),
+# including garbage collection management, multiprocessing tools, and general-purpose helper functions.
+#
+# Functions:
+# - garbage_collection: Performs garbage collection with debugging options, useful for memory management.
+# - Additional utilities: Provides miscellaneous helper functions for data processing and system resource management.
+#
+# Dependencies:
+# - Python libraries: os, logging, datetime, multiprocessing, gc, numpy
+#
+# Developed with AI assistance.
+
 
 import os
 import logging

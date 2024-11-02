@@ -1,6 +1,20 @@
-# Developed traditionally with the addition of AI assistance
-# Author: Alan Hamm (pqn7)
+# alpha_eta.py - Alpha and Eta Calculation Helper Functions
+# Author: Alan Hamm
 # Date: April 2024
+#
+# Description:
+# This script defines helper functions for computing numeric values of alpha and eta
+# for Latent Dirichlet Allocation (LDA) topic modeling. It is designed for use within
+# the Scalable LDA Insights Framework (SLIF).
+#
+# Functions:
+# - calculate_numeric_alpha: Computes alpha based on input type ('symmetric', 'asymmetric', or specific value).
+# - calculate_numeric_beta: Computes eta with similar options.
+#
+# Dependencies:
+# - Python libraries: numpy
+#
+# Developed with AI assistance.
 
 import logging 
 from decimal import Decimal

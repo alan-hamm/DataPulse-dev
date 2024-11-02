@@ -1,8 +1,22 @@
-# Developed traditionally with the addition of AI assistance
-# Author: Alan Hamm (pqn7)
+# model.py - Topic Modeling and Parallel Processing for SLIF
+# Author: Alan Hamm
 # Date: April 2024
+#
+# Description:
+# This script handles model training and distributed parallel processing for topic analysis tasks within the
+# Scalable LDA Insights Framework (SLIF). It leverages Dask for managing distributed computations and provides
+# utilities for processing large-scale data efficiently.
+#
+# Functions:
+# - Manages parallelized workflows and data processing for topic modeling
+# - Utilizes Dask's Client and LocalCluster for scalable computing
+#
+# Dependencies:
+# - Python libraries: pandas, logging
+# - Dask libraries: distributed, diagnostics
+#
+# Developed with AI assistance.
 
-from .utils import garbage_collection
 import pandas as pd
 from dask.distributed import as_completed
 import dask   # Parallel computing library that scales Python workflows across multiple cores or machines 
@@ -73,21 +87,18 @@ def train_model(n_topics: int, alpha_str: list, beta_str: list, data: list, trai
         n_alpha = calculate_numeric_alpha(alpha_str, n_topics)
         n_beta = calculate_numeric_beta(beta_str, n_topics)
         try:
-            #logger.info("we are inside the try block at the beginning")
             lda_model_gensim = LdaModel(corpus=corpus_batch,
-                                                id2word=dictionary_batch,
-                                                num_topics=n_topics,
-                                                alpha= float(n_alpha),
-                                                eta= float(n_beta),
-                                                random_state=random_state,
-                                                passes=passes,
-                                                iterations=iterations,
-                                                update_every=update_every,
-                                                eval_every=eval_every,
-                                                chunksize=chunksize,
-                                                per_word_topics=True)
-            #logger.info("we are inside the try block after the constructor")
-
+                                        id2word=dictionary_batch,
+                                        num_topics=n_topics,
+                                        alpha= float(n_alpha),
+                                        eta= float(n_beta),
+                                        random_state=random_state,
+                                        passes=passes,
+                                        iterations=iterations,
+                                        update_every=update_every,
+                                        eval_every=eval_every,
+                                        chunksize=chunksize,
+                                        per_word_topics=True)
                                           
         except Exception as e:
             logging.error(f"An error occurred during LDA model training: {e}")
