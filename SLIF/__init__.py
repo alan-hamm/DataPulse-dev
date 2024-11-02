@@ -4,7 +4,7 @@
 
 # Import key functions and classes from submodules to allow easy access at the package level
 from .data_io import get_num_records, futures_create_lda_datasets
-from .utils import garbage_collection,  exponential_backoff
+from .utils import garbage_collection,  exponential_backoff, convert_float32_to_float
 from .logging_helper import archive_log, close_logger, setup_logging
 from .process_futures import retry_processing, process_completed_futures, handle_failed_future
 
@@ -26,6 +26,7 @@ __all__ = [
     # utils
     'garbage_collection',
     'exponential_backoff',
+    'convert_float32_to_float',
 
     #logging_helper
     'archive_log', 

@@ -26,21 +26,10 @@ import pickle
 import math
 import hashlib
 import numpy as np
+import json
 
 from .alpha_eta import calculate_numeric_alpha, calculate_numeric_beta
-
-import numpy as np
-import json
-# Helper function to ensure JSON compatibility by converting float32 to float
-def convert_float32_to_float(data):
-    if isinstance(data, list):
-        return [convert_float32_to_float(item) for item in data]
-    elif isinstance(data, dict):
-        return {key: convert_float32_to_float(value) for key, value in data.items()}
-    elif isinstance(data, np.float32):
-        return float(data)
-    else:
-        return data
+from .utils import convert_float32_to_float
     
 # https://examples.dask.org/applications/embarrassingly-parallel.html
 def train_model(n_topics: int, alpha_str: list, beta_str: list, data: list, train_eval: str, 
