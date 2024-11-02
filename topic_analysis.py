@@ -1,6 +1,20 @@
-# Developed traditionally with the addition of AI assistance
-# Author: Alan Hamm (pqn7)
+# topic_analysis.py - Scalable Topic Analysis Script
+# Author: Alan Hamm
 # Date: April 2024
+#
+# Description:
+# This script performs large-scale topic modeling analysis on document corpora,
+# utilizing Dask and Gensim within the Scalable LDA Insights Framework (SLIF).
+#
+# Usage:
+# Run this script from the terminal with specific parameters for analysis.
+# Example: python topic_analysis.py --input_dir=<path> --output_dir=<path>
+#
+# Dependencies:
+# - Requires PostgreSQL for database operations
+# - Python libraries: SLIF, Dask, Gensim, SQLAlchemy, etc.
+#
+# Developed with AI assistance.
 
 #%%
 from SLIF import *
@@ -431,7 +445,7 @@ if __name__=="__main__":
             print("There are documents not being scattered across the workers.")
 
     print(f"Completed creation of training and evaluation documents in {round((time() - started)/60,2)} minutes.\n")
-    print("Data scatter complete...\n")
+    print("Data scatter across workers complete...\n")
 
 
     train_futures = []  # List to store futures for training
@@ -532,22 +546,22 @@ if __name__=="__main__":
             all_workers_below_memory_threshold = all(worker['metrics']['memory'] < MEMORY_UTILIZATION_THRESHOLD for worker in scheduler_info['workers'].values())
 
             if not (all_workers_below_cpu_threshold and all_workers_below_memory_threshold):
-                logging.info(f"Adaptive throttling (attempt {throttle_attempt} of {MAX_RETRIES-1})")
+                logging.warning(f"Adaptive throttling (attempt {throttle_attempt} of {MAX_RETRIES-1})")
                 # Uncomment the next line if you want to log hyperparameters information as well.
-                #logging.info(f"for LdaModel hyperparameters combination -- type: {train_eval_type}, topic: {n_topics}, ALPHA: {alpha_value} and ETA {beta_value}")
+                logging.warning(f"for LdaModel hyperparameters combination -- type: {train_eval_type}, topic: {n_topics}, ALPHA: {alpha_value} and ETA {beta_value}")
                 sleep(exponential_backoff(throttle_attempt, BASE_WAIT_TIME=BASE_WAIT_TIME))
                 throttle_attempt += 1
             else:
                 break
 
         if throttle_attempt == MAX_RETRIES:
-            logging.error("Maximum retries reached. The workers are still above the CPU or Memory threshold.")
+            logging.warning("Maximum retries reached. The workers are still above the CPU or Memory threshold.")
             #garbage_collection(False, 'Max Retries - throttling attempt')
         else:
             logging.info("Proceeding with workload as workers are below the CPU and Memory thresholds.")
 
         # Submit a future for each scattered data object in the training list
-        num_workers = len(client.scheduler_info()["workers"])
+        num_workers = len(client.scheduler_info()["workers"]) # get num cores for dynamic assignment to train_model internals
         for scattered_data in scattered_train_data_futures:
             try:
                 future = client.submit(train_model, n_topics, alpha_value, beta_value, scattered_data, 'train',
@@ -560,7 +574,6 @@ if __name__=="__main__":
                 logging.error(f"TYPE: train -- n_topics: {n_topics}, alpha: {alpha_value}, beta: {beta_value}")
 
         # Submit a future for each scattered data object in the evaluation list
-        #if train_eval_type == 'eval':
         for scattered_data in scattered_eval_data_futures:
             try:
                 future = client.submit(train_model, n_topics, alpha_value, beta_value, scattered_data, 'eval',
@@ -590,14 +603,14 @@ if __name__=="__main__":
                     done_eval, not_done_eval = wait(eval_futures, timeout=None)  # return_when='FIRST_COMPLETED'
                     logging.info(f"This is the size of the done_eval list: {len(done_eval)} and this is the size of the not_done_eval list: {len(not_done_eval)}")
                 except Exception as e:
-                    distributed_logger.exception("EVAL_FUTURES wait:  An error occurred while gathering results from train_model() Dask operation")
+                    logging.error("EVAL_FUTURES wait:  An error occurred while gathering results from train_model() Dask operation")
 
                 try:
                     # Wait for completion of train_futures
                     done_train, not_done_train = wait(train_futures, timeout=None)  # return_when='FIRST_COMPLETED'
                     logging.info(f"This is the size of the done_train list: {len(done_train)} and this is the size of the not_done_train list: {len(not_done_train)}")
                 except Exception as e:
-                    distributed_logger.exception("TRAIN_FUTURES wait:  An error occurred while gathering results from train_model() Dask operation")
+                    logging.error("TRAIN_FUTURES wait:  An error occurred while gathering results from train_model() Dask operation")
 
 
                 done = done_train.union(done_eval)
@@ -626,8 +639,7 @@ if __name__=="__main__":
             ########################
             # PROCESS VISUALIZATIONS
             ########################
-            time_of_vis_call = pd.to_datetime('now')
-            time_of_vis_call = time_of_vis_call.strftime('%Y%m%d%H%M%S%f')
+            time_of_vis_call = pd.to_datetime('now').strftime('%Y%m%d%H%M%S%f')
             PERFORMANCE_TRAIN_LOG = os.path.join(IMAGE_DIR, f"vis_perf_{time_of_vis_call}.html")
             del time_of_vis_call
             with performance_report(filename=PERFORMANCE_TRAIN_LOG):
