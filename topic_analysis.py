@@ -237,7 +237,7 @@ os.makedirs(METADATA_DIR, exist_ok=True)
 os.makedirs(TEXTS_ZIP_DIR, exist_ok=True)
 
 # Redirect stderr to the file
-sys.stderr = open(f"{LOG_DIR}/stderr.log", "w")
+#sys.stderr = open(f"{LOG_DIR}/stderr.log", "w")
 
 # Get the current date and time for log filename
 #now = datetime.now()
@@ -285,7 +285,7 @@ logging.getLogger('distributed.utils_perf').setLevel(logging.ERROR)
 warnings.filterwarnings("ignore", module="distributed.utils_perf")
 warnings.filterwarnings("ignore", category=DeprecationWarning, module="distributed.worker")  # Adjust the module parameter as needed
 
-# Suppress specific SettingWithCopyWarning from pyLDAvis
+# Suppress specific SettingWithCopyWarning from pyLDAvis internals
 # line 299: A value is trying to be set on a copy of a slice from a DataFrame.
 #   Try using .loc[row_indexer,col_indexer] = value instead
 # line 300: A value is trying to be set on a copy of a slice from a DataFrame. Try using .loc[row_indexer,col_indexer] = value instead
@@ -547,10 +547,11 @@ if __name__=="__main__":
             logging.info("Proceeding with workload as workers are below the CPU and Memory thresholds.")
 
         # Submit a future for each scattered data object in the training list
+        num_workers = len(client.scheduler_info()["workers"])
         for scattered_data in scattered_train_data_futures:
             try:
                 future = client.submit(train_model, n_topics, alpha_value, beta_value, scattered_data, 'train',
-                                            RANDOM_STATE, PASSES, ITERATIONS, UPDATE_EVERY, EVAL_EVERY, CORES, PER_WORD_TOPICS)
+                                            RANDOM_STATE, PASSES, ITERATIONS, UPDATE_EVERY, EVAL_EVERY, num_workers, PER_WORD_TOPICS)
                 train_futures.append(future)
                 logging.info(f"The training value is being appended to the train_futures list. Size: {len(train_futures)}")
                 pass
@@ -563,7 +564,7 @@ if __name__=="__main__":
         for scattered_data in scattered_eval_data_futures:
             try:
                 future = client.submit(train_model, n_topics, alpha_value, beta_value, scattered_data, 'eval',
-                                        RANDOM_STATE, PASSES, ITERATIONS, UPDATE_EVERY, EVAL_EVERY, CORES, PER_WORD_TOPICS)
+                                        RANDOM_STATE, PASSES, ITERATIONS, UPDATE_EVERY, EVAL_EVERY, num_workers, PER_WORD_TOPICS)
                 eval_futures.append(future)
                 logging.info(f"The evaluation value is being appended to the eval_futures list. Size: {len(eval_futures)}")
                 pass
@@ -768,80 +769,6 @@ if __name__=="__main__":
          
     #garbage_collection(False, "Cleaning WAIT -> done, not_done")     
     progress_bar.close()
-
-    # After all loops have finished running...
-    if len(train_futures) > 0 or len(eval_futures) > 0:
-        print("we are in the first IF statement for retry_processing()")
-        failed_model_params = retry_processing(train_futures, eval_futures, "10 minutes")
-    
-    #defensive programming to ensure WAIT output list of futures are empty
-    #for f in train_futures: client.cancel(f)
-    #for f in eval_futures: client.cancel(f)
-
-    # Now give one more chance with extended timeout only to those that were incomplete previously
-    if len(failed_model_params) > 0:
-        print("Retrying incomplete models with extended timeout...")
-        
-        # Create new lists for retrying futures
-        retry_train_futures = []
-        retry_eval_futures = []
-
-        # Resubmit tasks only for those that failed in the first attempt
-        for params in failed_model_params:
-            n_topics, alpha_value, beta_value = params
-            
-            #with performance_report(filename=PERFORMANCE_TRAIN_LOG):
-            try:
-                future_train_retry = client.submit(train_model, n_topics, alpha_value, beta_value, scattered_train_data_futures, 'train')
-                future_eval_retry = client.submit(train_model, n_topics, alpha_value, beta_value, scattered_eval_data_futures, 'eval')
-                pass
-            except Exception as e:
-                distributed_logger.exception("An error occurred in Dask operation")
-
-            retry_train_futures.append(future_train_retry)
-            retry_eval_futures.append(future_eval_retry)
-
-            # Keep track of these new futures as well
-            #future_to_params[future_train_retry] = params
-            #future_to_params[future_eval_retry] = params
-
-        # Clear the list of failed model parameters before reattempting
-        failed_model_params.clear()
-
-        # Wait for all reattempted futures with an extended timeout (e.g., 120 seconds)
-        done, not_done = wait(retry_train_futures + retry_eval_futures, timeout=None) #, timeout=EXTENDED_TIMEOUT)
-
-        # Process completed ones after reattempting
-        num_workers = len(client.scheduler_info()["workers"])
-        completed_eval_futures, completed_train_futures = process_completed_futures(CONNECTION_STRING, \
-                                                                                    CORPUS_LABEL, \
-                                                                                    completed_train_futures, \
-                                                                                        completed_eval_futures, \
-                                                                                        (len(completed_eval_futures)+len(completed_train_futures)), \
-                                                                                        num_workers, \
-                                                                                        BATCH_SIZE, \
-                                                                                        TEXTS_ZIP_DIR, \
-                                                                                        METADATA_DIR, \
-                                                                                        vis_pylda=completed_pylda_vis,
-                                                                                        vis_pcoa=completed_pcoa_vis)
-
-        # Record parameters of still incomplete futures after reattempting for later review
-        #for future in not_done:
-        #    failed_model_params.append(future_to_params[future])
-
-        # At this point `failed_model_params` contains the parameters of all models that didn't complete even after a retry
-
-    #client.close()
-    print("The training and evaluation loop has completed.")
-    logging.info("The training and evaluation loop has completed.")
-
-    if len(failed_model_params) > 0:
-        # You can now review `failed_model_params` to see which models did not complete successfully.
-        logging.error("The following model parameters did not complete even after a second attempt:")
-    #    perf_logger.info("The following model parameters did not complete even after a second attempt:")
-        for params in failed_model_params:
-            logging.error(params)
-    #        perf_logger.info(params)
             
     client.close()
     cluster.close()
