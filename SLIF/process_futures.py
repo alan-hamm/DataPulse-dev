@@ -104,33 +104,19 @@ def process_completed_futures(connection_string, corpus_label, completed_train_f
 
 # Function to retry processing with incomplete futures
 def retry_processing(incomplete_train_futures, incomplete_eval_futures, failed_model_params, future_to_params, timeout=None):
-    #print("we are in the retry_processing method()")
     # Retry processing with incomplete futures using an extended timeout
-    # Process completed ones after reattempting
-    #done_train = [f for f in done if f in train_futures]
-    #done_eval = [f for f in done if f in eval_futures]
     # Wait for completion of eval_futures
     done_eval, not_done_eval = wait(incomplete_eval_futures, timeout=timeout)  # return_when='FIRST_COMPLETED'
     #print(f"This is the size of the done_eval list: {len(done_eval)} and this is the size of the not_done_eval list: {len(not_done_eval)}")
 
     # Wait for completion of train_futures
     done_train, not_done_train = wait(incomplete_train_futures, timeout=timeout)  # return_when='FIRST_COMPLETED'
-    #print(f"This is the size of the done_train list: {len(done_train)} and this is the size of the not_done_train list: {len(not_done_train)}")
 
     done = done_train.union(done_eval)
     not_done = not_done_eval.union(not_done_train)
-                
-    #print(f"WAIT completed in {elapsed_time} minutes")
-    #print(f"This is the size of DONE {len(done)}. And this is the size of NOT_DONE {len(not_done)}\n")
-    #print(f"this is the value of done_train {done_train}")
-
+  
     completed_train_futures = [f for f in done_train]
-    #print(f"We have completed the TRAIN list comprehension. The size is {len(completed_train_futures)}")
-    #print(f"This is the length of the TRAIN completed_train_futures var {len(completed_train_futures)}")
-            
     completed_eval_futures = [f for f in done_eval]
-    #print(f"We have completed the EVAL list comprehension. The size is {len(completed_eval_futures)}")
-    #print(f"This is the length of the EVAL completed_eval_futures var {len(completed_eval_futures)}")
 
     #logging.info(f"This is the size of completed_train_futures {len(completed_train_futures)} and this is the size of completed_eval_futures {len(completed_eval_futures)}")
     if len(completed_eval_futures) > 0 or len(completed_train_futures) > 0:
@@ -172,5 +158,3 @@ def handle_failed_future(train_model, client, future, future_to_params, train_fu
         eval_futures.append(new_future_eval)
     else:
         logging.info(f"Task {params} failed after {MAX_RETRIES} attempts. No more retries.")
-
-    #garbage_collection(False,'handle_failed_future')
