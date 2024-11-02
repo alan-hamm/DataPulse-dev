@@ -16,6 +16,7 @@ from sqlalchemy import create_engine, inspect
 from sqlalchemy.exc import ProgrammingError
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy import create_engine, Column, String, Integer, Boolean, Float, LargeBinary, DateTime, JSON, TEXT
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.declarative import declarative_base
 from .utils import garbage_collection
 
@@ -64,7 +65,7 @@ def create_dynamic_table_class(table_name):
         'batch_size' : Column(Integer),
         'num_documents' : Column(Integer),
         'text' : Column(TEXT) , # text is a list of file paths
-        'text_json' : Column(LargeBinary),  # text_json is a MD5 of input text_json document
+        'text_json' : Column(LargeBinary),  # text_json is a pickled text_json
         'text_sha256' : Column(String),
         'text_md5' : Column(String),
         'convergence' : Column(Float(precision=32)),
@@ -89,6 +90,7 @@ def create_dynamic_table_class(table_name):
         'random_state' : Column(Integer),
 
         'per_word_topics' : Column(Boolean),
+        'show_topics': Column(JSONB),
         'top_words' : Column(TEXT) , # Assuming top_words is a long string or JSON serializable
 
         # For lda_model, corpus, and dictionary, if they are binary blobs:
@@ -186,10 +188,10 @@ def add_model_data_to_database(model_data, table_name, database_uri,
         new_model_data = {key: val for key, val in model_data.items() if key not in ['lda_model', 'corpus', 'dictionary']}
         
         # Log type information before insertion
-        logging.info(f"Type of 'create_pylda' before insertion: {type(new_model_data['create_pylda'])}")
-        logging.info(f"Type of 'create_pylda' before insertion: {new_model_data['create_pylda']}")
-        logging.info(f"Type of 'create_pcoa' before insertion: {type(new_model_data['create_pcoa'])}")
-        logging.info(f"Type of 'create_pcoa' before insertion: {new_model_data['create_pcoa']}")
+        #logging.info(f"Type of 'create_pylda' before insertion: {type(new_model_data['create_pylda'])}")
+        #logging.info(f"Type of 'create_pylda' before insertion: {new_model_data['create_pylda']}")
+        #logging.info(f"Type of 'create_pcoa' before insertion: {type(new_model_data['create_pcoa'])}")
+        #logging.info(f"Type of 'create_pcoa' before insertion: {new_model_data['create_pcoa']}")
 
         # Create an instance of the dynamic table class with model_data
         record = DynamicModel(**new_model_data)

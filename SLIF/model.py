@@ -29,6 +29,19 @@ import numpy as np
 
 from .alpha_eta import calculate_numeric_alpha, calculate_numeric_beta
 
+import numpy as np
+import json
+# Helper function to ensure JSON compatibility by converting float32 to float
+def convert_float32_to_float(data):
+    if isinstance(data, list):
+        return [convert_float32_to_float(item) for item in data]
+    elif isinstance(data, dict):
+        return {key: convert_float32_to_float(value) for key, value in data.items()}
+    elif isinstance(data, np.float32):
+        return float(data)
+    else:
+        return data
+    
 # https://examples.dask.org/applications/embarrassingly-parallel.html
 def train_model(n_topics: int, alpha_str: list, beta_str: list, data: list, train_eval: str, 
                 random_state: int, passes: int, iterations: int, update_every: int, eval_every: int, cores: int,
@@ -120,6 +133,25 @@ def train_model(n_topics: int, alpha_str: list, beta_str: list, data: list, trai
                 perplexity_score = float('-inf')
                 #sys.exit()
 
+        # Set the number of words per topic to capture more context
+        num_words = 30  # Increase as needed for more comprehensive topics
+        show_topics_results = lda_model_gensim.show_topics(num_topics=-1, num_words=num_words, formatted=False)
+        # Convert to a list of dictionaries for easy storage and later access
+        topics_to_store = [
+            {
+                "method": "show_topics",
+                "topic_id": topic[0],               # Topic ID
+                "words": [{"word": word, "prob": prob} for word, prob in topic[1]]  # List of word-probability dictionaries
+            }
+            for topic in show_topics_results
+        ]
+
+        # Convert topics_to_store to ensure JSON compatibility
+        topics_to_store = convert_float32_to_float(topics_to_store)
+
+        # Convert to JSON format for PostgreSQL
+        show_topics_jsonb = json.dumps(topics_to_store)
+
         # Get top topics with their coherence scores
         topics = lda_model_gensim.top_topics(texts=batch_documents, processes=math.floor(cores*(1/3)))
         # Extract the words as strings from each topic representation
@@ -169,6 +201,7 @@ def train_model(n_topics: int, alpha_str: list, beta_str: list, data: list, trai
                 'chunksize': chunksize,
                 'random_state': random_state,
                 'per_word_topics': per_word_topics,
+                'show_topics': show_topics_jsonb, 
                 'top_words': topic_words,
                 'lda_model': ldamodel_bytes,
                 'corpus': pickle.dumps(corpus_batch),
