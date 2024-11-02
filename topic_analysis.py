@@ -611,13 +611,7 @@ if __name__=="__main__":
                 eval_futures = [f for f in eval_futures if f not in done_eval]
                 
                 completed_train_futures = [f for f in done_train]
-                #print(f"We have completed the TRAIN list comprehension. The size is {len(completed_train_futures)}")
-                #print(f"This is the length of the TRAIN completed_train_futures var {len(completed_train_futures)}")
-                
                 completed_eval_futures = [f for f in done_eval]
-                #print(f"We have completed the EVAL list comprehension. The size is {len(completed_eval_futures)}")
-                #print(f"This is the length of the EVAL completed_eval_futures var {len(completed_eval_futures)}")
-
 
             # Handle failed futures using the previously defined function
             for future in not_done:
