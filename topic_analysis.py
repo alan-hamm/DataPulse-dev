@@ -64,11 +64,6 @@ from numpy import ComplexWarning
 ###################################
 # BEGIN SCRIPT CONFIGURATION HERE #
 ###################################
-def task_callback(future):
-    if future.status == 'error':
-        print(f"Task failed with exception: {future.exception()}")
-    else:
-        print("Task completed successfully")
 
 def parse_args():
     """Parse command-line arguments for configuring the topic analysis script."""
@@ -85,7 +80,6 @@ def parse_args():
     parser.add_argument("--corpus_label", type=str, help="Unique label used to identify the corpus in outputs and logs. Must be suitable as a PostgreSQL table name.")
     parser.add_argument("--data_source", type=str, help="File path to the JSON file containing the data for analysis.")
     parser.add_argument("--train_ratio", type=float, help="Fraction of data to use for training (e.g., 0.8 for 80% training and 20% testing).")
-    parser.add_argument("--validation_ratio", type=float, help="Fraction of data to use for validation.")
 
     # Topic Modeling Parameters
     parser.add_argument("--start_topics", type=int, help="Starting number of topics for evaluation.")
@@ -168,14 +162,10 @@ CONNECTION_STRING = f"postgresql://{USERNAME}:{PASSWORD}@{HOST}:{PORT}/{DATABASE
 
 CORPUS_LABEL = args.corpus_label
 DATA_SOURCE = args.data_source
-
-TRAIN_RATIO = args.train_ratio if args.train_ratio is not None else 0.70
-VALIDATION_RATIO = args.validation_ratio if args.validation_ratio is not None else 0.15
-
+TRAIN_RATIO = args.train_ratio if args.train_ratio is not None else 0.80
 START_TOPICS = args.start_topics if args.start_topics is not None else 1
 END_TOPICS = args.end_topics
 STEP_SIZE = args.step_size
-
 CORES = args.num_workers if args.num_workers is not None else 1
 MAXIMUM_CORES = args.max_workers if args.max_workers is not None else 1
 THREADS_PER_CORE = args.num_threads if args.num_threads is not None else 1
@@ -195,10 +185,10 @@ RANDOM_STATE = args.random_state if args.random_state is not None else 50
 PER_WORD_TOPICS = args.per_word_topics if args.per_word_topics is not None else True
 
 # Batch configurations
-FUTURES_BATCH_SIZE = args.futures_batches # number of input docuemtns to read in batches
-BATCH_SIZE = args.base_batch_size if args.base_batch_size is not None else FUTURES_BATCH_SIZE # number of documents used in each iteration of creating/training/saving 
-MAX_BATCH_SIZE = args.max_batch_size if args.max_batch_size is not None else FUTURES_BATCH_SIZE * 10 # the maximum number of documents(ie batches) assigned depending upon sys performance
-MIN_BATCH_SIZE = max(1, math.ceil(MAX_BATCH_SIZE * .10)) # the fewest number of docs(ie batches) to be processed if system is under stress
+FUTURES_BATCH_SIZE = args.futures_batches
+BATCH_SIZE = args.base_batch_size if args.base_batch_size is not None else FUTURES_BATCH_SIZE
+MAX_BATCH_SIZE = args.max_batch_size if args.max_batch_size is not None else FUTURES_BATCH_SIZE * 10
+MIN_BATCH_SIZE = math.ceil(FUTURES_BATCH_SIZE * 1.01)
 
 # Batch size adjustments and retry logic
 INCREASE_FACTOR = args.increase_factor if args.increase_factor is not None else 1.05
@@ -279,7 +269,8 @@ if 'LOG_START_TIME' not in os.environ:
 
 # Use the fixed timestamp from the environment variable
 log_filename = f"log-{os.environ['LOG_START_TIME']}.log"
-LOGFILE = os.path.join(LOG_DIRECTORY, log_filename)  # Directly join log_filename with LOG_DIRECTORY
+LOG_FILENAME = os.path.join(LOG_DIRECTORY, log_filename)
+LOGFILE = os.path.join(LOG_DIRECTORY,LOG_FILENAME)
 
 # Configure logging to write to a file with this name
 logging.basicConfig(
@@ -287,8 +278,7 @@ logging.basicConfig(
     filemode='a',  # Append mode if you want to keep adding to the same file during the day
     format='%(asctime)s - %(levelname)s - %(message)s',
     datefmt='%Y-%m-%d %H:%M:%S',
-    #level=logging.INFO  # Set to DEBUG for detailed logging
-    level=logging.DEBUG  # Set to DEBUG for detailed logging
+    level=logging.INFO
 )
 
 ##########################################
@@ -421,62 +411,45 @@ if __name__=="__main__":
     started = time()
     
     scattered_train_data_futures = []
-    scattered_validation_data_futures = []
-    scattered_test_data_futures = []
-    all_futures = []
+    scattered_eval_data_futures = []
 
     # Process each batch as it is generated
-    for batch_info in futures_create_lda_datasets(DATA_SOURCE, TRAIN_RATIO, VALIDATION_RATIO, FUTURES_BATCH_SIZE):
+    for batch_info in futures_create_lda_datasets(DATA_SOURCE, TRAIN_RATIO, FUTURES_BATCH_SIZE):
         #print(f"Received batch: {batch_info['type']}")  # Debugging output
         if batch_info['type'] == 'train':
             # Handle training data
             #print("We are inside the IF/ELSE block for producing TRAIN scatter.")
             try:
                 scattered_future = client.scatter(batch_info['data'])
-                #scattered_future.add_done_callback(task_callback)
-                # After yielding each batch
-                #print(f"Submitted {batch_info['type']} batch of size {len(batch_info['data'])} to Dask.")
-
                 scattered_train_data_futures.append(scattered_future)
                 #print(f"Appended to train futures: {len(scattered_train_data_futures)}") # Debugging output
             except Exception as e:
                 logging.error(f"There was an issue with creating the TRAIN scattered_future list: {e}")
-
-        elif batch_info['type'] == 'validation':
-            # Handle validation data
+                
+            #if whole_train_dataset is None:
+            #    whole_train_dataset = batch_info['whole_dataset']
+        elif batch_info['type'] == 'eval':
+            # Handle evaluation data
+            #print("We are inside the IF/ELSE block for producing EVAL scatter.")
             try:
                 scattered_future = client.scatter(batch_info['data'])
-                #scattered_future.add_done_callback(task_callback)
-                # After yielding each batch
-                #print(f"Submitted {batch_info['type']} batch of size {len(batch_info['data'])} to Dask.")
-
-                scattered_validation_data_futures.append(scattered_future)
+                scattered_eval_data_futures.append(scattered_future)
+                #print(f"Appended to eval futures: {len(scattered_eval_data_futures)}")  # Debugging output
             except Exception as e:
-                logging.error(f"There was an issue with creating the VALIDATION scattererd_future list: {e}")
+                logging.error(f"There was an issue with creating the EVAL scattererd_future list: {e}")
 
-        elif batch_info['type'] == 'test':
-            # Handle test data
-            try:
-                scattered_future = client.scatter(batch_info['data'])
-                #scattered_future.add_done_callback(task_callback)
-                # After yielding each batch
-                #print(f"Submitted {batch_info['type']} batch of size {len(batch_info['data'])} to Dask.")
-
-                scattered_test_data_futures.append(scattered_future)
-            except Exception as e:
-                logging.error(f"There was an issue with creating the TEST scattererd_future list: {e}")
+                
+            #if whole_eval_dataset is None:
+            #    whole_eval_dataset = batch_info['whole_dataset']
         else:
             print("There are documents not being scattered across the workers.")
-        
-    print(f"Completed creation of train-validation-test split in {round((time() - started)/60,2)} minutes.\n")
-    logging.info(f"Completed creation of train-validation-test split in {round((time() - started)/60,2)} minutes.\n")
-    print("Document scatter across workers complete...\n")
-    logging.info("Document scatter across workers complete...")
+
+    print(f"Completed creation of training and evaluation documents in {round((time() - started)/60,2)} minutes.\n")
+    print("Data scatter across workers complete...\n")
 
 
     train_futures = []  # List to store futures for training
-    validation_futures = []  # List to store futures for validation
-    test_futures = []  # List to store futures for testing
+    eval_futures = []  # List to store futures for evaluation
    
     num_topics = len(range(START_TOPICS, END_TOPICS + 1, STEP_SIZE))
 
@@ -516,23 +489,21 @@ if __name__=="__main__":
     # CREATE PARAMETER COMBINATIONS FOR GRID SEARCH
     #################################################
     # Create a list of all combinations of n_topics, alpha_value, beta_value, and train_eval
-    combinations = list(itertools.product(range(START_TOPICS, END_TOPICS + 1, STEP_SIZE), alpha_values, beta_values, ['train', 'validation', 'test']))
+    combinations = list(itertools.product(range(START_TOPICS, END_TOPICS + 1, STEP_SIZE), alpha_values, beta_values, ['eval', 'train']))
 
     # Separate the combinations into two lists based on 'train' and 'eval' for debugging
     train_combinations = [combo for combo in combinations if combo[-1] == 'train']
-    validation_combinations = [combo for combo in combinations if combo[-1] == 'validation']
-    test_combinations = [combo for combo in combinations if combo[-1] == 'test']
+    eval_combinations = [combo for combo in combinations if combo[-1] == 'eval']
 
     # Calculate the sample size for each category
-    sample_size = min(len(train_combinations), len(validation_combinations), len(test_combinations))
+    sample_size = min(len(train_combinations), len(eval_combinations))
 
     # Select random combinations from each category
     random_train_combinations = random.sample(train_combinations, sample_size)
-    random_validation_combinations = random.sample(validation_combinations, sample_size)
-    random_test_combinations = random.sample(test_combinations, sample_size)
+    random_eval_combinations = random.sample(eval_combinations, sample_size)
 
     # Combine the randomly selected train and eval combinations
-    random_combinations = random_train_combinations + random_validation_combinations + random_test_combinations
+    random_combinations = random_eval_combinations+ random_train_combinations
     sample_size = max(1, int(len(combinations) * 0.375))
 
     # Select random_combinations conditionally
@@ -544,15 +515,19 @@ if __name__=="__main__":
     print(f"The random sample combinations contains {len(random_combinations)}. This leaves {len(undrawn_combinations)} undrawn combinations.\n")
 
     # clear utility vars
-    del train_combinations, validation_combinations, test_combinations, random_train_combinations, random_validation_combinations, random_test_combinations
+    del train_combinations, eval_combinations, random_train_combinations, random_eval_combinations
 
 
     # Create empty lists to store all future objects for training and evaluation
     train_futures = []
-    validation_futures = []
-    test_futures = []
+    eval_futures = []
 
-    TOTAL_COMBINATIONS = len(random_combinations) * (len(scattered_train_data_futures) + len(scattered_validation_data_futures) + len(scattered_test_data_futures))
+    # List to store parameters of models that failed to complete even after a retry
+    failed_model_params = []
+    # Mapping from futures to their corresponding parameters (n_topics, alpha_value, beta_value)
+    future_to_params = {}
+
+    TOTAL_COMBINATIONS = len(random_combinations) * (len(scattered_train_data_futures) + len(scattered_eval_data_futures) )
     progress_bar = tqdm(total=TOTAL_COMBINATIONS, desc="Creating and saving models", file=sys.stdout)
     # Iterate over the combinations and submit tasks
     num_iter = len(random_combinations)
@@ -598,35 +573,22 @@ if __name__=="__main__":
                 logging.error("An error occurred in train_model() Dask operation")
                 logging.error(f"TYPE: train -- n_topics: {n_topics}, alpha: {alpha_value}, beta: {beta_value}")
 
-        # Submit a future for each scattered data object in the validation list
-        for scattered_data in scattered_validation_data_futures:
+        # Submit a future for each scattered data object in the evaluation list
+        for scattered_data in scattered_eval_data_futures:
             try:
-                future = client.submit(train_model, n_topics, alpha_value, beta_value, scattered_data, 'validation',
+                future = client.submit(train_model, n_topics, alpha_value, beta_value, scattered_data, 'eval',
                                         RANDOM_STATE, PASSES, ITERATIONS, UPDATE_EVERY, EVAL_EVERY, num_workers, PER_WORD_TOPICS)
-                validation_futures.append(future)
-                logging.info(f"The validation value is being appended to the validation_futures list. Size: {len(validation_futures)}")
+                eval_futures.append(future)
+                logging.info(f"The evaluation value is being appended to the eval_futures list. Size: {len(eval_futures)}")
                 pass
             except Exception as e:
                 logging.error("An error occurred in train_model() Dask operation")
-                logging.error(f"TYPE: validation -- n_topics: {n_topics}, alpha: {alpha_value}, beta: {beta_value}")              
+                logging.error(f"TYPE: eval -- n_topics: {n_topics}, alpha: {alpha_value}, beta: {beta_value}")              
         #garbage_collection(False, 'client.submit(train_model(...) train and eval)')
-
-        # Submit a future for each scattered data object in the test list
-        for scattered_data in scattered_validation_data_futures:
-            try:
-                future = client.submit(train_model, n_topics, alpha_value, beta_value, scattered_data, 'test',
-                                        RANDOM_STATE, PASSES, ITERATIONS, UPDATE_EVERY, EVAL_EVERY, num_workers, PER_WORD_TOPICS)
-                test_futures.append(future)
-                logging.info(f"The test value is being appended to the test_futures list. Size: {len(test_futures)}")
-                pass
-            except Exception as e:
-                logging.error("An error occurred in train_model() Dask operation")
-                logging.error(f"TYPE: test -- n_topics: {n_topics}, alpha: {alpha_value}, beta: {beta_value}")              
-  
 
 
         # Check if it's time to process futures based on BATCH_SIZE
-        if (len(train_futures) + len(validation_futures) +len(test_futures)) >= BATCH_SIZE or num_iter == 0:
+        if (len(train_futures) + len(eval_futures)) >= BATCH_SIZE or num_iter == 0:
             time_of_vis_call = pd.to_datetime('now')
             time_of_vis_call = time_of_vis_call.strftime('%Y%m%d%H%M%S%f')
             PERFORMANCE_TRAIN_LOG = os.path.join(LOG_DIR, f"train_perf_{time_of_vis_call}.html")
@@ -636,12 +598,12 @@ if __name__=="__main__":
                 logging.info("In holding pattern until WAIT completes.")
                 started = time()
 
-                # Wait for completion of validation_futures
+                # Wait for completion of eval_futures
                 try:
-                    done_validation, not_done_validation = wait(validation_futures, timeout=None)  # return_when='FIRST_COMPLETED'
-                    logging.info(f"This is the size of the done_validation list: {len(done_validation)} and this is the size of the not_done_validation list: {len(not_done_validation)}")
+                    done_eval, not_done_eval = wait(eval_futures, timeout=None)  # return_when='FIRST_COMPLETED'
+                    logging.info(f"This is the size of the done_eval list: {len(done_eval)} and this is the size of the not_done_eval list: {len(not_done_eval)}")
                 except Exception as e:
-                    logging.error("VALIDATION_FUTURES wait:  An error occurred while gathering results from train_model() Dask operation")
+                    logging.error("EVAL_FUTURES wait:  An error occurred while gathering results from train_model() Dask operation")
 
                 try:
                     # Wait for completion of train_futures
@@ -650,28 +612,28 @@ if __name__=="__main__":
                 except Exception as e:
                     logging.error("TRAIN_FUTURES wait:  An error occurred while gathering results from train_model() Dask operation")
 
-                try:
-                    # Wait for completion of test_futures
-                    done_test, not_done_test = wait(test_futures, timeout=None)  # return_when='FIRST_COMPLETED'
-                    logging.info(f"This is the size of the done_test list: {len(done_test)} and this is the size of the not_done_test list: {len(not_done_test)}")
-                except Exception as e:
-                    logging.error("TEST_FUTURES wait:  An error occurred while gathering results from train_model() Dask operation")
 
-                done = set(done_train).union(done_validation, done_test)
-                not_done = set(not_done_train).union(not_done_validation, not_done_test)
-
+                done = done_train.union(done_eval)
+                not_done = not_done_eval.union(not_done_train)
+                    
                 elapsed_time = round(((time() - started) / 60), 2)
                 logging.info(f"WAIT completed in {elapsed_time} minutes")
 
+
                 # Now clear references to these completed futures by filtering them out of your lists
                 train_futures = [f for f in train_futures if f not in done_train]
-                validation_futures = [f for f in validation_futures if f not in done_validation]
-                test_futures = [f for f in test_futures if f not in done_test]
-
+                eval_futures = [f for f in eval_futures if f not in done_eval]
+                
                 completed_train_futures = [f for f in done_train]
-                completed_validation_futures = [f for f in done_validation]
-                completed_test_futures = [f for f in done_test]
+                completed_eval_futures = [f for f in done_eval]
 
+            # Handle failed futures using the previously defined function
+            for future in not_done:
+                failed_future_timer = time()
+                logging.error("Handling of failed WAIT method has been initiated.")
+                handle_failed_future(future, future_to_params, train_futures,  eval_futures, client)
+                elapsed_time = round(((time() - started) / 60), 2)
+                logging.error(f"It took {elapsed_time} minutes to handle {len(train_futures)} train futures and {len(eval_futures)} evaluation futures the failed future.")
 
         
             ########################
@@ -686,40 +648,29 @@ if __name__=="__main__":
                 # To get the results from the completed futures
                 logging.info("Gathering TRAIN and EVAL futures.")
                 results_train_len = len(done_train)
-                results_validation_len = len(done_validation)
-                results_test_len = len(done_test)
-
+                results_eval_len = len(done_eval)
                 results_train = [d.result() for d in done_train if isinstance(d, Future)]
-                results_validation = [d.result() for d in done_validation if isinstance(d, Future)]
-                results_test = [d.result() for d in done_test if isinstance(d, Future)]
-
+                results_eval = [d.result() for d in done_eval if isinstance(d, Future)]
                 if results_train_len != len(done_train):
                     missing = results_train_len - len(done_train)
                     missing = abs(missing)
                     logging.error(f"There are {missing} removed TRAIN visualizations.")
-                if results_validation_len != len(done_validation):
-                    missing = results_validation_len - len(done_validation)
-                    missing = abs(missing)
-                    logging.error(f"There are {missing} removed VALIDATION visualizations.")
-                if results_train_len != len(done_train):
-                    missing = results_train_len - len(done_train)
+                if results_eval_len != len(done_eval):
+                    missing = results_eval_len - len(done_eval)
                     missing = abs(missing)
                     logging.error(f"There are {missing} removed TRAIN visualizations.")
-
+                
                 # results_train and results_eval are lists of lists of dictionaries
                 for result_list in results_train:
                     for result_dict in result_list:
                         result_dict['type'] = 'train'
 
-                for result_list in results_validation:
+                for result_list in results_eval:
                     for result_dict in result_list:
-                        result_dict['type'] = 'validation'
-                for result_list in results_test:
-                    for result_dict in result_list:
-                        result_dict['type'] = 'test'
+                        result_dict['type'] = 'eval'
 
                 # combine results with additional key 'type'
-                results = [result_dict for sublist in (results_train + results_validation + results_train) for result_dict in sublist]
+                results = [result_dict for sublist in (results_train + results_eval) for result_dict in sublist]
 
                 logging.info(f"Completed TRAIN and EVAL gathering {len(results)} futures.")
                 
@@ -763,17 +714,17 @@ if __name__=="__main__":
                                     logging.error(f"An error occurred in create_vis_pcoa() Dask operation: {e}")
                                     logging.error(f"TYPE: PCoA -- MD5{result_dict['text_md5']}")
 
-                logging.info(f"Executing WAIT on TRAIN-VALIDATION-TEST pyLDA create_visualizations {len(visualization_futures_pylda)} futures.")
-                logging.info(f"Executing WAIT on TRAIN-VALIDATION-TEST PCoA create_visualizations {len(visualization_futures_pcoa)} futures.")
+                logging.info(f"Executing WAIT on TRAIN and EVAL pyLDA create_visualizations {len(visualization_futures_pylda)} futures.")
+                logging.info(f"Executing WAIT on TRAIN and EVAL PCoA create_visualizations {len(visualization_futures_pcoa)} futures.")
 
                 # Wait for all visualization tasks to complete
                 done_viz_futures_pylda, not_done_viz_futures_pylda = wait(visualization_futures_pylda)
                 done_viz_futures_pcoa, not_done_viz_futures_pcoa = wait(visualization_futures_pcoa)
                 #done_visualizations, not_done_visualizations = wait(visualization_futures_pylda + visualization_futures_pcoa)
                 if len(not_done_viz_futures_pylda) > 0:
-                    logging.error(f"All TRAIN-VALIDATION-TEST pyLDA visualizations couldn't be generated. There were {len(not_done_viz_futures_pylda)} not created.")
+                    logging.error(f"All TRAIN and EVAL pyLDA visualizations couldn't be generated. There were {len(not_done_viz_futures_pylda)} not created.")
                 if len(not_done_viz_futures_pcoa) > 0:
-                    logging.error(f"All TRAIN-VALIDATION-TEST PCoA visualizations couldn't be generated. There were {len(not_done_viz_futures_pcoa)} not created.")
+                    logging.error(f"All TRAIN and EVAL PCoA visualizations couldn't be generated. There were {len(not_done_viz_futures_pcoa)} not created.")
 
                 # Gather the results from the completed visualization tasks
                 logging.info("Gathering TRAIN and EVAL completed visualization results futures.")
@@ -794,17 +745,17 @@ if __name__=="__main__":
             started = time()
             num_workers = len(client.scheduler_info()["workers"])
             logging.info(f"Writing processed completed futures to disk.")
-            completed_train_futures, completed_validation_futures, completed_test_futures = process_completed_futures(CONNECTION_STRING, \
+            completed_eval_futures, completed_train_futures = process_completed_futures(CONNECTION_STRING, \
                                                                                     CORPUS_LABEL, \
                                                                                     completed_train_futures, \
-                                                                                    completed_validation_futures, \
-                                                                                    completed_test_futures, \
-                                                                                    (len(completed_validation_futures)+len(completed_train_futures)+len(completed_test_futures)), \
-                                                                                    num_workers, \
-                                                                                    BATCH_SIZE, \
-                                                                                    TEXTS_ZIP_DIR, \
-                                                                                    vis_pylda=completed_pylda_vis,
-                                                                                    vis_pcoa=completed_pcoa_vis)
+                                                                                        completed_eval_futures, \
+                                                                                        (len(completed_eval_futures)+len(completed_train_futures)), \
+                                                                                        num_workers, \
+                                                                                        BATCH_SIZE, \
+                                                                                        TEXTS_ZIP_DIR, \
+                                                                                        METADATA_DIR, \
+                                                                                        vis_pylda=completed_pylda_vis,
+                                                                                        vis_pcoa=completed_pcoa_vis)
             
             elapsed_time = round(((time() - started) / 60), 2)
             logging.info(f"Finished write processed completed futures to disk in  {elapsed_time} minutes")
@@ -824,8 +775,7 @@ if __name__=="__main__":
                 logging.info(f"Decreasing batch size to {BATCH_SIZE}")
                 #garbage_collection(False, 'Batch Size Decrease')
 
-            test_futures.clear()
-            validation_futures.clear()
+            eval_futures.clear()
             train_futures.clear()
             client.rebalance()
          
