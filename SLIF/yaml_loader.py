@@ -1,5 +1,5 @@
 # Developed traditionally with the addition of AI assistance
-# Author: Alan Hamm (pqn7)
+# Author: Alan Hamm
 # Date: April 2024
 
 import os
