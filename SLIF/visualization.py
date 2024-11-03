@@ -27,6 +27,7 @@ import pyLDAvis.gensim_models as gensimvis
 import matplotlib.pyplot as plt
 import matplotlib
 import pickle
+from dask.distributed import performance_report, wait
 matplotlib.use('Agg')
 
 import logging
@@ -139,3 +140,72 @@ def create_vis_pcoa(ldaModel, corpus, topics, filename, vis_root, PCOA_DIR):
 
     #garbage_collection(False,"create_vis(...)")
     return (filename, create_pcoa)
+
+
+# Define function for processing visualizations for each phase
+def process_visualizations(client, phase_results, phase_name, performance_log, cores, pylda_dir, pcoa_dir):
+    with performance_report(filename=performance_log):
+        logging.info(f"Processing {phase_name} visualizations.")
+
+        visualization_futures_pylda = []
+        visualization_futures_pcoa = []
+
+        processed_results = set()  # Track processed result hashes
+
+        for result_dict in phase_results:
+            unique_id = result_dict['time_key']
+
+            if unique_id not in processed_results:
+                processed_results.add(unique_id)
+
+                try:
+                    vis_future_pylda = client.submit(
+                        create_vis_pylda,
+                        result_dict['lda_model'],
+                        result_dict['corpus'],
+                        result_dict['dictionary'],
+                        result_dict['topics'],
+                        unique_id,  # filename
+                        cores,
+                        result_dict['text_md5'],  # vis_root
+                        pylda_dir
+                    )
+                    visualization_futures_pylda.append(vis_future_pylda)
+                except Exception as e:
+                    logging.error(f"Error in create_vis_pylda() Dask operation: {e}")
+                    logging.error(f"TYPE: pyLDA -- MD5: {result_dict['text_md5']}")
+
+                try:
+                    vis_future_pcoa = client.submit(
+                        create_vis_pcoa,
+                        result_dict['lda_model'],
+                        result_dict['corpus'],
+                        result_dict['topics'],  # f'number_of_topics-{topics}'
+                        unique_id,  # filename
+                        result_dict['text_md5'],  # vis_root
+                        pcoa_dir
+                    )
+                    visualization_futures_pcoa.append(vis_future_pcoa)
+                except Exception as e:
+                    logging.error(f"Error in create_vis_pcoa() Dask operation: {e}")
+                    logging.error(f"TYPE: PCoA -- MD5: {result_dict['text_md5']}")
+
+        # Wait for all visualization tasks to complete
+        logging.info(f"Executing WAIT on {phase_name} pyLDA visualizations: {len(visualization_futures_pylda)} futures.")
+        done_viz_futures_pylda, not_done_viz_futures_pylda = wait(visualization_futures_pylda)
+        
+        logging.info(f"Executing WAIT on {phase_name} PCoA visualizations: {len(visualization_futures_pcoa)} futures.")
+        done_viz_futures_pcoa, not_done_viz_futures_pcoa = wait(visualization_futures_pcoa)
+
+        if len(not_done_viz_futures_pylda) > 0:
+            logging.error(f"Some {phase_name} pyLDA visualizations were not created: {len(not_done_viz_futures_pylda)}.")
+        if len(not_done_viz_futures_pcoa) > 0:
+            logging.error(f"Some {phase_name} PCoA visualizations were not created: {len(not_done_viz_futures_pcoa)}.")
+
+        # Gather results from completed visualization tasks
+        completed_pylda_vis = [future.result() for future in done_viz_futures_pylda]
+        completed_pcoa_vis = [future.result() for future in done_viz_futures_pcoa]
+
+        logging.info(f"Completed gathering {len(completed_pylda_vis) + len(completed_pcoa_vis)} {phase_name} visualization results.")
+
+    return completed_pylda_vis, completed_pcoa_vis
