@@ -12,8 +12,9 @@ from .utils import garbage_collection, exponential_backoff, convert_float32_to_f
 from .logging_helper import archive_log, close_logger, setup_logging
 from .process_futures import process_completed_futures, futures_create_lda_datasets
 from .model import train_model
+from .model2 import train_model_v2
 from .alpha_eta import calculate_numeric_alpha, calculate_numeric_beta, validate_alpha_beta, calculate_alpha_beta
-from .visualization import create_vis_pylda, create_vis_pcoa
+from .visualization import create_vis_pylda, create_vis_pcoa, process_visualizations
 from .write_to_postgres import save_to_zip, create_dynamic_table_class, create_table_if_not_exists, add_model_data_to_database
 from .yaml_loader import join, getenv, get_current_time
 
@@ -37,6 +38,9 @@ __all__ = [
     # model
     'train_model',
 
+    #model2
+    'train_model_v2',
+
     # alpha_eta
     'calculate_numeric_alpha',
     'calculate_numeric_beta',
@@ -46,6 +50,7 @@ __all__ = [
     # visualization
     'create_vis_pylda',
     'create_vis_pcoa',
+    'process_visualizations',
 
     # process_futures
     'process_completed_futures',
