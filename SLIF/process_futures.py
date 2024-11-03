@@ -1,6 +1,22 @@
-# Developed traditionally with the addition of AI assistance
-# Author: Alan Hamm (pqn7)
+# process_futures.py - Distributed Future Processing for SLIF
+# Author: Alan Hamm
 # Date: April 2024
+#
+# Description:
+# This script manages the processing of distributed futures within the Scalable LDA Insights Framework (SLIF).
+# It includes functions for creating LDA datasets, handling task retries with exponential backoff, and
+# managing database interactions for processed results.
+#
+# Functions:
+# - futures_create_lda_datasets: Creates datasets for LDA training and validation from input files.
+# - Database utilities: Includes functions for dynamically creating and updating tables in PostgreSQL.
+# - Error handling: Implements exponential backoff for retrying failed tasks and garbage collection to manage memory.
+#
+# Dependencies:
+# - Python libraries: time, os, json, random, pandas, logging
+# - Dask libraries: distributed
+#
+# Developed with AI assistance.
 
 from .utils import exponential_backoff, garbage_collection
 from .write_to_postgres import add_model_data_to_database, create_dynamic_table_class, create_table_if_not_exists
@@ -8,10 +24,90 @@ from .write_to_postgres import add_model_data_to_database, create_dynamic_table_
 from time import sleep
 import logging
 from dask.distributed import wait
+import os
+from json import load
+from random import shuffle
+import pandas as pd 
+from .utils import garbage_collection
 
 
-def process_completed_futures(connection_string, corpus_label, completed_train_futures, completed_eval_futures, num_documents, workers, \
-                                batchsize, texts_zip_dir, metadata_dir=None, vis_pylda=None, vis_pcoa=None):
+def futures_create_lda_datasets(filename, train_ratio, validation_ratio, batch_size):
+    with open(filename, 'r', encoding='utf-8') as jsonfile:
+        data = load(jsonfile)
+        print(f"The number of records read from the JSON file: {len(data)}")
+        num_samples = len(data)
+        
+    indices = list(range(num_samples))
+    shuffle(indices)
+        
+    num_train_samples = int(num_samples * train_ratio)
+    num_validation_samples = int(num_samples * validation_ratio)
+    num_test_samples = num_samples - num_train_samples - num_validation_samples
+
+    # Print the total number of documents assigned to each split
+    print(f"Total documents assigned to training set: {num_train_samples}")
+    print(f"Total documents assigned to validation set: {num_validation_samples}")
+    print(f"Total documents assigned to test set: {num_test_samples}")
+        
+    cumulative_count = 0
+    train_count, validation_count, test_count = 0, num_train_samples, num_train_samples + num_validation_samples
+
+    while train_count < num_train_samples or validation_count < num_train_samples + num_validation_samples or test_count < num_samples:
+        if train_count < num_train_samples:
+            # Ensure we only yield up to the remaining samples in the training set
+            train_indices_batch = indices[train_count:min(train_count + batch_size, num_train_samples)]
+            train_data_batch = [data[idx] for idx in train_indices_batch]
+            if len(train_data_batch) > 0:
+                cumulative_count += len(train_data_batch)
+                print(f"Yielding train batch: {len(train_data_batch)}, cumulative_count: {cumulative_count}")
+                yield {
+                    'type': 'train',
+                    'data': train_data_batch,
+                    'indices_batch': train_indices_batch,
+                    'cumulative_count': cumulative_count,
+                    'num_samples': num_train_samples
+                }
+                train_count += len(train_data_batch)
+
+        elif validation_count < num_train_samples + num_validation_samples:
+            # Ensure we only yield up to the remaining samples in the validation set
+            validation_indices_batch = indices[validation_count:min(validation_count + batch_size, num_train_samples + num_validation_samples)]
+            validation_data_batch = [data[idx] for idx in validation_indices_batch]
+            if len(validation_data_batch) > 0:
+                cumulative_count += len(validation_data_batch)
+                print(f"Yielding validation batch: {len(validation_data_batch)}, cumulative_count: {cumulative_count}")
+                yield {
+                    'type': 'validation',
+                    'data': validation_data_batch,
+                    'indices_batch': validation_indices_batch,
+                    'cumulative_count': cumulative_count,
+                    'num_samples': num_validation_samples
+                }
+                validation_count += len(validation_data_batch)
+
+        elif test_count < num_samples:
+            # Ensure we only yield up to the remaining samples in the test set
+            test_indices_batch = indices[test_count:min(test_count + batch_size, num_samples)]
+            test_data_batch = [data[idx] for idx in test_indices_batch]
+            if len(test_data_batch) > 0:
+                cumulative_count += len(test_data_batch)
+                print(f"Yielding test batch: {len(test_data_batch)}, cumulative_count: {cumulative_count}")
+                yield {
+                    'type': 'test',
+                    'data': test_data_batch,
+                    'indices_batch': test_indices_batch,
+                    'cumulative_count': cumulative_count,
+                    'num_samples': num_test_samples
+                }
+                test_count += len(test_data_batch)
+    
+    print(f"Final cumulative count after all batches: {cumulative_count}")
+
+
+def process_completed_futures(connection_string, corpus_label, \
+                            completed_train_futures, completed_validation_futures, completed_test_futures, \
+                            num_documents, workers, \
+                            batchsize, texts_zip_dir, vis_pylda=None, vis_pcoa=None):
 
     # Create a mapping from model_data_id to visualization results
     pylda_results_map = {vis_result[0]: vis_result[1:] for vis_result in vis_pylda if vis_result}
@@ -68,7 +164,7 @@ def process_completed_futures(connection_string, corpus_label, completed_train_f
 
     # Process evaluation futures
     #vis_futures = []
-    for future in completed_eval_futures:
+    for future in completed_validation_futures:
         try:
             models_data = future.result()  # This should be a list of dictionaries
             if not isinstance(models_data, list):
@@ -85,7 +181,7 @@ def process_completed_futures(connection_string, corpus_label, completed_train_f
                     model_data['num_documents'] = num_documents
                     model_data['batch_size'] = batchsize
                     model_data['num_workers'] = workers
-                    #logging.info(f"EVAL Assigned 'create_pylda': {model_data['create_pylda']}, 'create_pcoa': {model_data['create_pcoa']}")
+                    #logging.info(f"VALIDATION Assigned 'create_pylda': {model_data['create_pylda']}, 'create_pcoa': {model_data['create_pcoa']}")
         except Exception as e:
             logging.error(f"Error occurred during process_completed_futures() EVAL: {e}")
         try:
@@ -94,67 +190,36 @@ def process_completed_futures(connection_string, corpus_label, completed_train_f
             add_model_data_to_database(model_data, corpus_label, connection_string,
                                         num_documents, workers, batchsize, texts_zip_dir)
         except Exception as e:
-            logging.error(f"Error occurred during process_completed_futures() add_model_data_to_database() EVAL: {e}")
+            logging.error(f"Error occurred during process_completed_futures() add_model_data_to_database() VALIDATION: {e}")
         
-                    
+    for future in completed_test_futures:
+        try:
+            models_data = future.result()  # This should be a list of dictionaries
+            if not isinstance(models_data, list):
+                models_data = [models_data]  # Ensure it is a list
+
+            for model_data in models_data:
+                unique_id = model_data['time_key']
+                
+                # Retrieve visualization results using filename hash as key
+                if unique_id in vis_results_map:
+                    create_pylda, create_pcoa = vis_results_map[unique_id]
+                    model_data['create_pylda'] = create_pylda[0]
+                    model_data['create_pcoa'] = create_pcoa[0]
+                    model_data['num_documents'] = num_documents
+                    model_data['batch_size'] = batchsize
+                    model_data['num_workers'] = workers
+                    #logging.info(f"TEST Assigned 'create_pylda': {model_data['create_pylda']}, 'create_pcoa': {model_data['create_pcoa']}")
+        except Exception as e:
+            logging.error(f"Error occurred during process_completed_futures() EVAL: {e}")
+        try:
+            DynamicModelMetadata = create_dynamic_table_class(corpus_label)
+            create_table_if_not_exists(DynamicModelMetadata, connection_string)
+            add_model_data_to_database(model_data, corpus_label, connection_string,
+                                        num_documents, workers, batchsize, texts_zip_dir)
+        except Exception as e:
+            logging.error(f"Error occurred during process_completed_futures() add_model_data_to_database() TEST: {e}")
+
     #del models_data            
     #garbage_collection(False, 'process_completed_futures(...)')
-    return completed_eval_futures, completed_train_futures
-
-
-# Function to retry processing with incomplete futures
-def retry_processing(incomplete_train_futures, incomplete_eval_futures, failed_model_params, future_to_params, timeout=None):
-    # Retry processing with incomplete futures using an extended timeout
-    # Wait for completion of eval_futures
-    done_eval, not_done_eval = wait(incomplete_eval_futures, timeout=timeout)  # return_when='FIRST_COMPLETED'
-    #print(f"This is the size of the done_eval list: {len(done_eval)} and this is the size of the not_done_eval list: {len(not_done_eval)}")
-
-    # Wait for completion of train_futures
-    done_train, not_done_train = wait(incomplete_train_futures, timeout=timeout)  # return_when='FIRST_COMPLETED'
-
-    done = done_train.union(done_eval)
-    not_done = not_done_eval.union(not_done_train)
-  
-    completed_train_futures = [f for f in done_train]
-    completed_eval_futures = [f for f in done_eval]
-
-    #logging.info(f"This is the size of completed_train_futures {len(completed_train_futures)} and this is the size of completed_eval_futures {len(completed_eval_futures)}")
-    if len(completed_eval_futures) > 0 or len(completed_train_futures) > 0:
-        process_completed_futures(completed_train_futures, completed_eval_futures) 
-    
-    # Record parameters of still incomplete futures for later review
-    failed_model_params.extend(future_to_params[future] for future in not_done)
-    print("We have exited the retry_preprocessing() method.")
-    logging.info(f"There were {len(not_done_eval)} EVAL documents that couldn't be processed in retry_processing().")
-    logging.info(f"There were {len(not_done_train)} TRAIN documents that couldn't be processed in retry_processing().")
-
-    return failed_model_params
-    #garbage_collection(False, 'retry_processing(...)')
-
-
-# Function to handle failed futures and potentially retry them
-def handle_failed_future(train_model, client, future, future_to_params, train_futures, eval_futures, MAX_RETRIES=1):
-    # Dictionary to keep track of retries for each task
-    task_retries = {}
-    
-    logging.info("We are in the handle_failed_future() method.\n")
-    params = future_to_params[future]
-    attempt = task_retries.get(params, 0)
-    
-    if attempt < MAX_RETRIES:
-        logging.info(f"Retrying task {params} (attempt {attempt + 1}/{MAX_RETRIES})")
-        wait_time = exponential_backoff(attempt)
-        sleep(wait_time)  
-        
-        task_retries[params] = attempt + 1
-        
-        new_future_train = client.submit(train_model, *params)
-        new_future_eval = client.submit(train_model, *params)
-        
-        future_to_params[new_future_train] = params
-        future_to_params[new_future_eval] = params
-        
-        train_futures.append(new_future_train)
-        eval_futures.append(new_future_eval)
-    else:
-        logging.info(f"Task {params} failed after {MAX_RETRIES} attempts. No more retries.")
+    return completed_train_futures, completed_validation_futures, completed_test_futures
