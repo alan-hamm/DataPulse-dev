@@ -1,6 +1,22 @@
-# Developed traditionally with the addition of AI assistance
-# Author: Alan Hamm (pqn7)
+# visualization.py - Visualization Tools for SLIF Topic Modeling
+# Author: Alan Hamm
 # Date: April 2024
+#
+# Description:
+# This script provides visualization tools for exploring and analyzing topic models generated within the
+# Scalable LDA Insights Framework (SLIF). It includes functions for interactive visualizations and static
+# plotting, leveraging pyLDAvis and matplotlib.
+#
+# Functions:
+# - Interactive visualization: Uses pyLDAvis for interactive exploration of LDA topics.
+# - Static plotting: Configures and manages matplotlib plots for visual representation of topics.
+#
+# Dependencies:
+# - Python libraries: os, numpy, logging, pickle
+# - Visualization libraries: pyLDAvis, matplotlib
+#
+# Developed with AI assistance.
+
 
 from .utils import garbage_collection
 import os 
@@ -22,12 +38,10 @@ def create_vis_pylda(ldaModel, corpus, dictionary, topics, filename, CORES, vis_
     create_pylda = None
     #print("We are inside Create Vis.")
     
+    PYLDA_DIR = os.path.join(PYLDA_DIR,vis_root)
     topics_dir = os.path.join(PYLDA_DIR, f"number_of_topics-{topics}")
-    #PYLDA_DIR = os.path.join(topics_dir,vis_root)
-    PYLDA_DIR = os.path.join(topics_dir,vis_root)
-    #PYLDA_DIR = os.path.join(PYLDA_DIR,vis_root)
-    os.makedirs(PYLDA_DIR, exist_ok=True)
-    IMAGEFILE = os.path.join(PYLDA_DIR,f"{filename}.html")
+    os.makedirs(topics_dir, exist_ok=True)
+    IMAGEFILE = os.path.join(topics_dir,f"{filename}.html")
 
     # Prepare the visualization data.
     # Note: sort_topics=False will prevent reordering topics after training.
@@ -56,12 +70,10 @@ def create_vis_pcoa(ldaModel, corpus, topics, filename, vis_root, PCOA_DIR):
     create_pcoa = None
     PCoAfilename = filename
 
+    PCOA_DIR = os.path.join(PCOA_DIR, vis_root)
     topics_dir = os.path.join(PCOA_DIR, f"number_of_topics-{topics}")
-    #PCOA_DIR = os.path.join(topics_dir, vis_root)
-    PCOA_DIR = os.path.join(topics_dir, vis_root)
-    #PCOA_DIR = os.path.join(PCOA_DIR, vis_root)
-    os.makedirs(PCOA_DIR, exist_ok=True)
-    PCoAIMAGEFILE = os.path.join(PCOA_DIR, PCoAfilename)
+    os.makedirs(topics_dir, exist_ok=True)
+    PCoAIMAGEFILE = os.path.join(topics_dir, PCoAfilename)
 
     # try Jensen-Shannon Divergence & Principal Coordinate Analysis (aka Classical Multidimensional Scaling)
     topic_labels = [] # list to store topic labels
