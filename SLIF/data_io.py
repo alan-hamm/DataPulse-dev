@@ -1,5 +1,5 @@
 # Developed traditionally with the addition of AI assistance
-# Author: Alan Hamm (pqn7)
+# Author: Alan Hamm
 # Date: April 2024
 
 import os
@@ -8,12 +8,12 @@ from random import shuffle
 import pandas as pd 
 from .utils import garbage_collection
 
-def get_num_records(filename):
-    with open(filename, 'r', encoding='utf-8', errors='ignore') as jsonfile:
-        data = load(jsonfile)
-        data = data
-        num_samples = len(data)  # Count the total number of samples
-    return num_samples
+#def get_num_records(filename):
+#    with open(filename, 'r', encoding='utf-8', errors='ignore') as jsonfile:
+##        data = load(jsonfile)
+#        data = data
+#        num_samples = len(data)  # Count the total number of samples
+#    return num_samples
 
 def futures_create_lda_datasets(filename, train_ratio, batch_size):
     #with open(filename, 'r', encoding='utf-8', errors='ignore') as jsonfile:
