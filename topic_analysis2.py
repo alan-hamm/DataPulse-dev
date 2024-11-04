@@ -540,6 +540,7 @@ if __name__=="__main__":
     # Determine undrawn combinations
     undrawn_combinations = list(set(combinations) - set(random_combinations))
 
+
     print(f"The random sample combinations contain {len(random_combinations)}. This leaves {len(undrawn_combinations)} undrawn combinations.\n")
     #for record in random_combinations:
     #    print("This is the random combination", record)
@@ -554,250 +555,156 @@ if __name__=="__main__":
 
     TOTAL_COMBINATIONS = len(random_combinations) * (len(scattered_train_data_futures) + len(scattered_validation_data_futures) + len(scattered_test_data_futures))
     progress_bar = tqdm(total=TOTAL_COMBINATIONS, desc="Creating and saving models", file=sys.stdout)
-    # Iterate over the combinations and submit tasks
-    #print(f"Length of random_combinations: {len(random_combinations)}")
 
-    #random_combinations = [
-    #    (35, 0.61, 0.61, 'test'),
-    #    (45, 0.31, 0.91, 'validation'),
-    #    # (add more items for testing if needed)
-    #] * 150  # Ensure list length is sufficient for testing
-    #print("the length of the random combinations", len(random_combinations))
+    # Custom sort order: train first, then validation, then test
+    phase_order = {"train": 0, "validation": 1, "test": 2}
+    sorted_combinations = sorted(
+        random_combinations,
+        key=lambda x: phase_order[x[3]]
+    )
+    # Initialize combined visualization lists outside the loop
+    completed_pylda_vis = []
+    completed_pcoa_vis = []
     train_models_dict = {}
-    for i, (n_topics, alpha_value, beta_value, train_eval_type) in enumerate(random_combinations):
-        print(f"Loop iteration {i+1} - Number of topics: {n_topics}, Alpha: {alpha_value}, Beta: {beta_value}, Type: {train_eval_type}")
+    # Process sorted combinations by train, validation, and test phases
+    for i, (n_topics, alpha_value, beta_value, train_eval_type) in enumerate(sorted_combinations):
 
-        # determine if throttling is needed
-        logging.info("Evaluating if adaptive throttling is necessary (method exponential backoff)...")
-        started, throttle_attempt = time(), 0
+        # Adaptive throttling
+        logging.info("Evaluating if adaptive throttling is necessary...")
+        throttle_attempt = 0
 
-        # https://distributed.dask.org/en/latest/worker-memory.html#memory-not-released-back-to-the-os
-        
         while throttle_attempt < MAX_RETRIES:
             scheduler_info = client.scheduler_info()
             all_workers_below_cpu_threshold = all(worker['metrics']['cpu'] < CPU_UTILIZATION_THRESHOLD for worker in scheduler_info['workers'].values())
             all_workers_below_memory_threshold = all(worker['metrics']['memory'] < MEMORY_UTILIZATION_THRESHOLD for worker in scheduler_info['workers'].values())
 
             if not (all_workers_below_cpu_threshold and all_workers_below_memory_threshold):
-                logging.warning(f"Adaptive throttling (attempt {throttle_attempt} of {MAX_RETRIES-1})")
-                # Uncomment the next line if you want to log hyperparameters information as well.
-                logging.warning(f"for LdaModel hyperparameters combination -- type: {train_eval_type}, topic: {n_topics}, ALPHA: {alpha_values} and ETA {beta_values}")
+                logging.warning(f"Adaptive throttling (attempt {throttle_attempt + 1} of {MAX_RETRIES})")
                 sleep(exponential_backoff(throttle_attempt, BASE_WAIT_TIME=BASE_WAIT_TIME))
                 throttle_attempt += 1
             else:
                 break
 
         if throttle_attempt == MAX_RETRIES:
-            logging.warning("Maximum retries reached. The workers are still above the CPU or Memory threshold.")
-            #garbage_collection(False, 'Max Retries - throttling attempt')
-        else:
-            logging.info("Proceeding with workload as workers are below the CPU and Memory thresholds.")
-
-
-        # TRAINING PHASE
-        num_workers = len(client.scheduler_info()["workers"])
-        for scattered_data in scattered_train_data_futures:
-            try:
-                future = client.submit(
-                    train_model_v2, n_topics, alpha_value, beta_value, scattered_data, "train",
-                    RANDOM_STATE, PASSES, ITERATIONS, UPDATE_EVERY, EVAL_EVERY, num_workers, PER_WORD_TOPICS
-                )
-                train_futures.append(future)
-                logging.info(f"Training future appended. Total train futures: {len(train_futures)}")
-            except Exception as e:
-                logging.error(f"An error occurred in train_model() during training phase: {e}")
-                logging.error(f"TYPE: train -- n_topics: {n_topics}, alpha: {alpha_value}, beta: {beta_value}, phase: train")
-                raise
-        done_train, _ = wait(train_futures, timeout=None)
-
-        # Gather the completed training futures with error handling
-        completed_train_futures = [done.result() for done in done_train]
-
-        # Organize completed_train_futures by n_topics, alpha_value, beta_value for easy lookup
-        for train_result in completed_train_futures:
-            # Debugging output to inspect each result
-            #print(f"\nType of train_result: {type(train_result)}")
-            #print(f"Content of train_result: {train_result}")
-
-            # Extract values, handling cases where they might be lists
-            n_topics = train_result['topics']
-            #print(f"\nThe Number of Topics: {n_topics}")
-            # Extract the first item if alpha_str or beta_str is a list, otherwise use the value as-is
-            alpha_value = train_result['alpha_str'][0] if isinstance(train_result['alpha_str'], list) else train_result['alpha_str']
-            beta_value = train_result['beta_str'][0] if isinstance(train_result['beta_str'], list) else train_result['beta_str']
-            ldamodel = train_result['lda_model']
-
-            # Debugging output for the extracted values
-            #print(f"n_topics: {n_topics}, alpha_value: {alpha_value}, beta_value: {beta_value}")
-
-            # Use a tuple of n_topics, alpha_value, and beta_value as the key
-            try:
-                # Debugging output for the extracted values
-                #print(f"n_topics: {n_topics}, alpha_value: {alpha_value}, beta_value: {beta_value}")
-                train_models_dict[(n_topics, alpha_value, beta_value)] = ldamodel
-            except TypeError as e:
-                print(f"TypeError encountered: {e} - Key: {(n_topics, alpha_value, beta_value)}, Model: {ldamodel}")
-        # Check the keys in train_models_dict
-        print("Keys in train_models_dict:", list(train_models_dict.keys()))
-
-        # VALIDATION PHASE
-        validation_batches = [
-            {'data': tokenized_list, 'n_topics': n, 'alpha': alpha_value, 'beta': beta_value}
-            for tokenized_list, (n, alpha_value, beta_value, _) in zip(scattered_validation_data_futures, random_combinations)
-        ]
-
-        for batch in validation_batches:
-            try:
-                #print("We are before the compute statement")
-
-                # Extract the batch data and hyperparameters
-                validation_data = batch['data']  # This is the list of tokenized sentences
-                n_topics = batch['n_topics']
-                alpha_value = batch['alpha']
-                beta_value = batch['beta']
-                #print(" we made it pass the assignment statements ")
-
-                # Look up the corresponding ldamodel from the training phase
-                model_key = (n_topics, alpha_value, beta_value)
-                if model_key in train_models_dict:
-                    ldamodel = train_models_dict[model_key]
-                    #print(" we made it into the IF block ")
-                else:
-                    logging.error(f"Model for key {model_key} not found in training results.")
-                    continue  # Skip this batch if no corresponding model is found
-                
-
-                # Submit validation task with the matched ldamodel
-                future = client.submit(
-                    train_model_v2, n_topics, alpha_value, beta_value, validation_data, "validation",
-                    RANDOM_STATE, PASSES, ITERATIONS, UPDATE_EVERY, EVAL_EVERY, num_workers, PER_WORD_TOPICS, ldamodel=ldamodel
-                )
-                validation_futures.append(future)
-                logging.info(f"Validation future appended. Total validation futures: {len(validation_futures)}")
-
-            except Exception as e:
-                logging.error(f"An error in train_model() for validation phase: {e}")
-                logging.error(f"TYPE: validation -- n_topics: {n_topics}, alpha: {alpha_value}, beta: {beta_value}, phase: validation")
-
-
-        # Wait for validation futures to complete
-        done_validation, _ = wait(validation_futures, timeout=None)
-        completed_validation_futures = [done.result() for done in done_validation]
-        #for c in completed_validation_futures:
-        #    print(f"\nThis is validation list contents: {c}")
-        #sys.exit()
-
-        # TEST PHASE
-        for scattered_data in scattered_test_data_futures:
-            try:
-                # Retrieve relevant parameters for each test batch
-                test_result = scattered_data.result()  # Access the result of the Future object
-                n_topics = test_result['n_topics']
-                alpha_value = test_result['alpha_value']
-                beta_value = test_result['beta_value']
-
-                # Look up the corresponding ldamodel from the training phase
-                model_key = (n_topics, alpha_value, beta_value)
-                if model_key in train_models_dict:
-                    ldamodel = train_models_dict[model_key]
-                else:
-                    logging.error(f"Model for key {model_key} not found in training results.")
-                    continue  # Skip this batch if no corresponding model is found
-
-                # Submit test task with the matched ldamodel
-                future = client.submit(
-                    train_model_v2, n_topics, alpha_value, beta_value, scattered_data, "test",
-                    RANDOM_STATE, PASSES, ITERATIONS, UPDATE_EVERY, EVAL_EVERY, num_workers, PER_WORD_TOPICS, ldamodel=ldamodel
-                )
-                test_futures.append(future)
-                logging.info(f"Test future appended. Total test futures: {len(test_futures)}")
-            except Exception as e:
-                logging.error(f"An error in train_model() for test phase: {e}")
-                logging.error(f"TYPE: test -- n_topics: {n_topics}, alpha: {alpha_values}, beta: {beta_values}, phase: test")
-
-        # Wait for test futures to complete
-        done_test, _ = wait(test_futures, timeout=None)
-        completed_test_futures = [done.result() for done in done_test]
-
-
-  
-        ########################
-        # PROCESS VISUALIZATIONS
-        ########################
-        # Generate performance log filenames for each phase
-        time_of_vis_call = pd.to_datetime('now').strftime('%Y%m%d%H%M%S%f')
-        PERFORMANCE_TRAIN_LOG = os.path.join(IMAGE_DIR, f"vis_perf_train_{time_of_vis_call}.html")
-        PERFORMANCE_VALIDATION_LOG = os.path.join(IMAGE_DIR, f"vis_perf_validation_{time_of_vis_call}.html")
-        PERFORMANCE_TEST_LOG = os.path.join(IMAGE_DIR, f"vis_perf_test_{time_of_vis_call}.html")
-        del time_of_vis_call
-        
-        #print(f"Number of train futures for visualization: {len(completed_train_futures)}")
-        #print(f"Number of validation futures for visualization: {len(completed_validation_futures)}")
-        #print(f"Number of test futures for visualization: {len(completed_test_futures)}\n")
-
-        num_workers = len(client.scheduler_info()["workers"])
-        
-        #for record in completed_train_futures:
-        #    print(f"{record['time_key']}")
-        #print(f"Train futures: {len(completed_train_futures)}, Validation futures: {len(completed_validation_futures)}, Test futures: {len(completed_test_futures)}")
-        # Run visualizations for each phase
-        # Check if it's entering the visualization processing
-        print(f"Entering visualization process for iteration {i+1}")
-        try:
-            train_pylda_vis, train_pcoa_vis = process_visualizations(client, completed_train_futures, "TRAIN", PERFORMANCE_TRAIN_LOG, num_workers, PYLDA_DIR, PCOA_DIR)
-        except KeyError as e:
-            print(f"KeyError encountered: {e}")
-            continue  # Proceed to the next iteration
-        except Exception as e:
-            print(f"Unexpected error: {e}")
-            break  # Stop the loop if there’s an unexpected error
-
-        print(f"Completed visualization process for iteration {i+1}")
-        """
-        #progress_bar.update()
-        validation_pylda_vis, validation_pcoa_vis = process_visualizations(client, completed_validation_futures, "VALIDATION", PERFORMANCE_VALIDATION_LOG, num_workers, PYLDA_DIR, PCOA_DIR)
-        #progress_bar.update()
-        test_pylda_vis, test_pcoa_vis = process_visualizations(client, completed_test_futures, "TEST", PERFORMANCE_TEST_LOG, num_workers, PYLDA_DIR, PCOA_DIR)
-        #progress_bar.update()
-        #############################
-        # END PROCESS VISUALIZATIONS
-        #############################            
-
-        started = time()
-        completed_pylda_vis = train_pylda_vis + validation_pylda_vis + test_pylda_vis
-        completed_pcoa_vis = train_pcoa_vis + validation_pcoa_vis + test_pcoa_vis
-
+            logging.warning("Maximum retries reached; proceeding despite resource usage.")
         
         num_workers = len(client.scheduler_info()["workers"])
-        logging.info(f"Writing processed completed futures to disk.")
-        futures_length = (len(completed_train_futures)+len(completed_validation_futures)+len(completed_test_futures))
-        completed_train_futures, completed_validation_futures, completed_test_futures = process_completed_futures(CONNECTION_STRING, \
-                                                                                    CORPUS_LABEL, \
-                                                                                    completed_train_futures, \
-                                                                                    completed_validation_futures, \
-                                                                                    completed_test_futures, \
-                                                                                    futures_length, \
-                                                                                    num_workers, \
-                                                                                    BATCH_SIZE, \
-                                                                                    TEXTS_ZIP_DIR, \
-                                                                                    vis_pylda=completed_pylda_vis,
-                                                                                    vis_pcoa=completed_pcoa_vis)
-        """ 
+
+        # Train Phase
+        if train_eval_type == "train":
+            try:
+                for scattered_data in scattered_train_data_futures:
+                    future = client.submit(
+                        train_model_v2, n_topics, alpha_value, beta_value, scattered_data, "train",
+                        RANDOM_STATE, PASSES, ITERATIONS, UPDATE_EVERY, EVAL_EVERY, num_workers, PER_WORD_TOPICS
+                    )
+                    train_futures.append(future)
+
+                done_train, _ = wait(train_futures, timeout=None)
+                completed_train_futures = [done.result() for done in done_train]
+
+                for train_result in completed_train_futures:
+                    model_key = (train_result['topics'], str(train_result['alpha_str'][0]), str(train_result['beta_str'][0]))
+                    train_models_dict[model_key] = train_result['lda_model']
+
+                PERFORMANCE_TRAIN_LOG = os.path.join(IMAGE_DIR, f"vis_perf_train_{pd.to_datetime('now').strftime('%Y%m%d%H%M%S%f')}.html")
+                train_pylda_vis, train_pcoa_vis = process_visualizations(
+                    client, completed_train_futures, "TRAIN", PERFORMANCE_TRAIN_LOG, num_workers, PYLDA_DIR, PCOA_DIR
+                )
+
+                # Accumulate train visualizations into combined lists
+                completed_pylda_vis += train_pylda_vis
+                completed_pcoa_vis += train_pcoa_vis
+            except Exception as e:
+                logging.error(f"Error in train phase: {e}")
+                continue
+
+        # Validation Phase
+        elif train_eval_type == "validation":
+            try:
+                for scattered_data in scattered_validation_data_futures:
+                    model_key = (n_topics, alpha_value, beta_value)
+                    if model_key in train_models_dict:
+                        ldamodel = train_models_dict[model_key]
+                        future = client.submit(
+                            train_model_v2, n_topics, alpha_value, beta_value, scattered_data, "validation",
+                            RANDOM_STATE, PASSES, ITERATIONS, UPDATE_EVERY, EVAL_EVERY, num_workers, PER_WORD_TOPICS, ldamodel=ldamodel
+                        )
+                        validation_futures.append(future)
+
+                done_validation, _ = wait(validation_futures, timeout=None)
+                completed_validation_futures = [done.result() for done in done_validation]
+
+                PERFORMANCE_VALIDATION_LOG = os.path.join(IMAGE_DIR, f"vis_perf_validation_{pd.to_datetime('now').strftime('%Y%m%d%H%M%S%f')}.html")
+                validation_pylda_vis, validation_pcoa_vis = process_visualizations(
+                    client, completed_validation_futures, "VALIDATION", PERFORMANCE_VALIDATION_LOG, num_workers, PYLDA_DIR, PCOA_DIR
+                )
+                # Accumulate validation visualizations into combined lists
+                completed_pylda_vis += validation_pylda_vis
+                completed_pcoa_vis += validation_pcoa_vis
+
+            except Exception as e:
+                logging.error(f"Error in validation phase: {e}")
+                continue
+
+        # Test Phase
+        if train_eval_type == "test":
+            try:
+                for scattered_data in scattered_test_data_futures:
+                    model_key = (n_topics, alpha_value, beta_value)
+                    if model_key in train_models_dict:
+                        ldamodel = train_models_dict[model_key]
+                        future = client.submit(
+                            train_model_v2, n_topics, alpha_value, beta_value, scattered_data, "test",
+                            RANDOM_STATE, PASSES, ITERATIONS, UPDATE_EVERY, EVAL_EVERY, num_workers, PER_WORD_TOPICS, ldamodel=ldamodel
+                        )
+                        test_futures.append(future)
+
+                done_test, _ = wait(test_futures, timeout=None)
+                completed_test_futures = [done.result() for done in done_test]
+
+                PERFORMANCE_TEST_LOG = os.path.join(IMAGE_DIR, f"vis_perf_test_{pd.to_datetime('now').strftime('%Y%m%d%H%M%S%f')}.html")
+                test_pylda_vis, test_pcoa_vis = process_visualizations(
+                    client, completed_test_futures, "TEST", PERFORMANCE_TEST_LOG, num_workers, PYLDA_DIR, PCOA_DIR
+                )
+                # Accumulate test visualizations into combined lists
+                completed_pylda_vis += test_pylda_vis
+                completed_pcoa_vis += test_pcoa_vis
+
+            except Exception as e:
+                logging.error(f"Error in test phase: {e}")
+                continue
+
+            # After processing all phases in the sorted combinations
+            try:
+                if completed_train_futures or completed_validation_futures or completed_test_futures:
+                    process_completed_futures(
+                        CONNECTION_STRING, CORPUS_LABEL,
+                        completed_train_futures, completed_validation_futures, completed_test_futures,
+                        len(completed_train_futures) + len(completed_validation_futures) + len(completed_test_futures),
+                        num_workers, BATCH_SIZE, TEXTS_ZIP_DIR, vis_pylda=completed_pylda_vis, vis_pcoa=completed_pcoa_vis
+                    )
+
+            except Exception as e:
+                logging.error(f"Error processing completed futures: {e}")
+
+
+        # Log the processing time
         elapsed_time = round(((time() - started) / 60), 2)
-        logging.info(f"Finished write processed completed futures to disk in  {elapsed_time} minutes")
-
+        logging.info(f"Finished processing futures to disk in {elapsed_time} minutes")
         progress_bar.update()
 
-        completed_train_futures.clear()
-        completed_validation_futures.clear()
-        completed_test_futures.clear()
-        test_futures.clear()
-        validation_futures.clear()
-        train_futures.clear()
-        client.rebalance()
-         
-    #garbage_collection(False, "Cleaning WAIT -> done, not_done")     
-    progress_bar.close()
+
+
+    progress_bar.close() 
+    completed_train_futures.clear()
+    completed_validation_futures.clear()
+    completed_test_futures.clear()
+    test_futures.clear()
+    validation_futures.clear()
+    train_futures.clear()
+    client.rebalance()
+
             
     client.close()
     cluster.close()
