@@ -4,7 +4,7 @@
 #
 # Description:
 # This script performs large-scale topic modeling analysis on document corpora,
-# utilizing Dask and Gensim within the Scalable LDA Insights Framework (SLIF).
+# utilizing Dask and Gensim within the Unified Topic Modeling and Analysis (UTMA).
 #
 # Usage:
 # Run this script from the terminal with specific parameters for analysis.
@@ -17,7 +17,7 @@
 # Developed with AI assistance.
 
 #%%
-from SLIF import *
+from UTMA import *
 
 import argparse
 
@@ -424,7 +424,7 @@ if __name__=="__main__":
     scattered_validation_data_futures = []
     scattered_test_data_futures = []
     all_futures = []
-
+    
     # Process each batch as it is generated
     for batch_info in futures_create_lda_datasets(DATA_SOURCE, TRAIN_RATIO, VALIDATION_RATIO, FUTURES_BATCH_SIZE):
         #print(f"Received batch: {batch_info['type']}")  # Debugging output
@@ -472,9 +472,9 @@ if __name__=="__main__":
     logging.info(f"Completed creation of train-validation-test split in {round((time() - started)/60,2)} minutes.\n")
     #print("Document scatter across workers complete...\n")
     logging.info("Document scatter across workers complete...")
-    print(f"\nFinal count - Number of training futures: {len(scattered_train_data_futures)}, "
-      f"Number of validation futures: {len(scattered_validation_data_futures)}, "
-      f"Number of test futures: {len(scattered_test_data_futures)}\n")
+    print(f"\nFinal count - Number of training batches: {len(scattered_train_data_futures)}, "
+      f"Number of validation batches: {len(scattered_validation_data_futures)}, "
+      f"Number of test batches: {len(scattered_test_data_futures)}\n")
 
     train_futures = []  # List to store futures for training
     validation_futures = []  # List to store futures for validation
@@ -566,6 +566,7 @@ if __name__=="__main__":
     completed_pylda_vis = []
     completed_pcoa_vis = []
     train_models_dict = {}
+    completed_train_futures, completed_validation_futures, completed_test_futures = [], [], []
     # Process sorted combinations by train, validation, and test phases
     for i, (n_topics, alpha_value, beta_value, train_eval_type) in enumerate(sorted_combinations):
 
@@ -620,7 +621,7 @@ if __name__=="__main__":
                 continue
 
         # Validation Phase
-        elif train_eval_type == "validation":
+        if train_eval_type == "validation":
             try:
                 for scattered_data in scattered_validation_data_futures:
                     model_key = (n_topics, alpha_value, beta_value)
@@ -675,18 +676,18 @@ if __name__=="__main__":
                 logging.error(f"Error in test phase: {e}")
                 continue
 
-            # After processing all phases in the sorted combinations
-            try:
-                if completed_train_futures or completed_validation_futures or completed_test_futures:
-                    process_completed_futures(
-                        CONNECTION_STRING, CORPUS_LABEL,
-                        completed_train_futures, completed_validation_futures, completed_test_futures,
-                        len(completed_train_futures) + len(completed_validation_futures) + len(completed_test_futures),
-                        num_workers, BATCH_SIZE, TEXTS_ZIP_DIR, vis_pylda=completed_pylda_vis, vis_pcoa=completed_pcoa_vis
-                    )
+        # After processing all phases in the sorted combinations
+        try:
+            if completed_train_futures or completed_validation_futures or completed_test_futures:
+                process_completed_futures(
+                    CONNECTION_STRING, CORPUS_LABEL,
+                    completed_train_futures, completed_validation_futures, completed_test_futures,
+                    len(completed_train_futures) + len(completed_validation_futures) + len(completed_test_futures),
+                    num_workers, BATCH_SIZE, TEXTS_ZIP_DIR, vis_pylda=completed_pylda_vis, vis_pcoa=completed_pcoa_vis
+                )
 
-            except Exception as e:
-                logging.error(f"Error processing completed futures: {e}")
+        except Exception as e:
+            logging.error(f"Error processing completed futures: {e}")
 
 
         # Log the processing time

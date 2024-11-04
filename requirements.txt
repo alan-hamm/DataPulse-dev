@@ -9,5 +9,4 @@ numpy==1.26.4
 pandas==2.2.2
 pyLDAvis==3.4.0
 sqlalchemy==2.0.36
-tornado  # Specify version manually if needed
 tqdm==4.66.5

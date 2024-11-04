@@ -4,7 +4,7 @@
 #
 # Description:
 # This script performs large-scale topic modeling analysis on document corpora,
-# utilizing Dask and Gensim within the Scalable LDA Insights Framework (SLIF).
+# utilizing Dask and Gensim within the Unified Topic Modeling and Analysis (UTMA).
 #
 # Usage:
 # Run this script from the terminal with specific parameters for analysis.

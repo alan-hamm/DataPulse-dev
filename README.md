@@ -1,72 +1,28 @@
+# Unified Topic Modeling and Analysis (UTMA)
 
-# Scalable LDA Insights Framework (SLIF)
-
-The **Scalable LDA Insights Framework (SLIF)** is a comprehensive Python package designed to facilitate the analysis and interpretation of large-scale datasets using Latent Dirichlet Allocation (LDA). Developed through extensive research and enhanced with AI-assisted programming, SLIF harnesses robust tools for topic modeling, offering a reliable and scalable framework for transforming unstructured text data into meaningful insights.
-
-## Table of Contents
+### Table of Contents
 - [Overview](#overview)
-- [Features](#features)
+- [Key Features](#key-features)
+- [Example Preprocessing: *Moby Dick*](#example-preprocessing-moby-dick)
+- [Project Structure](#project-structure)
 - [Installation](#installation)
 - [Usage](#usage)
-- [Components](#components)
-- [Configuration](#configuration)
-- [Logging](#logging)
-- [Contributing](#contributing)
-- [License](#license)
+- [Contributions](#contributions)
 
-## Overview
+### Overview
+**Unified Topic Modeling and Analysis (UTMA)** is a flexible and scalable framework designed for comprehensive topic modeling and analysis. Beyond Latent Dirichlet Allocation (LDA), UTMA integrates adaptive resource management, dynamic topic modeling, and advanced analytical capabilities to support large-scale, distributed computations and diachronic analysis. This framework is ideal for tracking topic evolution over time, making it suitable for a variety of document types and research needs.
 
-SLIF provides a flexible, end-to-end solution for large-scale topic modeling, combining powerful libraries and techniques in Python to streamline the entire workflow. At its core, SLIF includes advanced functions for calculating symmetric and asymmetric `alpha` and `beta` parameters (e.g., `calculate_numeric_alpha` and `calculate_numeric_beta`), leveraging the `Decimal` library for precision. These components ensure accuracy and fine-tuning for LDA, making it suitable for complex data analysis tasks.
+### Key Features
+- **Adaptive Resource Management**: UTMA leverages Dask for distributed parallel processing, dynamically adjusting resources to efficiently handle large datasets and high computational loads.
+- **Comprehensive Topic Modeling**: Supports customizable LDA model configurations and hyperparameter tuning, enabling detailed exploration of topics in diverse document collections.
+- **Diachronic Analysis(_Pending_)**: Facilitates tracking and analyzing topic shifts over time, particularly useful for examining historical changes or comparing topics across decades.
+- **Detailed Metadata Tracking**: Records extensive metadata for each batch, including dynamic core counts, model parameters, and evaluation scores, ensuring complete reproducibility and transparency.
+- **Support for Multiple Document Types**: Designed to handle diverse document sources, from medical journals and newspapers to novels, UTMA can analyze any textual dataset requiring topic-based insights.
+- **Integrated Data Persistence and Storage**: Metadata and model outputs are stored in a PostgreSQL database, supporting complex queries and retrieval for downstream analysis.
 
-SLIF’s development foundation rests on extensive research, grounded in systematic reviews of online resources, official documentation, community insights, and textbooks. This rigorous approach is further supported by real-time AI assistance, which contributes to coding, debugging, and templating, adding an intelligent "second pair" in pair programming. The combination of research-driven methodology with AI guidance ensures SLIF’s features are reliable and finely tuned to best practices in topic modeling and software development.
-
-## Features
-
-- **Scalable LDA Modeling**: Provides a high-performance `train_model` function for training LDA models with extensive configuration options.
-- **Parallel & Concurrent Processing**: SLIF leverages Dask to support multithreading and distributed processing for large datasets, making parallel and concurrent processing a core feature.
-- **Precise Parameter Calculation**: Calculates symmetric and asymmetric parameters with `Decimal` precision.
-- **Comprehensive Data I/O**: Facilitates efficient handling of JSON-formatted text data through `get_num_records` and `futures_create_lda_datasets`.
-- **Modular Structure**: Organized into standalone modules for data handling, modeling, visualization, and logging.
-- **Advanced Visualization**: Offers `create_vis`, using pyLDAvis for interactive topic visualizations and Principal Coordinate Analysis (PCoA) for dimensionality reduction.
-- **Detailed Logging**: Logs each step of the process, storing errors and runtime feedback for simplified debugging, with real-time monitoring available through Dask’s dashboard.
-
-## Installation
-
-### Prerequisites
-
-- Python 3.12.0
-- Anaconda (recommended for dependency management)
-- PostgreSQL (required for data storage and integration)
-
-### Step-by-Step Installation
-
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/yourusername/SLIF.git
-   cd SLIF
-   ```
-
-2. Create and activate a new conda environment:
-   ```bash
-   conda create -n slif_env python=3.12.0
-   conda activate slif_env
-   ```
-
-3. Install the required packages:
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-4. Set up PostgreSQL:
-   - Install PostgreSQL and create a database instance.
-   - Configure database connection details in SLIF’s configuration to enable database writing and data persistence.
-
-## Usage
-
-1. **Prepare your data**: Ensure that your dataset is preprocessed and formatted as a list of lists, where each inner list represents a tokenized document (e.g., a paragraph or sentence). This structure is essential for SLIF's LDA training functions to process the data correctly. Common preprocessing steps include tokenization, removing stop words, and lemmatization.
-
-   ### Example Data Format
-   Here’s a sample structure from *Moby Dick* where each paragraph is tokenized as a list of words:
+### Example Preprocessing: *Moby Dick*
+As an example of how data must be preprocessed for UTMA, consider analyzing *Moby Dick* by Herman Melville. Each chapter of the novel can be treated as an individual document within the corpus, requiring tokenization and conversion to a suitable format, such as a bag-of-words model. By segmenting the text in this way, UTMA can uncover recurring themes and track the evolution of topics like "whaling," "obsession," and "fate" across the chapters. Preprocessing each chapter separately prepares the text for topic modeling and diachronic analysis.
+   **_preprocessed chapters_**
    ```json
    [
      ["precisely", "little", "particular", "interest", "think", "little", "watery", "drive", "spleen", "regulate", "circulation", "grow", "whenever", "drizzly", "involuntarily", "pause", "coffin", "warehouse", "bring", "funeral", "especially", "require", "strong", "principle", "prevent", "deliberately", "step", "street", "methodically", "knock", "people", "account", "substitute", "pistol", "philosophical", "flourish", "throw", "quietly", "surprising", "almost", "degree", "cherish", "nearly", "feeling"],
@@ -74,80 +30,88 @@ SLIF’s development foundation rests on extensive research, grounded in systema
      ["dreamy", "afternoon", "thence", "northward", "see?—poste", "silent", "sentinel", "thousand", "thousand", "mortal", "reverie", "lean", "spile", "seat", "look", "bulwark", "rigging", "strive", "well", "seaward", "landsman", "plaster", "counter", "nail", "bench", "clinch", "field"]
    ]
    ```
+*Source: [Project Gutenberg](https://www.gutenberg.org/files/2701/2701-h/2701-h.htm)  
+Release Date: June, 2001 \[eBook #2701\]  
+Most recently updated: August 18, 2021*
 
-2. **Adjust configuration settings**: Customize any necessary settings in the configuration file to match your environment.
 
-3. **Run the main script**: Execute `topic_analysis.py` with desired parameters:
+### Project Structure
+The project is composed of modular scripts, each dedicated to a specific aspect of the pipeline, including:
+
+### Prerequisites
+- **Python** 3.12.0
+- **Anaconda** (recommended for dependency management)
+- **PostgreSQL** (required for data storage and integration)
+
+- **Data Preprocessing**: Handles initial data preparation, including tokenization and formatting, for ingestion by the modeling pipeline.
+- **Dynamic Topic Model Training** (`topic_model_trainer.py`): Manages the LDA model training, evaluation, and metadata generation, with adaptive scaling to optimize resource usage.
+- **Visualization and Analysis**: Generates and saves visualizations (e.g., topic coherence plots) for exploring model outputs interactively.
+- **Diachronic Analysis (Planned)**: A dedicated module for analyzing and visualizing how topics evolve over time.
+- **Database Integration**: Stores all metadata and modeling outputs in a PostgreSQL database for easy access and persistence.
+
+--- 
+
+### Installation
+To install UTMA, clone the repository and set up the required Python environment:
+
+### Steps
+
+1. **Clone the Repository**
+
    ```bash
-   python topic_analysis.py --params <parameter_values>
-   ```
+   git clone https://github.com/your-username/your-repo-name.git
+   cd your-repo-name
 
-### Script Parameters
-
-SLIF’s main script allows for dynamic parameter configuration to customize LDA training, data processing, and visualization. Refer to each script’s documentation for specific parameters.
-
-## Components
-
-The SLIF framework consists of well-defined modules that each handle a specific aspect of the LDA workflow:
-
-### 1. **topic_analysis.py**
-
-   Orchestrates the entire LDA pipeline from data processing to model training and visualization. It manages error handling and coordinates various framework components.
-
-### 2. **alpha_eta.py**
-
-   Contains functions for calculating symmetric and asymmetric `alpha` and `beta` parameters, crucial for optimizing LDA model topic distribution. The use of the `Decimal` library enhances precision in these calculations.
-
-### 3. **data_io.py**
-
-   Manages data I/O operations, with functions for loading, preprocessing, and structuring data. It supports JSON format and includes utilities like `get_num_records` for efficient data handling.
-
-### 4. **logging_helper.py**
-
-   Implements a logging framework to capture runtime information and errors. It redirects errors to `stderr_out.txt`, allowing users to troubleshoot issues efficiently.
-
-### 5. **model.py**
-
-   Houses the LDA model training process using Gensim’s LDA module. The `train_model` function is highly customizable, supporting corpus creation, dictionary generation, and coherence scoring.
-
-### 6. **process_futures.py**
-
-   Facilitates concurrent processing with `concurrent.futures`, enabling parallel LDA training on large datasets. It supports multiprocessing and distributed computing through Dask, making the framework more scalable.
-
-### 7. **utils.py**
-
-   Provides general-purpose utility functions that support various components of the framework, streamlining tasks such as data transformations and helper functions.
-
-### 8. **visualization.py**
-
-   Generates visualizations using pyLDAvis and PCoA, creating interactive and informative representations of LDA topics, including term relevance and topic distributions.
-
-### 9. **WriteToPostgres.py**
-
-   Integrates with PostgreSQL, a necessary component for SLIF’s database functions. It enables users to store model outputs and metadata, ensuring model results can be further analyzed and persistently stored.
-
-## Configuration
-
-Configuration is designed to be easily modifiable. Key settings for LDA parameters, file paths, and database connections are located in the configuration section of `topic_analysis.py`. SLIF allows users to dynamically set these parameters using environment variables, making it flexible for different environments and workflows.
-
-## Logging
-
-SLIF incorporates detailed logging throughout the modeling and data processing pipeline. The logs are stored in `stderr_out.txt`, capturing errors and providing status updates that aid in debugging and monitoring. For real-time monitoring and diagnostics, Dask’s **Dashboard** offers a comprehensive view of SLIF's processing tasks, including task progress, CPU usage, memory load, and other performance metrics. This Dashboard enables users to track and manage computational workloads as they run, providing insights into system resource usage and helping to optimize performance in real time.
-
-### Example of Logging Setup in `topic_analysis.py`:
-
-```python
-sys.stderr = open(f"{LOG_DIRECTORY}/stderr_out.txt", "w")
+2. **Set Up the Environment**
+Using Anaconda is recommended for managing dependencies:
+```bash
+   conda create -n utma_env python=3.12.0
+   conda activate utma_env
 ```
 
-This approach ensures that any issues are logged systematically, providing users with insights into each step of the modeling process, while Dask’s Dashboard gives a powerful visual interface for real-time monitoring.
+3. **Install Dependencies**
+Install the required packages listed in requirements.txt:
 
-## Contributing
+4. **Additional Configuration**
+For Dask's distributed functionality, ensure dask[distributed] is installed:
+```bash
+   pip install <font color="green">"dask[distributed]==2024.8.2"</font>
+```
 
-We welcome contributions! Fork the repository, create a new branch, and submit a pull request. Please follow our contribution guidelines and adhere to the code style standards for consistency.
+5. **Set Up PostgreSQL Database**
+Ensure PostgreSQL is installed and running. Create a new database to store UTMA data, and update the connection settings in the project configuration files.
 
-## License
+6. **Run the Application**
 
-This project is licensed under the MIT License.
+## Usage
+After setup, run the main script to start the UTMA framework. Here’s an example command:
+
+   ```bash
+   python topic_model_trainer.py \
+       --username "postgres" \
+       --password "admin" \
+       --database "UTMA" \
+       --corpus_label "moby_dick" \
+       --data_source "/path/to/your/data/tokenized-sentences/moby_dick.json" \
+       --start_topics 20 \
+       --end_topics 60 \
+       --step_size 5 \
+       --num_workers 8 \
+       --max_workers 14 \
+       --num_threads 8 \
+       --max_memory 5 \
+       --mem_threshold 4 \
+       --max_cpu 110 \
+       --futures_batches 100 \
+       --base_batch_size 90 \
+       --max_batch_size 120 \
+       --log_dir "/path/to/your/log/" \
+       --root_dir "/path/to/your/root/" \
+       2>"/path/to/your/log/terminal_output.txt"
+```
+
+This command manages the distribution of resources, saves model outputs, and logs metadata directly to the database.
+
+_Last updated: 2024-11-02_
 
 --- 
