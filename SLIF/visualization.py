@@ -35,23 +35,20 @@ import logging
 plt.rcParams['figure.max_open_warning'] = 0 # suppress memory warning msgs re too many plots being open simultaneously
 
 
-def create_vis_pylda(ldaModel, corpus, dictionary, topics, phase_name, filename, CORES, vis_root, PYLDA_DIR):
+def create_vis_pylda(ldaModel, corpus, dictionary, topics, phase_name, filename, CORES, PYLDA_DIR):
     create_pylda = None
     #print("We are inside Create Vis.")
-    
-    PYLDA_DIR = os.path.join(PYLDA_DIR, phase_name)
-    os.makedirs(PYLDA_DIR, exist_ok=True)
-    logging.info(f"Directory created: {PYLDA_DIR}")
+    try:
+        PYLDA_DIR = os.path.join(PYLDA_DIR, phase_name, f"number_of_topics-{topics}")
+        os.makedirs(PYLDA_DIR, exist_ok=True)
+        if os.path.exists(PYLDA_DIR):
+            logging.info(f"Confirmed that directory exists: {PYLDA_DIR}")
+        else:
+            logging.error(f"Directory creation failed for: {PYLDA_DIR}")
 
-    PYLDA_DIR = os.path.join(PYLDA_DIR, vis_root)
-    os.makedirs(PYLDA_DIR, exist_ok=True)
-    logging.info(f"Directory created: {PYLDA_DIR}")
-
-    PYLDA_DIR = os.path.join(PYLDA_DIR, f"number_of_topics-{topics}")
-    os.makedirs(PYLDA_DIR, exist_ok=True)
-    logging.info(f"Directory created: {PYLDA_DIR}")
-
-    IMAGEFILE = os.path.join(PYLDA_DIR,f"{filename}.html")
+        IMAGEFILE = os.path.join(PYLDA_DIR,f"{filename}.html")
+    except Exception as e:
+         logging.error(f"Couldn't create the pyLDA file: {e}")
 
     # Prepare the visualization data.
     # Note: sort_topics=False will prevent reordering topics after training.
@@ -76,23 +73,21 @@ def create_vis_pylda(ldaModel, corpus, dictionary, topics, phase_name, filename,
     return (filename, create_pylda)
 
 
-def create_vis_pcoa(ldaModel, corpus, topics, phase_name, filename, vis_root, PCOA_DIR):
+def create_vis_pcoa(ldaModel, corpus, topics, phase_name, filename, PCOA_DIR):
     create_pcoa = None
     PCoAfilename = filename
 
-    PCOA_DIR = os.path.join(PCOA_DIR, phase_name)
-    os.makedirs(PCOA_DIR, exist_ok=True)
-    logging.info(f"Directory created: {PCOA_DIR}")
+    try:
+        PCOA_DIR = os.path.join(PCOA_DIR, phase_name, f"number_of_topics-{topics}")
+        os.makedirs(PCOA_DIR, exist_ok=True)
+        if os.path.exists(PCOA_DIR):
+            logging.info(f"Confirmed that directory exists: {PCOA_DIR}")
+        else:
+            logging.error(f"Directory creation failed for: {PCOA_DIR}")
 
-    PCOA_DIR = os.path.join(PCOA_DIR, vis_root)
-    os.makedirs(PCOA_DIR, exist_ok=True)
-    logging.info(f"Directory created: {PCOA_DIR}")
-
-    PCOA_DIR = os.path.join(PCOA_DIR, f"number_of_topics-{topics}")
-    os.makedirs(PCOA_DIR, exist_ok=True)
-    logging.info(f"Directory created: {PCOA_DIR}")
-
-    PCoAIMAGEFILE = os.path.join(PCOA_DIR, PCoAfilename)
+        PCoAIMAGEFILE = os.path.join(PCOA_DIR, PCoAfilename)
+    except Exception as e:
+         logging.error(f"Couldn't create PCoA file: {e}")
 
     # try Jensen-Shannon Divergence & Principal Coordinate Analysis (aka Classical Multidimensional Scaling)
     topic_labels = [] # list to store topic labels
@@ -169,50 +164,45 @@ def process_visualizations(client, phase_results, phase_name, performance_log, c
 
         processed_results = set()  # Track processed result hashes
 
-        for result_dicts in phase_results:
-            if isinstance(result_dicts, list):
-                for result_dict in result_dicts:
-                    # Process as usual
-                    unique_id = result_dict.get('time_key')
-                    if unique_id is None:
-                        print("Warning: 'time_key' is missing in result_dict.")
-                        continue
+        for result_dict in phase_results:
+                print("We are inside the isinstance().")
+                # Process as usual
+                unique_id = result_dict.get('time_key')
+                if unique_id is None:
+                    print("Warning: 'time_key' is missing in result_dict.")
+                    continue
 
-                    try:
-                            vis_future_pylda = client.submit(
-                                create_vis_pylda,
-                                result_dict['lda_model'],
-                                result_dict['corpus'],
-                                result_dict['dictionary'],
-                                result_dict['topics'],
-                                phase_name,
-                                unique_id,  # filename
-                                cores,
-                                result_dict['text_md5'],  # vis_root
-                                pylda_dir
-                            )
-                            visualization_futures_pylda.append(vis_future_pylda)
-                    except Exception as e:
-                            logging.error(f"Error in create_vis_pylda() Dask operation: {e}")
-                            logging.error(f"TYPE: pyLDA -- MD5: {result_dict['text_md5']}")
+                try:
+                    vis_future_pylda = client.submit(
+                        create_vis_pylda,
+                        result_dict['lda_model'],
+                        result_dict['corpus'],
+                        result_dict['dictionary'],
+                        result_dict['topics'],
+                        phase_name,
+                        result_dict['text_md5'],  # filename
+                        cores,
+                        pylda_dir
+                    )
+                    visualization_futures_pylda.append(vis_future_pylda)
+                except Exception as e:
+                    logging.error(f"Error in create_vis_pylda() Dask operation: {e}")
+                    logging.error(f"TYPE: pyLDA -- MD5: {result_dict['text_md5']}")
 
-                    try:
-                            vis_future_pcoa = client.submit(
-                                create_vis_pcoa,
-                                result_dict['lda_model'],
-                                result_dict['corpus'],
-                                result_dict['topics'],  # f'number_of_topics-{topics}'
-                                phase_name,
-                                unique_id,  # filename
-                                result_dict['text_md5'],  # vis_root
-                                pcoa_dir
-                            )
-                            visualization_futures_pcoa.append(vis_future_pcoa)
-                    except Exception as e:
+                try:
+                    vis_future_pcoa = client.submit(
+                        create_vis_pcoa,
+                        result_dict['lda_model'],
+                        result_dict['corpus'],
+                        result_dict['topics'],  # f'number_of_topics-{topics}'
+                        phase_name,
+                        result_dict['text_md5'],  # filename
+                        pcoa_dir
+                    )
+                    visualization_futures_pcoa.append(vis_future_pcoa)
+                except Exception as e:
                             logging.error(f"Error in create_vis_pcoa() Dask operation: {e}")
                             logging.error(f"TYPE: PCoA -- MD5: {result_dict['text_md5']}")
-                else:
-                    logging.warning(f"Skipping unexpected data structure in phase_results: {type(result_dicts)} - Content: {repr(result_dicts)[:200]}")
 
         # Wait for all visualization tasks to complete
         logging.info(f"Executing WAIT on {phase_name} pyLDA visualizations: {len(visualization_futures_pylda)} futures.")
