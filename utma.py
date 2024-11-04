@@ -685,27 +685,22 @@ if __name__=="__main__":
                     len(completed_train_futures) + len(completed_validation_futures) + len(completed_test_futures),
                     num_workers, BATCH_SIZE, TEXTS_ZIP_DIR, vis_pylda=completed_pylda_vis, vis_pcoa=completed_pcoa_vis
                 )
-
         except Exception as e:
             logging.error(f"Error processing completed futures: {e}")
-
 
         # Log the processing time
         elapsed_time = round(((time() - started) / 60), 2)
         logging.info(f"Finished processing futures to disk in {elapsed_time} minutes")
         progress_bar.update()
+    
+        completed_train_futures.clear()
+        completed_validation_futures.clear()
+        completed_test_futures.clear()
+        test_futures.clear()
+        validation_futures.clear()
+        train_futures.clear()
+        client.rebalance()
 
-
-
-    progress_bar.close() 
-    completed_train_futures.clear()
-    completed_validation_futures.clear()
-    completed_test_futures.clear()
-    test_futures.clear()
-    validation_futures.clear()
-    train_futures.clear()
-    client.rebalance()
-
-            
+    progress_bar.close()        
     client.close()
     cluster.close()
