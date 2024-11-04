@@ -59,9 +59,9 @@ def futures_create_lda_datasets(filename, train_ratio, validation_ratio, batch_s
             train_data_batch = [data[idx] for idx in train_indices_batch]
             if len(train_data_batch) > 0:
                 cumulative_count += len(train_data_batch)
-                print(f"Yielding train batch: {len(train_data_batch)}, cumulative_count: {cumulative_count}")
+                #print(f"Yielding train batch: {len(train_data_batch)}, cumulative_count: {cumulative_count}")
                 yield {
-                    'type': 'train',
+                    'type': "train",
                     'data': train_data_batch,
                     'indices_batch': train_indices_batch,
                     'cumulative_count': cumulative_count,
@@ -75,7 +75,7 @@ def futures_create_lda_datasets(filename, train_ratio, validation_ratio, batch_s
             validation_data_batch = [data[idx] for idx in validation_indices_batch]
             if len(validation_data_batch) > 0:
                 cumulative_count += len(validation_data_batch)
-                print(f"Yielding validation batch: {len(validation_data_batch)}, cumulative_count: {cumulative_count}")
+                #print(f"Yielding validation batch: {len(validation_data_batch)}, cumulative_count: {cumulative_count}")
                 yield {
                     'type': 'validation',
                     'data': validation_data_batch,
@@ -91,7 +91,7 @@ def futures_create_lda_datasets(filename, train_ratio, validation_ratio, batch_s
             test_data_batch = [data[idx] for idx in test_indices_batch]
             if len(test_data_batch) > 0:
                 cumulative_count += len(test_data_batch)
-                print(f"Yielding test batch: {len(test_data_batch)}, cumulative_count: {cumulative_count}")
+                #print(f"Yielding test batch: {len(test_data_batch)}, cumulative_count: {cumulative_count}")
                 yield {
                     'type': 'test',
                     'data': test_data_batch,
@@ -110,6 +110,7 @@ def process_completed_futures(connection_string, corpus_label, \
                             batchsize, texts_zip_dir, vis_pylda=None, vis_pcoa=None):
 
     # Create a mapping from model_data_id to visualization results
+    #his is the vis_pyldaprint(f"This is the vis_pylda: {vis_pylda}")
     pylda_results_map = {vis_result[0]: vis_result[1:] for vis_result in vis_pylda if vis_result}
     pcoa_results_map = {vis_result[0]: vis_result[1:] for vis_result in vis_pcoa if vis_result}
     # do union of items
@@ -133,92 +134,95 @@ def process_completed_futures(connection_string, corpus_label, \
     #print(f"this is the vis_results_map(): {vis_results_map}")
 
     # Process training futures
-    for future in completed_train_futures:
-        try:
-            models_data = future.result()  # This should be a list of dictionaries
-            if not isinstance(models_data, list):
-                models_data = [models_data]  # Ensure it is a list
+    for futures in completed_train_futures:
+        for future in futures:
+            try:
+                models_data = future.result()  # This should be a list of dictionaries
+                if not isinstance(models_data, list):
+                    models_data = [models_data]  # Ensure it is a list
 
-            for model_data in models_data:
-                unique_id = model_data['time_key']
-                
-                # Retrieve visualization results using filename hash as key
-                if unique_id in vis_results_map:
-                    #print(f"We are in the process_completed mapping time hash key.")
-                    create_pylda, create_pcoa = vis_results_map[unique_id]
-                    model_data['create_pylda'] = create_pylda[0]
-                    model_data['create_pcoa'] = create_pcoa[0]
-                    model_data['num_documents'] = num_documents
-                    model_data['batch_size'] = batchsize
-                    model_data['num_workers'] = workers
-                    #logging.info(f"TRAIN Assigned 'create_pylda': {model_data['create_pylda']}, 'create_pcoa': {model_data['create_pcoa']}")
-        except Exception as e:
-            logging.error(f"Error occurred during process_completed_futures() TRAIN: {e}")
-        try:
-                DynamicModelMetadata = create_dynamic_table_class(corpus_label)
-                create_table_if_not_exists(DynamicModelMetadata, connection_string)
-                add_model_data_to_database(model_data, corpus_label, connection_string,
-                                        num_documents, workers, batchsize, texts_zip_dir)
-        except Exception as e:
-            logging.error(f"Error occurred during process_completed_futures() add_model_data_to_database() TRAIN: {e}")
+                for model_data in models_data:
+                    unique_id = model_data['time_key']
+                    
+                    # Retrieve visualization results using filename hash as key
+                    if unique_id in vis_results_map:
+                        #print(f"We are in the process_completed mapping time hash key.")
+                        create_pylda, create_pcoa = vis_results_map[unique_id]
+                        model_data['create_pylda'] = create_pylda[0]
+                        model_data['create_pcoa'] = create_pcoa[0]
+                        model_data['num_documents'] = num_documents
+                        model_data['batch_size'] = batchsize
+                        model_data['num_workers'] = workers
+                        #logging.info(f"TRAIN Assigned 'create_pylda': {model_data['create_pylda']}, 'create_pcoa': {model_data['create_pcoa']}")
+            except Exception as e:
+                logging.error(f"Error occurred during process_completed_futures() TRAIN: {e}")
+            try:
+                    DynamicModelMetadata = create_dynamic_table_class(corpus_label)
+                    create_table_if_not_exists(DynamicModelMetadata, connection_string)
+                    add_model_data_to_database(model_data, corpus_label, connection_string,
+                                            num_documents, workers, batchsize, texts_zip_dir)
+            except Exception as e:
+                logging.error(f"Error occurred during process_completed_futures() add_model_data_to_database() TRAIN: {e}")
 
     # Process evaluation futures
     #vis_futures = []
-    for future in completed_validation_futures:
-        try:
-            models_data = future.result()  # This should be a list of dictionaries
-            if not isinstance(models_data, list):
-                models_data = [models_data]  # Ensure it is a list
+    for futures in completed_validation_futures:
+        for future in futures:
+            try:
+                models_data = future.result()  # This should be a list of dictionaries
+                if not isinstance(models_data, list):
+                    models_data = [models_data]  # Ensure it is a list
 
-            for model_data in models_data:
-                unique_id = model_data['time_key']
-                
-                # Retrieve visualization results using filename hash as key
-                if unique_id in vis_results_map:
-                    create_pylda, create_pcoa = vis_results_map[unique_id]
-                    model_data['create_pylda'] = create_pylda[0]
-                    model_data['create_pcoa'] = create_pcoa[0]
-                    model_data['num_documents'] = num_documents
-                    model_data['batch_size'] = batchsize
-                    model_data['num_workers'] = workers
-                    #logging.info(f"VALIDATION Assigned 'create_pylda': {model_data['create_pylda']}, 'create_pcoa': {model_data['create_pcoa']}")
-        except Exception as e:
-            logging.error(f"Error occurred during process_completed_futures() EVAL: {e}")
-        try:
-            DynamicModelMetadata = create_dynamic_table_class(corpus_label)
-            create_table_if_not_exists(DynamicModelMetadata, connection_string)
-            add_model_data_to_database(model_data, corpus_label, connection_string,
-                                        num_documents, workers, batchsize, texts_zip_dir)
-        except Exception as e:
-            logging.error(f"Error occurred during process_completed_futures() add_model_data_to_database() VALIDATION: {e}")
+                for model_data in models_data:
+                    unique_id = model_data['time_key']
+                    
+                    # Retrieve visualization results using filename hash as key
+                    if unique_id in vis_results_map:
+                        create_pylda, create_pcoa = vis_results_map[unique_id]
+                        model_data['create_pylda'] = create_pylda[0]
+                        model_data['create_pcoa'] = create_pcoa[0]
+                        model_data['num_documents'] = num_documents
+                        model_data['batch_size'] = batchsize
+                        model_data['num_workers'] = workers
+                        #logging.info(f"VALIDATION Assigned 'create_pylda': {model_data['create_pylda']}, 'create_pcoa': {model_data['create_pcoa']}")
+            except Exception as e:
+                logging.error(f"Error occurred during process_completed_futures() EVAL: {e}")
+            try:
+                DynamicModelMetadata = create_dynamic_table_class(corpus_label)
+                create_table_if_not_exists(DynamicModelMetadata, connection_string)
+                add_model_data_to_database(model_data, corpus_label, connection_string,
+                                            num_documents, workers, batchsize, texts_zip_dir)
+            except Exception as e:
+                logging.error(f"Error occurred during process_completed_futures() add_model_data_to_database() VALIDATION: {e}")
         
-    for future in completed_test_futures:
-        try:
-            models_data = future.result()  # This should be a list of dictionaries
-            if not isinstance(models_data, list):
-                models_data = [models_data]  # Ensure it is a list
+    for futures in completed_test_futures:
+        for future in futures:
+            try:
+                models_data = future.result()  # This should be a list of dictionaries
+                if not isinstance(models_data, list):
+                    models_data = [models_data]  # Ensure it is a list
 
-            for model_data in models_data:
-                unique_id = model_data['time_key']
-                
-                # Retrieve visualization results using filename hash as key
-                if unique_id in vis_results_map:
-                    create_pylda, create_pcoa = vis_results_map[unique_id]
-                    model_data['create_pylda'] = create_pylda[0]
-                    model_data['create_pcoa'] = create_pcoa[0]
-                    model_data['num_documents'] = num_documents
-                    model_data['batch_size'] = batchsize
-                    model_data['num_workers'] = workers
-                    #logging.info(f"TEST Assigned 'create_pylda': {model_data['create_pylda']}, 'create_pcoa': {model_data['create_pcoa']}")
-        except Exception as e:
-            logging.error(f"Error occurred during process_completed_futures() EVAL: {e}")
-        try:
-            DynamicModelMetadata = create_dynamic_table_class(corpus_label)
-            create_table_if_not_exists(DynamicModelMetadata, connection_string)
-            add_model_data_to_database(model_data, corpus_label, connection_string,
-                                        num_documents, workers, batchsize, texts_zip_dir)
-        except Exception as e:
-            logging.error(f"Error occurred during process_completed_futures() add_model_data_to_database() TEST: {e}")
+                for model_data in models_data:
+                    unique_id = model_data['time_key']
+                    
+                    # Retrieve visualization results using filename hash as key
+                    if unique_id in vis_results_map:
+                        create_pylda, create_pcoa = vis_results_map[unique_id]
+                        model_data['create_pylda'] = create_pylda[0]
+                        model_data['create_pcoa'] = create_pcoa[0]
+                        model_data['num_documents'] = num_documents
+                        model_data['batch_size'] = batchsize
+                        model_data['num_workers'] = workers
+                        #logging.info(f"TEST Assigned 'create_pylda': {model_data['create_pylda']}, 'create_pcoa': {model_data['create_pcoa']}")
+            except Exception as e:
+                logging.error(f"Error occurred during process_completed_futures() EVAL: {e}")
+            try:
+                DynamicModelMetadata = create_dynamic_table_class(corpus_label)
+                create_table_if_not_exists(DynamicModelMetadata, connection_string)
+                add_model_data_to_database(model_data, corpus_label, connection_string,
+                                            num_documents, workers, batchsize, texts_zip_dir)
+            except Exception as e:
+                logging.error(f"Error occurred during process_completed_futures() add_model_data_to_database() TEST: {e}")
 
     #del models_data            
     #garbage_collection(False, 'process_completed_futures(...)')
