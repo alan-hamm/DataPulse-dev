@@ -107,7 +107,6 @@ def create_dynamic_table_class(table_name):
 
         'per_word_topics' : Column(Boolean),
         'show_topics': Column(JSONB),
-        'top_words' : Column(TEXT) , # Assuming top_words is a long string or JSON serializable
 
         # For lda_model, corpus, and dictionary, if they are binary blobs:
         #'lda_model' : Column(LargeBinary),
