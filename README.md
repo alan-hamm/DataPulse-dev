@@ -30,9 +30,9 @@ As an example of how data must be preprocessed for UTMA, consider analyzing *Mob
      ["dreamy", "afternoon", "thence", "northward", "see?—poste", "silent", "sentinel", "thousand", "thousand", "mortal", "reverie", "lean", "spile", "seat", "look", "bulwark", "rigging", "strive", "well", "seaward", "landsman", "plaster", "counter", "nail", "bench", "clinch", "field"]
    ]
    ```
-<span style="font-size:smaller;">*Source: [Project Gutenberg](https://www.gutenberg.org/files/2701/2701-h/2701-h.htm)  
+<sub>*Source: [Project Gutenberg](https://www.gutenberg.org/files/2701/2701-h/2701-h.htm)  
 Release Date: June, 2001 [eBook #2701]  
-Most recently updated: August 18, 2021*</span>
+Most recently updated: August 18, 2021*</sub>
 
 
 
@@ -47,7 +47,7 @@ The project is composed of modular scripts, each dedicated to a specific aspect 
 - **Data Preprocessing**: Handles initial data preparation, including tokenization and formatting, for ingestion by the modeling pipeline.
 - **Dynamic Topic Model Training** (`topic_model_trainer.py`): Manages the LDA model training, evaluation, and metadata generation, with adaptive scaling to optimize resource usage.
 - **Visualization and Analysis**: Generates and saves visualizations (e.g., topic coherence plots) for exploring model outputs interactively.
-- **Diachronic Analysis (Planned)**: A dedicated module for analyzing and visualizing how topics evolve over time.
+- **Diachronic Analysis (_Planned_)**: A dedicated module for analyzing and visualizing how topics evolve over time.
 - **Database Integration**: Stores all metadata and modeling outputs in a PostgreSQL database for easy access and persistence.
 
 --- 
@@ -71,12 +71,18 @@ Using Anaconda is recommended for managing dependencies:
 ```
 
 3. **Install Dependencies**
-Install the required packages listed in requirements.txt:
+   
+   - Open your terminal and run the following command to install the required packages listed in `requirements.txt`:
 
-4. **Additional Configuration**
-For Dask's distributed functionality, ensure dask[distributed] is installed:
-```bash
-   pip install <span style="color:green">"dask[distributed]==2024.8.2"</span>
+     ```bash
+     $ pip install -r requirements.txt
+     ```
+
+   - For Dask's distributed functionality, ensure `dask[distributed]` is installed:
+
+     ```bash
+     $ pip install dask[distributed]=="2024.8.2"
+     ```
 ```
 
 5. **Set Up PostgreSQL Database**
@@ -113,6 +119,7 @@ After setup, run the main script to start the UTMA framework. Here’s an exampl
 
 This command manages the distribution of resources, saves model outputs, and logs metadata directly to the database.
 
-<span style="font-size:smaller;">_Last updated: 2024-11-02_</span>
+
+<sub>_Last updated: 2024-11-02_</sub>
 
 --- 
