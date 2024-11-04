@@ -30,9 +30,10 @@ As an example of how data must be preprocessed for UTMA, consider analyzing *Mob
      ["dreamy", "afternoon", "thence", "northward", "see?—poste", "silent", "sentinel", "thousand", "thousand", "mortal", "reverie", "lean", "spile", "seat", "look", "bulwark", "rigging", "strive", "well", "seaward", "landsman", "plaster", "counter", "nail", "bench", "clinch", "field"]
    ]
    ```
-*Source: [Project Gutenberg](https://www.gutenberg.org/files/2701/2701-h/2701-h.htm)  
-Release Date: June, 2001 \[eBook #2701\]  
-Most recently updated: August 18, 2021*
+<span style="font-size:smaller;">*Source: [Project Gutenberg](https://www.gutenberg.org/files/2701/2701-h/2701-h.htm)  
+Release Date: June, 2001 [eBook #2701]  
+Most recently updated: August 18, 2021*</span>
+
 
 
 ### Project Structure
@@ -75,7 +76,7 @@ Install the required packages listed in requirements.txt:
 4. **Additional Configuration**
 For Dask's distributed functionality, ensure dask[distributed] is installed:
 ```bash
-   pip install <font color="green">"dask[distributed]==2024.8.2"</font>
+   pip install <span style="color:green">"dask[distributed]==2024.8.2"</span>
 ```
 
 5. **Set Up PostgreSQL Database**
@@ -112,6 +113,6 @@ After setup, run the main script to start the UTMA framework. Here’s an exampl
 
 This command manages the distribution of resources, saves model outputs, and logs metadata directly to the database.
 
-_Last updated: 2024-11-02_
+<span style="font-size:smaller;">_Last updated: 2024-11-02_</span>
 
 --- 
