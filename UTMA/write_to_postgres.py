@@ -102,7 +102,7 @@ def create_dynamic_table_class(table_name):
         'top_words': Column(TEXT),
         'text_sha256' : Column(String),
         'text_md5' : Column(String),
-        
+
         # Model and Training Parameters
         'topics' : Column(Integer),
         'alpha_str' : Column(String),
