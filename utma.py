@@ -343,7 +343,7 @@ sqlalchemy_logger.addHandler(null_handler)
 #archive_log(logger, LOGFILE, LOG_DIR)
 
 # Enable serialization optimizations 
-dask.config.set(scheduler='distributed', serialize=True) #note: could this be causing the pyLDAvis creation problems??
+dask.config.set(scheduler='distributed', serialize=True)
 dask.config.set({'logging.distributed': 'error'})
 dask.config.set({"distributed.scheduler.worker-ttl": '30m'})
 dask.config.set({'distributed.worker.daemon': False})
@@ -466,7 +466,7 @@ if __name__=="__main__":
             except Exception as e:
                 logging.error(f"There was an issue with creating the TEST scattererd_future list: {e}")
         else:
-            print("There are documents not being scattered across the workers.")
+            logging.error("There are documents not being scattered across the workers.")
         
     #print(f"Completed creation of train-validation-test split in {round((time() - started)/60,2)} minutes.\n")
     logging.info(f"Completed creation of train-validation-test split in {round((time() - started)/60,2)} minutes.\n")
@@ -532,14 +532,11 @@ if __name__=="__main__":
     # Determine undrawn combinations
     undrawn_combinations = list(set(combinations) - set(random_combinations))
 
-    print(f"The random sample combinations contain {len(random_combinations)}. This leaves {len(undrawn_combinations)} undrawn combinations.\n")
-
     # Randomly sample from the entire set of combinations
     random_combinations = random.sample(combinations, sample_size)
 
     # Determine undrawn combinations
     undrawn_combinations = list(set(combinations) - set(random_combinations))
-
 
     print(f"The random sample combinations contain {len(random_combinations)}. This leaves {len(undrawn_combinations)} undrawn combinations.\n")
     #for record in random_combinations:
@@ -594,6 +591,7 @@ if __name__=="__main__":
         # Train Phase
         if train_eval_type == "train":
             try:
+                #print(f"Total training batches scattered to Dask: {len(scattered_train_data_futures)}")
                 for scattered_data in scattered_train_data_futures:
                     future = client.submit(
                         train_model_v2, n_topics, alpha_value, beta_value, scattered_data, "train",
@@ -601,6 +599,7 @@ if __name__=="__main__":
                     )
                     train_futures.append(future)
 
+                #print(f"Total training tasks submitted to Dask: {len(train_futures)}")
                 done_train, _ = wait(train_futures, timeout=None)
                 completed_train_futures = [done.result() for done in done_train]
 
@@ -627,7 +626,7 @@ if __name__=="__main__":
             logging.info(f"Test futures count: {len(completed_test_futures)}")
             logging.info(f"PyLDA visualizations: {len(completed_pylda_vis)}")
             logging.info(f"PCoA visualizations: {len(completed_pcoa_vis)}")
-            # After processing all phases in the sorted combinations
+            # After processing all train phases in the sorted combinations
             try:
                 #print("\nwe are in the TRAIN process_completed_futures() TRY block.")
                 if completed_train_futures or completed_validation_futures or completed_test_futures:
@@ -675,7 +674,7 @@ if __name__=="__main__":
             logging.info(f"Test futures count: {len(completed_test_futures)}")
             logging.info(f"PyLDA visualizations: {len(completed_pylda_vis)}")
             logging.info(f"PCoA visualizations: {len(completed_pcoa_vis)}")
-            # After processing all phases in the sorted combinations
+            # After processing all validation phases in the sorted combinations
             try:
                 if completed_train_futures or completed_validation_futures or completed_test_futures:
                     process_completed_futures(
@@ -722,7 +721,7 @@ if __name__=="__main__":
             logging.info(f"Test futures count: {len(completed_test_futures)}")
             logging.info(f"PyLDA visualizations: {len(completed_pylda_vis)}")
             logging.info(f"PCoA visualizations: {len(completed_pcoa_vis)}")
-            # After processing all phases in the sorted combinations
+            # After processing all test phases in the sorted combinations
             try:
                 if completed_train_futures or completed_validation_futures or completed_test_futures:
                     process_completed_futures(
@@ -733,18 +732,6 @@ if __name__=="__main__":
                     )
             except Exception as e:
                 logging.error(f"Error processing TRAIN completed futures: {e}")
-
-        # After processing all phases in the sorted combinations
-#        try:
-#            if completed_train_futures or completed_validation_futures or completed_test_futures:
-#                process_completed_futures(
-#                    CONNECTION_STRING, CORPUS_LABEL,
-#                    completed_train_futures, completed_validation_futures, completed_test_futures,
-#                    len(completed_train_futures) + len(completed_validation_futures) + len(completed_test_futures),
-#                    num_workers, BATCH_SIZE, TEXTS_ZIP_DIR, vis_pylda=completed_pylda_vis, vis_pcoa=completed_pcoa_vis
-#                )
-#        except Exception as e:
-#            logging.error(f"Error processing completed futures: {e}")
 
         # Log the processing time
         elapsed_time = round(((time() - started) / 60), 2)
