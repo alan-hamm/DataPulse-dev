@@ -7,7 +7,7 @@
 - [Project Structure](#project-structure)
 - [Installation](#installation)
 - [Usage](#usage)
-- [Contributions](#contributions)
+- [Optimization](#optimization)
 
 ### Overview
 **Unified Topic Modeling and Analysis (UTMA)** is a flexible and scalable framework designed for comprehensive topic modeling and analysis. Beyond Latent Dirichlet Allocation (LDA), UTMA integrates adaptive resource management, dynamic topic modeling, and advanced analytical capabilities to support large-scale, distributed computations and diachronic analysis. This framework is ideal for tracking topic evolution over time, making it suitable for a variety of document types and research needs.
@@ -65,10 +65,10 @@ To install UTMA, clone the repository and set up the required Python environment
 
 2. **Set Up the Environment**
 Using Anaconda is recommended for managing dependencies:
-```bash
+   ```bash
    conda create -n utma_env python=3.12.0
    conda activate utma_env
-```
+   ```
 
 3. **Install Dependencies**
    
@@ -83,14 +83,13 @@ Using Anaconda is recommended for managing dependencies:
      ```bash
      $ pip install dask[distributed]=="2024.8.2"
      ```
-```
 
-5. **Set Up PostgreSQL Database**
+4. **Set Up PostgreSQL Database**
 Ensure PostgreSQL is installed and running. Create a new database to store UTMA data, and update the connection settings in the project configuration files.
 
-6. **Run the Application**
+5. **Run the Application**
 
-## Usage
+### Usage
 After setup, run the main script to start the UTMA framework. Here’s an example command:
 
    ```bash
@@ -115,11 +114,45 @@ After setup, run the main script to start the UTMA framework. Here’s an exampl
        --log_dir "/path/to/your/log/" \
        --root_dir "/path/to/your/root/" \
        2>"/path/to/your/log/terminal_output.txt"
-```
-
+   ```
 This command manages the distribution of resources, saves model outputs, and logs metadata directly to the database.
 
+### **Optimization** 
 
+   Optimizing Batch Size for utma.py
+
+   ## **Purpose** 
+   The utma.py script performs topic modeling and analysis on large datasets. Configuring batch sizes is critical to balancing resource utilization and achieving efficient processing times, especially on high-performance systems.
+
+   ## **Key Batch Size Parameters**
+   -  futures_batches: Defines the maximum number of future tasks that can be scheduled in Dask.
+   -  base_batch_size: Sets the base number of documents per batch for each phase (training, validation, and test).
+   -  max_batch_size: Sets the maximum number of documents in a batch, providing flexibility for adaptive batching.
+
+   ## **Guidelines for Setting Batch Sizes**
+
+   1. **Consider System Resources:**
+         -  Determine batch sizes based on the available CPU cores, memory, and disk I/O capacity. Larger batch sizes are typically feasible on systems with high memory (e.g., 128 GB RAM or more) and multiple CPU cores, as they allow each Dask worker to handle more documents without exceeding memory limits.
+
+   2. **Balance Task Complexity and Resource Utilization**:
+
+      -  **Complex or Intensive Tasks** (e.g., high-dimensional topic modeling): Larger batch sizes reduce the number of tasks submitted to Dask, decreasing the overhead of task management and inter-process communication.
+      -  **Simple or Lightweight Tasks:** Smaller batch sizes allow more tasks to be processed in parallel, maximizing CPU utilization for low-memory operations. Start with Reasonable Defaults and Refine:
+
+   3. Start with Reasonable Defaults and Refine:
+      -  Initial Recommendation: For typical workloads, set base_batch_size to around 100-200 and max_batch_size slightly above (e.g., 120-220).
+      -  Monitor performance and refine the batch size based on observed processing times and Dask’s resource utilization (accessible via the Dask dashboard).
+
+   4. **Example Configurations:**
+      -  High-Memory, Multi-Core Systems: Set futures_batches=200, base_batch_size=200, and max_batch_size=220.
+      -  Low-Memory or Limited-Core Systems: Reduce base_batch_size to 50-100, depending on available memory, to prevent memory overflow on each worker.
+
+   5. Testing and Adjustment:
+      -  Run a test with smaller data samples to verify the chosen batch size. Adjust futures_batches, base_batch_size, and max_batch_size iteratively, as needed, to achieve optimal processing time.
+
+   **Monitoring Performance**
+   After configuring batch sizes, use the Dask dashboard to observe task distribution, resource utilization, and memory usage per worker. Adjust futures_batches and batch sizes further if tasks are not distributed evenly or if memory usage approaches system limits.
+
+   Additional guidance on optimizing UTMA performance can be found in the project documentation. Use the Dask dashboard for real-time monitoring and to identify any bottlenecks in processing.
 <sub>_Last updated: 2024-11-02_</sub>
 
---- 
