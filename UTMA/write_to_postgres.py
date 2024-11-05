@@ -40,13 +40,20 @@ Base = declarative_base()
 
 # Function to save text data and model to single ZIP file
 def save_to_zip(time, top_folder, text_data, text_json, ldamodel, corpus, dictionary, texts_zip_dir):
-    print("We are inside save_to_zip")
+    #print("We are inside save_to_zip")
     # Generate a unique filename based on current timestamp
     timestamp_str = time
     text_zip_filename = f"{timestamp_str}.zip"
     
     # Write the text content and model to a zip file within TEXTS_ZIP_DIR
     zip_path = os.path.join(texts_zip_dir,top_folder)
+    try:
+        logging.info(f"Attempting to create Zip directory: {zip_path}")
+        os.makedirs(zip_path, exist_ok=True)
+        logging.info(f"Zip directory created at: {zip_path}")
+    except Exception as e:
+        logging.error(f"Failed to create ZIP directory: {e}")
+
     zpath = os.path.join(zip_path, text_zip_filename)
     with zipfile.ZipFile(zpath, mode='w', compression=zipfile.ZIP_DEFLATED) as zf:
         zf.writestr(f"doc_{timestamp_str}.txt", text_data)
@@ -54,6 +61,8 @@ def save_to_zip(time, top_folder, text_data, text_json, ldamodel, corpus, dictio
         zf.writestr(f"dict_{timestamp_str}.pkl", dictionary)
         zf.writestr(f"corpus_{timestamp_str}.pkl", corpus)
         zf.writestr(f"json_{timestamp_str}.pkl", text_json)
+
+    logging.info(f"Zip file created at: {zip_path}")
     return zpath
 
 
@@ -118,11 +127,7 @@ def create_dynamic_table_class(table_name):
         'create_pcoa' : Column(Boolean)
     }
 
-    return type(table_name, (Base,), attributes)
-
-
-
-
+    #return type(table_name, (Base,), attributes)
 
     # Create a new class type with a unique name derived from table_name
     dynamic_class = type(f"DynamicModelMetadata_{table_name}", (Base,), attributes)
@@ -175,26 +180,40 @@ def add_model_data_to_database(model_data, table_name, database_uri,
     texts_zipped = []
 
     # Path to the distinct document folder to contain all related documents
+    #print("Attempting to create document directory...")
     document_dir = os.path.join(texts_zip_dir, model_data['text_md5'])
     document_dir = os.path.join(document_dir, f"number_of_topics-{model_data['topics']}")
-    os.makedirs(document_dir, exist_ok=True)
+    #print(f"Document directory path: {document_dir}")
+    #print(f"Final document directory path: {document_dir}")
 
-    #for text_list in model_data['text']:
-    for text_list in model_data['text']:
-        combined_text = ''.join([''.join(sent) for sent in text_list])  # Combine all sentences into one string
-        zip_path = save_to_zip(model_data['time_key'], document_dir, combined_text, \
-                               model_data['text_json'], model_data['lda_model'], \
-                               model_data['corpus'], model_data['dictionary'], texts_zip_dir)
-        texts_zipped.append(zip_path)
+    try:
+        os.makedirs(document_dir, exist_ok=True)
+        logging.info(f"Directory created at: {document_dir}")
+    except Exception as e:
+        logging.error(f"Error creating directory {document_dir}: {e}")
+
+    try:
+        logging.info(f"model_data['text_md5'] contents: {model_data.get('text_md5')}")
+        for text_list in model_data['text']:
+            combined_text = ''.join([''.join(sent) for sent in text_list])  # Combine all sentences into one string
+
+            logging.info("Calling save_to_zip...")
+            zip_path = save_to_zip(model_data['time_key'], document_dir, combined_text, \
+                                model_data['text_json'], model_data['lda_model'], \
+                                model_data['corpus'], model_data['dictionary'], texts_zip_dir)
+            
+            texts_zipped.append(zip_path)
+    except Exception as e:
+        logging.error(f"Error during zipping process: {e}")
 
     # Create an engine using the provided DATABASE_URI
-    engine = create_engine(database_uri, echo=False)
-    
+    engine = create_engine(database_uri, echo=False)  # Optional: `echo=True` for detailed SQL logging
+    logging.info("Database engine created successfully.")
+
     # Create a session factory bound to this engine
     Session = sessionmaker(bind=engine)
-    
-    # Instantiate a session
     session = Session()
+    logging.info("Database session created successfully.")
     
     try:
         # Use the provided function to get the dynamic table class for table_name
@@ -217,18 +236,18 @@ def add_model_data_to_database(model_data, table_name, database_uri,
         
         # Add the new record to the session and commit it to the database
         session.add(record)
+        logging.info("Data added to session successfully.")
+
+        # Commit the session to save changes
         session.commit()
-        
-        logging.info("Data added successfully to Postgres Table")
+        logging.info("Data committed successfully to the database.")
         
     except Exception as e:
-        # If there was any exception during insertion, rollback the transaction
-        session.rollback()
-        
         # Log or print error message here (depending on your logging setup)
         logging.error(f"An error occurred while adding data: {e}")
-        
+        # If there was any exception during insertion, rollback the transaction
+        session.rollback()
     finally:
         # Close the session whether or not an exception occurred
-        if 'session' in locals():
-            session.close()
+        session.close()
+        logging.info("Database session closed.")

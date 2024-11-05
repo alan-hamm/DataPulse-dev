@@ -620,6 +620,26 @@ if __name__=="__main__":
                 logging.error(f"Error in train phase: {e}")
                 continue
 
+            logging.info("In the TRAIN prior to calling process_completed_futures()")
+            logging.info(f"Calling process_completed_futures with parameters:")
+            logging.info(f"Train futures count: {len(completed_train_futures)}")
+            logging.info(f"Validation futures count: {len(completed_validation_futures)}")
+            logging.info(f"Test futures count: {len(completed_test_futures)}")
+            logging.info(f"PyLDA visualizations: {len(completed_pylda_vis)}")
+            logging.info(f"PCoA visualizations: {len(completed_pcoa_vis)}")
+            # After processing all phases in the sorted combinations
+            try:
+                #print("\nwe are in the TRAIN process_completed_futures() TRY block.")
+                if completed_train_futures or completed_validation_futures or completed_test_futures:
+                    process_completed_futures(
+                        CONNECTION_STRING, CORPUS_LABEL,
+                        completed_train_futures, completed_validation_futures, completed_test_futures,
+                        len(completed_train_futures) + len(completed_validation_futures) + len(completed_test_futures),
+                        num_workers, BATCH_SIZE, TEXTS_ZIP_DIR, vis_pylda=completed_pylda_vis, vis_pcoa=completed_pcoa_vis
+                    )
+            except Exception as e:
+                logging.error(f"Error processing TRAIN completed futures: {e}")
+
         # Validation Phase
         if train_eval_type == "validation":
             try:
@@ -647,6 +667,25 @@ if __name__=="__main__":
             except Exception as e:
                 logging.error(f"Error in validation phase: {e}")
                 continue
+                
+            logging.info("In the VALIDATION prior to process_completed_futures()")
+            logging.info(f"Calling process_completed_futures with parameters:")
+            logging.info(f"Train futures count: {len(completed_train_futures)}")
+            logging.info(f"Validation futures count: {len(completed_validation_futures)}")
+            logging.info(f"Test futures count: {len(completed_test_futures)}")
+            logging.info(f"PyLDA visualizations: {len(completed_pylda_vis)}")
+            logging.info(f"PCoA visualizations: {len(completed_pcoa_vis)}")
+            # After processing all phases in the sorted combinations
+            try:
+                if completed_train_futures or completed_validation_futures or completed_test_futures:
+                    process_completed_futures(
+                        CONNECTION_STRING, CORPUS_LABEL,
+                        completed_train_futures, completed_validation_futures, completed_test_futures,
+                        len(completed_train_futures) + len(completed_validation_futures) + len(completed_test_futures),
+                        num_workers, BATCH_SIZE, TEXTS_ZIP_DIR, vis_pylda=completed_pylda_vis, vis_pcoa=completed_pcoa_vis
+                    )
+            except Exception as e:
+                logging.error(f"Error processing VALIDATION completed futures: {e}")
 
         # Test Phase
         if train_eval_type == "test":
@@ -675,18 +714,37 @@ if __name__=="__main__":
             except Exception as e:
                 logging.error(f"Error in test phase: {e}")
                 continue
+            
+            logging.info("In the TEST prior to process_completed_futures()")
+            logging.info(f"Calling process_completed_futures with parameters:")
+            logging.info(f"Train futures count: {len(completed_train_futures)}")
+            logging.info(f"Validation futures count: {len(completed_validation_futures)}")
+            logging.info(f"Test futures count: {len(completed_test_futures)}")
+            logging.info(f"PyLDA visualizations: {len(completed_pylda_vis)}")
+            logging.info(f"PCoA visualizations: {len(completed_pcoa_vis)}")
+            # After processing all phases in the sorted combinations
+            try:
+                if completed_train_futures or completed_validation_futures or completed_test_futures:
+                    process_completed_futures(
+                        CONNECTION_STRING, CORPUS_LABEL,
+                        completed_train_futures, completed_validation_futures, completed_test_futures,
+                        len(completed_train_futures) + len(completed_validation_futures) + len(completed_test_futures),
+                        num_workers, BATCH_SIZE, TEXTS_ZIP_DIR, vis_pylda=completed_pylda_vis, vis_pcoa=completed_pcoa_vis
+                    )
+            except Exception as e:
+                logging.error(f"Error processing TRAIN completed futures: {e}")
 
         # After processing all phases in the sorted combinations
-        try:
-            if completed_train_futures or completed_validation_futures or completed_test_futures:
-                process_completed_futures(
-                    CONNECTION_STRING, CORPUS_LABEL,
-                    completed_train_futures, completed_validation_futures, completed_test_futures,
-                    len(completed_train_futures) + len(completed_validation_futures) + len(completed_test_futures),
-                    num_workers, BATCH_SIZE, TEXTS_ZIP_DIR, vis_pylda=completed_pylda_vis, vis_pcoa=completed_pcoa_vis
-                )
-        except Exception as e:
-            logging.error(f"Error processing completed futures: {e}")
+#        try:
+#            if completed_train_futures or completed_validation_futures or completed_test_futures:
+#                process_completed_futures(
+#                    CONNECTION_STRING, CORPUS_LABEL,
+#                    completed_train_futures, completed_validation_futures, completed_test_futures,
+#                    len(completed_train_futures) + len(completed_validation_futures) + len(completed_test_futures),
+#                    num_workers, BATCH_SIZE, TEXTS_ZIP_DIR, vis_pylda=completed_pylda_vis, vis_pcoa=completed_pcoa_vis
+#                )
+#        except Exception as e:
+#            logging.error(f"Error processing completed futures: {e}")
 
         # Log the processing time
         elapsed_time = round(((time() - started) / 60), 2)

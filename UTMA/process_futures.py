@@ -134,108 +134,117 @@ def process_completed_futures(connection_string, corpus_label, \
     #print(f"this is the vis_results_map(): {vis_results_map}")
 
     # Process training futures
-    for models_data in completed_train_futures:
+    if len(completed_train_futures) > 0:
+        for models_data in completed_train_futures:
+            logging.info(f"Train Model data for database write: {models_data}")
 
-        try:
-            # Ensure models_data is a list; if not, convert it to a list containing the item
-            if isinstance(models_data, dict):
-                models_data = [models_data]
-            elif not isinstance(models_data, list):
-                logging.error(f"Unexpected type for models_data: {type(models_data)}. Attempting to convert.")
-                models_data = [models_data]  # Attempt conversion for processing
+            try:
+                # Ensure models_data is a list; if not, convert it to a list containing the item
+                if isinstance(models_data, dict):
+                    models_data = [models_data]
+                elif not isinstance(models_data, list):
+                    logging.error(f"Unexpected type for models_data: {type(models_data)}. Attempting to convert.")
+                    models_data = [models_data]  # Attempt conversion for processing
 
-            for model_data in models_data:
-                        # Ensure each item in models_data is a dictionary; otherwise, log an error
-                        if not isinstance(model_data, dict):
-                            logging.error(f"Unexpected type for model_data: {type(model_data)}. Converting to empty dictionary.")
-                            model_data = {}  # Convert to an empty dictionary to avoid errors and retain the item
+                for model_data in models_data:
+                            # Ensure each item in models_data is a dictionary; otherwise, log an error
+                            if not isinstance(model_data, dict):
+                                logging.error(f"Unexpected type for model_data: {type(model_data)}. Converting to empty dictionary.")
+                                model_data = {}  # Convert to an empty dictionary to avoid errors and retain the item
 
-                        unique_id = model_data.get('time_key')
-                        if unique_id and unique_id in vis_results_map:
-                            create_pylda, create_pcoa = vis_results_map[unique_id]
-                            model_data['create_pylda'] = create_pylda[0]
-                            model_data['create_pcoa'] = create_pcoa[0]
-                            model_data['num_documents'] = num_documents
-                            model_data['batch_size'] = batchsize
-                            model_data['num_workers'] = workers
-        except Exception as e:
-                logging.error(f"Error occurred during process_completed_futures() TRAIN: {e}")
-                try:
-                    DynamicModelMetadata = create_dynamic_table_class(corpus_label)
-                    create_table_if_not_exists(DynamicModelMetadata, connection_string)
-                    add_model_data_to_database(model_data, corpus_label, connection_string,
-                                            num_documents, workers, batchsize, texts_zip_dir)
-                except Exception as e:
-                    logging.error(f"Error occurred during process_completed_futures() add_model_data_to_database() TRAIN: {e}")
+                            unique_id = model_data.get('time_key')
+                            if unique_id and unique_id in vis_results_map:
+                                create_pylda, create_pcoa = vis_results_map[unique_id]
+                                model_data['create_pylda'] = create_pylda[0]
+                                model_data['create_pcoa'] = create_pcoa[0]
+                                model_data['num_documents'] = num_documents
+                                model_data['batch_size'] = batchsize
+                                model_data['num_workers'] = workers
+            except Exception as e:
+                    logging.error(f"Error occurred during process_completed_futures() TRAIN: {e}")
+            try:
+                #print("We are prior to DynamicModelMetadata")
+                DynamicModelMetadata = create_dynamic_table_class(corpus_label)
+                #print("\nWe are prior to create_table_if_not_exist()")
+                create_table_if_not_exists(DynamicModelMetadata, connection_string)
+                #print("\nwe are prior to add_model_data_to_database()")
+                add_model_data_to_database(model_data, corpus_label, connection_string,
+                                                num_documents, workers, batchsize, texts_zip_dir)
+            except Exception as e:
+                logging.error(f"Error occurred during process_completed_futures() add_model_data_to_database() TRAIN: {e}")
 
     # Process evaluation futures
     #vis_futures = []
-    for models_data in completed_validation_futures:
-        try:
-            # Ensure models_data is a list; if not, convert it to a list containing the item
-            if isinstance(models_data, dict):
-                models_data = [models_data]
-            elif not isinstance(models_data, list):
-                logging.error(f"Unexpected type for models_data: {type(models_data)}. Attempting to convert.")
-                models_data = [models_data]  # Attempt conversion for processing
+    if len(completed_validation_futures) > 0:
+        for models_data in completed_validation_futures:
+            logging.info(f"Validation Model data for database write: {models_data}")
+            try:
+                # Ensure models_data is a list; if not, convert it to a list containing the item
+                if isinstance(models_data, dict):
+                    models_data = [models_data]
+                elif not isinstance(models_data, list):
+                    logging.error(f"Unexpected type for models_data: {type(models_data)}. Attempting to convert.")
+                    models_data = [models_data]  # Attempt conversion for processing
 
-            for model_data in models_data:
-                        # Ensure each item in models_data is a dictionary; otherwise, log an error
-                        if not isinstance(model_data, dict):
-                            logging.error(f"Unexpected type for model_data: {type(model_data)}. Converting to empty dictionary.")
-                            model_data = {}  # Convert to an empty dictionary to avoid errors and retain the item
+                for model_data in models_data:
+                            # Ensure each item in models_data is a dictionary; otherwise, log an error
+                            if not isinstance(model_data, dict):
+                                logging.error(f"Unexpected type for model_data: {type(model_data)}. Converting to empty dictionary.")
+                                model_data = {}  # Convert to an empty dictionary to avoid errors and retain the item
 
-                        unique_id = model_data.get('time_key')
-                        if unique_id and unique_id in vis_results_map:
-                            create_pylda, create_pcoa = vis_results_map[unique_id]
-                            model_data['create_pylda'] = create_pylda[0]
-                            model_data['create_pcoa'] = create_pcoa[0]
-                            model_data['num_documents'] = num_documents
-                            model_data['batch_size'] = batchsize
-                            model_data['num_workers'] = workers
-        except Exception as e:
-            logging.error(f"Error occurred during process_completed_futures() EVAL: {e}")
-        try:
-            DynamicModelMetadata = create_dynamic_table_class(corpus_label)
-            create_table_if_not_exists(DynamicModelMetadata, connection_string)
-            add_model_data_to_database(model_data, corpus_label, connection_string,
-                                       num_documents, workers, batchsize, texts_zip_dir)
-        except Exception as e:
-            logging.error(f"Error occurred during process_completed_futures() add_model_data_to_database() VALIDATION: {e}")
-        
-    for models_data in completed_test_futures:
-        try:
-            # Ensure models_data is a list; if not, convert it to a list containing the item
-            if isinstance(models_data, dict):
-                models_data = [models_data]
-            elif not isinstance(models_data, list):
-                logging.error(f"Unexpected type for models_data: {type(models_data)}. Attempting to convert.")
-                models_data = [models_data]  # Attempt conversion for processing
+                            unique_id = model_data.get('time_key')
+                            if unique_id and unique_id in vis_results_map:
+                                create_pylda, create_pcoa = vis_results_map[unique_id]
+                                model_data['create_pylda'] = create_pylda[0]
+                                model_data['create_pcoa'] = create_pcoa[0]
+                                model_data['num_documents'] = num_documents
+                                model_data['batch_size'] = batchsize
+                                model_data['num_workers'] = workers
+            except Exception as e:
+                logging.error(f"Error occurred during process_completed_futures() EVAL: {e}")
+            try:
+                DynamicModelMetadata = create_dynamic_table_class(corpus_label)
+                create_table_if_not_exists(DynamicModelMetadata, connection_string)
+                add_model_data_to_database(model_data, corpus_label, connection_string,
+                                        num_documents, workers, batchsize, texts_zip_dir)
+            except Exception as e:
+                logging.error(f"Error occurred during process_completed_futures() add_model_data_to_database() VALIDATION: {e}")
 
-            for model_data in models_data:
-                # Ensure each item in models_data is a dictionary; otherwise, log an error
-                if not isinstance(model_data, dict):
-                    logging.error(f"Unexpected type for model_data: {type(model_data)}. Converting to empty dictionary.")
-                    model_data = {}  # Convert to an empty dictionary to avoid errors and retain the item
+    if len(completed_test_futures) > 0:    
+        for models_data in completed_test_futures:
+            logging.info(f"Test Model data for database write: {models_data}")
+            try:
+                # Ensure models_data is a list; if not, convert it to a list containing the item
+                if isinstance(models_data, dict):
+                    models_data = [models_data]
+                elif not isinstance(models_data, list):
+                    logging.error(f"Unexpected type for models_data: {type(models_data)}. Attempting to convert.")
+                    models_data = [models_data]  # Attempt conversion for processing
 
-                unique_id = model_data.get('time_key')
-                if unique_id and unique_id in vis_results_map:
-                    create_pylda, create_pcoa = vis_results_map[unique_id]
-                    model_data['create_pylda'] = create_pylda[0]
-                    model_data['create_pcoa'] = create_pcoa[0]
-                    model_data['num_documents'] = num_documents
-                    model_data['batch_size'] = batchsize
-                    model_data['num_workers'] = workers
+                for model_data in models_data:
+                    # Ensure each item in models_data is a dictionary; otherwise, log an error
+                    if not isinstance(model_data, dict):
+                        logging.error(f"Unexpected type for model_data: {type(model_data)}. Converting to empty dictionary.")
+                        model_data = {}  # Convert to an empty dictionary to avoid errors and retain the item
 
-        except Exception as e:
-            logging.error(f"Error occurred during process_completed_futures() EVAL: {e}")
-        try:
-            DynamicModelMetadata = create_dynamic_table_class(corpus_label)
-            create_table_if_not_exists(DynamicModelMetadata, connection_string)
-            add_model_data_to_database(model_data, corpus_label, connection_string,
-                                       num_documents, workers, batchsize, texts_zip_dir)
-        except Exception as e:
-            logging.error(f"Error occurred during process_completed_futures() add_model_data_to_database() TEST: {e}")
+                    unique_id = model_data.get('time_key')
+                    if unique_id and unique_id in vis_results_map:
+                        create_pylda, create_pcoa = vis_results_map[unique_id]
+                        model_data['create_pylda'] = create_pylda[0]
+                        model_data['create_pcoa'] = create_pcoa[0]
+                        model_data['num_documents'] = num_documents
+                        model_data['batch_size'] = batchsize
+                        model_data['num_workers'] = workers
+
+            except Exception as e:
+                logging.error(f"Error occurred during process_completed_futures() EVAL: {e}")
+            try:
+                DynamicModelMetadata = create_dynamic_table_class(corpus_label)
+                create_table_if_not_exists(DynamicModelMetadata, connection_string)
+                add_model_data_to_database(model_data, corpus_label, connection_string,
+                                        num_documents, workers, batchsize, texts_zip_dir)
+            except Exception as e:
+                logging.error(f"Error occurred during process_completed_futures() add_model_data_to_database() TEST: {e}")
 
     #del models_data            
     #garbage_collection(False, 'process_completed_futures(...)')
