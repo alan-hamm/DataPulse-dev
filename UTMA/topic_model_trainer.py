@@ -176,7 +176,8 @@ def train_model_v2(n_topics: int, alpha_str: Union[str, float], beta_str: Union[
 
 
     # Generate unique time-based hashes for identifying and logging model runs.
-    time_hash = hashlib.md5(time_of_method_call.strftime('%Y%m%d%H%M%S%f').encode()).hexdigest()  # Hash based on start time.
+    # Get time string with microseconds and simulate nanoseconds
+    time_hash = time_of_method_call.strftime('%Y%m%d%H%M%S%f') + f"{time_of_method_call.microsecond % 1000:03}"  # Adds 3 additional digits for "nanoseconds"
     text_hash = hashlib.md5(pd.to_datetime('now').strftime('%Y%m%d%H%M%S%f').encode()).hexdigest()  # Hash based on current time.
     string_time = text_hash.strip() + time_hash.strip()  # Concatenate hashes for unique time key.
 
@@ -186,7 +187,7 @@ def train_model_v2(n_topics: int, alpha_str: Union[str, float], beta_str: Union[
     'type': phase,  # Indicates whether this batch is for 'train', 'validation', or 'test'.
     'time': time_of_method_call,  # Start time of this batch's processing.
     'end_time': pd.to_datetime('now'),  # End time of this batch's processing.
-    'num_workers': -1, #len(client.scheduler_info()["workers"]),  # Adaptive core count used for this batch.
+    'num_workers': -1,  # Placeholder for adaptive core count used for this batch.
     
     # Document and Batch Details
     'batch_size': len(batch_documents),  # Number of documents processed in this batch.
@@ -222,9 +223,9 @@ def train_model_v2(n_topics: int, alpha_str: Union[str, float], beta_str: Union[
     'corpus': pickle.dumps(corpus_batch),  # Serialized corpus used for training.
     'dictionary': pickle.dumps(dictionary_batch),  # Serialized dictionary for topic modeling.
     
-    # Visualization Placeholders
-    'create_pylda': None,  # Placeholder for pyLDA visualization.
-    'create_pcoa': None  # Placeholder for PCoA visualization.
+    # Visualization Creation Verification Placeholders
+    'create_pylda': None,  # Placeholder for pyLDA verification of visualization creation.
+    'create_pcoa': None  # Placeholder for PCoA verification of visualization creation.
     }
 
     return current_increment_data
