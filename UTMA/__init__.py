@@ -11,7 +11,6 @@
 from .utils import garbage_collection, exponential_backoff, convert_float32_to_float
 from .logging_helper import archive_log, close_logger, setup_logging
 from .process_futures import process_completed_futures, futures_create_lda_datasets
-from .model import train_model
 from .topic_model_trainer import train_model_v2
 from .alpha_eta import calculate_numeric_alpha, calculate_numeric_beta, validate_alpha_beta, calculate_alpha_beta
 from .visualization import create_vis_pylda, create_vis_pcoa, process_visualizations
@@ -34,9 +33,6 @@ __all__ = [
     'join', 
     'getenv', 
     'get_current_time',
-
-    # model
-    'train_model',
 
     #topic_model_trainer
     'train_model_v2',
