@@ -287,8 +287,8 @@ logging.basicConfig(
     filemode='a',  # Append mode if you want to keep adding to the same file during the day
     format='%(asctime)s - %(levelname)s - %(message)s',
     datefmt='%Y-%m-%d %H:%M:%S',
-    #level=logging.INFO  # Set to DEBUG for detailed logging
-    level=logging.DEBUG  # Set to DEBUG for detailed logging
+    level=logging.INFO  # Set to DEBUG for detailed logging
+    #level=logging.DEBUG  # Set to DEBUG for detailed logging
 )
 
 ##########################################
@@ -591,21 +591,26 @@ if __name__=="__main__":
         # Train Phase
         if train_eval_type == "train":
             try:
-                #print(f"Total training batches scattered to Dask: {len(scattered_train_data_futures)}")
-                for scattered_data in scattered_train_data_futures:
-                    future = client.submit(
-                        train_model_v2, n_topics, alpha_value, beta_value, scattered_data, "train",
-                        RANDOM_STATE, PASSES, ITERATIONS, UPDATE_EVERY, EVAL_EVERY, num_workers, PER_WORD_TOPICS
-                    )
-                    train_futures.append(future)
+                dir = os.path.join(LOG_DIR, "TRAIN")
+                os.makedirs(dir, exist_ok=True)
+                performance_log = os.path.join(dir, f"train_perf_{pd.to_datetime('now').strftime('%Y%m%d%H%M%S%f')}.html")
+                with performance_report(filename=performance_log):
+                    #print(f"Total training batches scattered to Dask: {len(scattered_train_data_futures)}")
+                    for scattered_data in scattered_train_data_futures:
+                        future = client.submit(
+                            train_model_v2, n_topics, alpha_value, beta_value, scattered_data, "train",
+                            RANDOM_STATE, PASSES, ITERATIONS, UPDATE_EVERY, EVAL_EVERY, num_workers, PER_WORD_TOPICS
+                        )
+                        train_futures.append(future)
 
-                #print(f"Total training tasks submitted to Dask: {len(train_futures)}")
-                done_train, _ = wait(train_futures, timeout=None)
-                completed_train_futures = [done.result() for done in done_train]
+                    #print(f"Total training tasks submitted to Dask: {len(train_futures)}")
+                    done_train, _ = wait(train_futures, timeout=None)
+                    completed_train_futures = [done.result() for done in done_train]
+                    progress_bar.update()
 
-                for train_result in completed_train_futures:
-                    model_key = (train_result['topics'], str(train_result['alpha_str'][0]), str(train_result['beta_str'][0]))
-                    train_models_dict[model_key] = train_result['lda_model']
+                    for train_result in completed_train_futures:
+                        model_key = (train_result['topics'], str(train_result['alpha_str'][0]), str(train_result['beta_str'][0]))
+                        train_models_dict[model_key] = train_result['lda_model']
 
                 PERFORMANCE_TRAIN_LOG = os.path.join(IMAGE_DIR, f"vis_perf_train_{pd.to_datetime('now').strftime('%Y%m%d%H%M%S%f')}.html")
                 train_pylda_vis, train_pcoa_vis = process_visualizations(
@@ -615,17 +620,11 @@ if __name__=="__main__":
                 # Accumulate train visualizations into combined lists
                 completed_pylda_vis += train_pylda_vis
                 completed_pcoa_vis += train_pcoa_vis
+                progress_bar.update()
             except Exception as e:
                 logging.error(f"Error in train phase: {e}")
                 continue
 
-            logging.info("In the TRAIN prior to calling process_completed_futures()")
-            logging.info(f"Calling process_completed_futures with parameters:")
-            logging.info(f"Train futures count: {len(completed_train_futures)}")
-            logging.info(f"Validation futures count: {len(completed_validation_futures)}")
-            logging.info(f"Test futures count: {len(completed_test_futures)}")
-            logging.info(f"PyLDA visualizations: {len(completed_pylda_vis)}")
-            logging.info(f"PCoA visualizations: {len(completed_pcoa_vis)}")
             # After processing all train phases in the sorted combinations
             try:
                 #print("\nwe are in the TRAIN process_completed_futures() TRY block.")
@@ -642,18 +641,23 @@ if __name__=="__main__":
         # Validation Phase
         if train_eval_type == "validation":
             try:
-                for scattered_data in scattered_validation_data_futures:
-                    model_key = (n_topics, alpha_value, beta_value)
-                    if model_key in train_models_dict:
-                        ldamodel = train_models_dict[model_key]
-                        future = client.submit(
-                            train_model_v2, n_topics, alpha_value, beta_value, scattered_data, "validation",
-                            RANDOM_STATE, PASSES, ITERATIONS, UPDATE_EVERY, EVAL_EVERY, num_workers, PER_WORD_TOPICS, ldamodel=ldamodel
-                        )
-                        validation_futures.append(future)
+                dir = os.path.join(LOG_DIR, "VALIDATION")
+                os.makedirs(dir, exist_ok=True)
+                performance_log = os.path.join(dir, f"validation_perf_{pd.to_datetime('now').strftime('%Y%m%d%H%M%S%f')}.html")
+                with performance_report(filename=performance_log):
+                    for scattered_data in scattered_validation_data_futures:
+                        model_key = (n_topics, alpha_value, beta_value)
+                        if model_key in train_models_dict:
+                            ldamodel = train_models_dict[model_key]
+                            future = client.submit(
+                                train_model_v2, n_topics, alpha_value, beta_value, scattered_data, "validation",
+                                RANDOM_STATE, PASSES, ITERATIONS, UPDATE_EVERY, EVAL_EVERY, num_workers, PER_WORD_TOPICS, ldamodel=ldamodel
+                            )
+                            validation_futures.append(future)
 
-                done_validation, _ = wait(validation_futures, timeout=None)
-                completed_validation_futures = [done.result() for done in done_validation]
+                    done_validation, _ = wait(validation_futures, timeout=None)
+                    completed_validation_futures = [done.result() for done in done_validation]
+                    progress_bar.update()
 
                 PERFORMANCE_VALIDATION_LOG = os.path.join(IMAGE_DIR, f"vis_perf_validation_{pd.to_datetime('now').strftime('%Y%m%d%H%M%S%f')}.html")
                 validation_pylda_vis, validation_pcoa_vis = process_visualizations(
@@ -662,18 +666,11 @@ if __name__=="__main__":
                 # Accumulate validation visualizations into combined lists
                 completed_pylda_vis += validation_pylda_vis
                 completed_pcoa_vis += validation_pcoa_vis
-
+                progress_bar.update()
             except Exception as e:
                 logging.error(f"Error in validation phase: {e}")
                 continue
-                
-            logging.info("In the VALIDATION prior to process_completed_futures()")
-            logging.info(f"Calling process_completed_futures with parameters:")
-            logging.info(f"Train futures count: {len(completed_train_futures)}")
-            logging.info(f"Validation futures count: {len(completed_validation_futures)}")
-            logging.info(f"Test futures count: {len(completed_test_futures)}")
-            logging.info(f"PyLDA visualizations: {len(completed_pylda_vis)}")
-            logging.info(f"PCoA visualizations: {len(completed_pcoa_vis)}")
+
             # After processing all validation phases in the sorted combinations
             try:
                 if completed_train_futures or completed_validation_futures or completed_test_futures:
@@ -689,18 +686,23 @@ if __name__=="__main__":
         # Test Phase
         if train_eval_type == "test":
             try:
-                for scattered_data in scattered_test_data_futures:
-                    model_key = (n_topics, alpha_value, beta_value)
-                    if model_key in train_models_dict:
-                        ldamodel = train_models_dict[model_key]
-                        future = client.submit(
-                            train_model_v2, n_topics, alpha_value, beta_value, scattered_data, "test",
-                            RANDOM_STATE, PASSES, ITERATIONS, UPDATE_EVERY, EVAL_EVERY, num_workers, PER_WORD_TOPICS, ldamodel=ldamodel
-                        )
-                        test_futures.append(future)
+                dir = os.path.join(LOG_DIR, "TEST")
+                os.makedirs(dir, exist_ok=True)
+                performance_log = os.path.join(dir, f"test_perf_{pd.to_datetime('now').strftime('%Y%m%d%H%M%S%f')}.html")
+                with performance_report(filename=performance_log):
+                    for scattered_data in scattered_test_data_futures:
+                        model_key = (n_topics, alpha_value, beta_value)
+                        if model_key in train_models_dict:
+                            ldamodel = train_models_dict[model_key]
+                            future = client.submit(
+                                train_model_v2, n_topics, alpha_value, beta_value, scattered_data, "test",
+                                RANDOM_STATE, PASSES, ITERATIONS, UPDATE_EVERY, EVAL_EVERY, num_workers, PER_WORD_TOPICS, ldamodel=ldamodel
+                            )
+                            test_futures.append(future)
 
-                done_test, _ = wait(test_futures, timeout=None)
-                completed_test_futures = [done.result() for done in done_test]
+                    done_test, _ = wait(test_futures, timeout=None)
+                    completed_test_futures = [done.result() for done in done_test]
+                    progress_bar.update()
 
                 PERFORMANCE_TEST_LOG = os.path.join(IMAGE_DIR, f"vis_perf_test_{pd.to_datetime('now').strftime('%Y%m%d%H%M%S%f')}.html")
                 test_pylda_vis, test_pcoa_vis = process_visualizations(
@@ -709,18 +711,12 @@ if __name__=="__main__":
                 # Accumulate test visualizations into combined lists
                 completed_pylda_vis += test_pylda_vis
                 completed_pcoa_vis += test_pcoa_vis
+                progress_bar.update()
 
             except Exception as e:
                 logging.error(f"Error in test phase: {e}")
                 continue
-            
-            logging.info("In the TEST prior to process_completed_futures()")
-            logging.info(f"Calling process_completed_futures with parameters:")
-            logging.info(f"Train futures count: {len(completed_train_futures)}")
-            logging.info(f"Validation futures count: {len(completed_validation_futures)}")
-            logging.info(f"Test futures count: {len(completed_test_futures)}")
-            logging.info(f"PyLDA visualizations: {len(completed_pylda_vis)}")
-            logging.info(f"PCoA visualizations: {len(completed_pcoa_vis)}")
+
             # After processing all test phases in the sorted combinations
             try:
                 if completed_train_futures or completed_validation_futures or completed_test_futures:
@@ -736,7 +732,6 @@ if __name__=="__main__":
         # Log the processing time
         elapsed_time = round(((time() - started) / 60), 2)
         logging.info(f"Finished processing futures to disk in {elapsed_time} minutes")
-        progress_bar.update()
     
         completed_train_futures.clear()
         completed_validation_futures.clear()
