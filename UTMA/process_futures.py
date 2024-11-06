@@ -104,7 +104,7 @@ def futures_create_lda_datasets(filename, train_ratio, validation_ratio, batch_s
     print(f"Final cumulative count after all batches: {cumulative_count}")
 
 
-def process_completed_futures(connection_string, corpus_label, \
+def process_completed_futures(phase, connection_string, corpus_label, \
                             completed_train_futures, completed_validation_futures, completed_test_futures, \
                             num_documents, workers, \
                             batchsize, texts_zip_dir, vis_pylda=None, vis_pcoa=None):
@@ -179,7 +179,7 @@ def process_completed_futures(connection_string, corpus_label, \
                 #print("\nWe are prior to create_table_if_not_exist()")
                 create_table_if_not_exists(DynamicModelMetadata, connection_string)
                 #print("\nwe are prior to add_model_data_to_database()")
-                add_model_data_to_database(model_data, corpus_label, connection_string,
+                add_model_data_to_database(model_data, phase, corpus_label, connection_string,
                                                 num_documents, workers, batchsize, texts_zip_dir)
             except Exception as e:
                 logging.error(f"Error occurred during process_completed_futures() add_model_data_to_database() TRAIN: {e}")

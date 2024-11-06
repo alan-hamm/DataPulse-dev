@@ -102,6 +102,7 @@ def create_dynamic_table_class(table_name):
         'text_json' : Column(LargeBinary),
         'show_topics': Column(JSONB),
         'top_words': Column(JSONB),
+        'validation_result': Column(JSONB),
         'text_sha256' : Column(String),
         'text_md5' : Column(String),
 
@@ -167,7 +168,7 @@ def create_table_if_not_exists(table_class, database_uri):
 
 
 # Function to add new model data to metadata postgres table
-def add_model_data_to_database(model_data, table_name, database_uri, 
+def add_model_data_to_database(model_data, phase, table_name, database_uri, 
                                num_documents, workers, batchsize, texts_zip_dir):
     """
     Add new model data to the specified table in the database.
@@ -183,7 +184,7 @@ def add_model_data_to_database(model_data, table_name, database_uri,
 
     # Path to the distinct document folder to contain all related documents
     #print("Attempting to create document directory...")
-    document_dir = os.path.join(texts_zip_dir, model_data['text_md5'])
+    document_dir = os.path.join(texts_zip_dir, phase, model_data['text_md5'])
     document_dir = os.path.join(document_dir, f"number_of_topics-{model_data['topics']}")
     #print(f"Document directory path: {document_dir}")
     #print(f"Final document directory path: {document_dir}")
