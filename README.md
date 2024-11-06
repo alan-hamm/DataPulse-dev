@@ -108,7 +108,7 @@ After setup, run the main script to start the UTMA framework. Here’s an exampl
        --max_memory 5 \
        --mem_threshold 4 \
        --max_cpu 110 \
-       --futures_batches 100 \
+       --futures_batches 75 \
        --base_batch_size 100 \
        --max_batch_size 120 \
        --log_dir "/path/to/your/log/" \
@@ -119,40 +119,46 @@ This command manages the distribution of resources, saves model outputs, and log
 
 ### **Optimization** 
 
-   Optimizing Batch Size for utma.py
+   Optimizing Future, Base, and Maximum Batch Size for utma.py
 
-   Configuring batch sizes is critical to balancing resource utilization and achieving efficient processing times, especially on high-performance systems.
+   Configuring `futures_batches`, `base_batch_size`, and `max_batch_size` is critical to balancing resource utilization and achieving efficient processing times, especially on high-performance systems.
 
-   ## **Key Batch Size Parameters**
-   -  futures_batches: Defines the maximum number of future tasks that can be scheduled in Dask.
-   -  base_batch_size: Sets the base number of documents per batch for each phase (training, validation, and test).
-   -  max_batch_size: Sets the maximum number of documents in a batch, providing flexibility for adaptive batching.
+   ### **Guidlines for Setting Key Batch Size Parameter**
+   -  `--futures_batches`: Defines the maximum number of future tasks that can be scheduled in Dask.
+   -  `--base_batch_size`: Sets the base number of documents per batch for each phase (training, validation, and test).
+   -  `--max_batch_size`: Sets the maximum number of documents in a batch, providing flexibility for adaptive batching.
 
-   ## **Guidelines for Setting Batch Sizes**
 
-   1. **Consider System Resources:**
-         -  Determine batch sizes based on the available CPU cores, memory, and disk I/O capacity. Larger batch sizes are typically feasible on systems with high memory (e.g., 128 GB RAM or more) and multiple CPU cores, as they allow each Dask worker to handle more documents without exceeding memory limits.
+   ### 1. **Importance of `--futures_batches`**
+   The  `--futures_batches` parameter directly affects processing performance by controlling task concurrency:
 
-   2. **Balance Task Complexity and Resource Utilization**:
+   -  **Performance Tuning:** Adjusting `--futures_batches` manages resource allocation. Higher values increase parallelism but may exhaust memory, while lower values conserve resources.
 
-      -  **Complex or Intensive Tasks** (e.g., high-dimensional topic modeling): Larger batch sizes reduce the number of tasks submitted to Dask, decreasing the overhead of task management and inter-process communication.
-      -  **Simple or Lightweight Tasks:** Smaller batch sizes allow more tasks to be processed in parallel, maximizing CPU utilization for low-memory operations. Start with Reasonable Defaults and Refine:
+   -  **Dynamic Adaptation:** Optimize based on document structure and system resources, beginning with `--futures_batches=3` and increasing gradually to find balance.
 
-   3. **Start with Reasonable Defaults and Refine:**
-      -  Initial Recommendation: For typical workloads, set base_batch_size to around 100-200 and max_batch_size slightly above (e.g., 120-220).
-      -  Monitor performance and refine the batch size based on observed processing times and Dask’s resource utilization (accessible via the Dask dashboard).
+   ### 2.  **Setting Minimum and Maximum Batch Sizes**
+   -  **Consider System Resources:** Set batch sizes according to CPU and memory capacity. High-memory, multi-core setups (e.g., 128 GB RAM) support larger batch sizes.
 
-   4. **Example Configurations:**
-      -  High-Memory, Multi-Core Systems: Set futures_batches=200, base_batch_size=200, and max_batch_size=220.
-      -  Low-Memory or Limited-Core Systems: Reduce base_batch_size to 50-100, depending on available memory, to prevent memory overflow on each worker.
+   **Balance Task Complexity and Resource Use:**
 
-   5. **Testing and Adjustment:**
-      -  Run a test with smaller data samples to verify the chosen batch size. Adjust futures_batches, base_batch_size, and max_batch_size iteratively, as needed, to achieve optimal processing time.
+   -  **Complex Tasks:** Use larger batches to minimize task overhead and reduce inter-process communication.
+   Light Tasks: Smaller batches maximize CPU utilization in low-memory environments.
+
+   -  **Light Tasks:** Smaller batches maximize CPU utilization in low-memory environments.
+
+   ### 3. **Starting Points and Adjustments**
+   -  **Initial Defaults:** Try base_batch_size=100-200 and max_batch_size=120-220.
+   -  **Monitor and Adjust:** Use Dask’s dashboard to refine settings based on observed performance and resource utilization.
+
+   ### **Example Configurations:**
+   -  **High-Memory Systems:** `--futures_batches=5`(_value determined by size of preprocessed corpus_), `--base_batch_size=200`, `--max_batch_size=220`.
+   -  **Low-Memory Systems:** Use `--base_batch_size` with valueus between 50 and 100 to prevent memory overload.
+
+   Testing and Adjustment:
+   -  Start with sample data to test batch sizes, adjusting iteratively to balance performance and resource limits.
 
    **Monitoring Performance**
-   After configuring batch sizes, use the Dask dashboard to observe task distribution, resource utilization, and memory usage per worker. Adjust futures_batches and batch sizes further if tasks are not distributed evenly or if memory usage approaches system limits.
-
-   Additional guidance on optimizing UTMA performance can be found in the project documentation. Use the Dask dashboard for real-time monitoring and to identify any bottlenecks in processing.
+   After configuring batch sizes, use the Dask dashboard to observe task distribution, resource utilization, and memory usage per worker. Adjust batch sizes further if tasks are not distributed evenly or if memory usage approaches system limits.
 
 <sub>_Last updated: 2024-11-02_</sub>
 
