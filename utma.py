@@ -590,7 +590,7 @@ if __name__=="__main__":
             try:
                 dir = os.path.join(LOG_DIR, "TRAIN")
                 os.makedirs(dir, exist_ok=True)
-                performance_log = os.path.join(dir, f"train_perf_{pd.to_datetime('now').strftime('%Y%m%d%H%M%S%f')}.html")
+                performance_log = os.path.join(dir, "TRAIN_LOG", f"train_perf_{pd.to_datetime('now').strftime('%Y%m%d%H%M%S%f')}.html")
                 with performance_report(filename=performance_log):
                     #print(f"Total training batches scattered to Dask: {len(scattered_train_data_futures)}")
                     for scattered_data in scattered_train_data_futures:
@@ -612,7 +612,7 @@ if __name__=="__main__":
                         model_key = (train_result['topics'], str(train_result['alpha_str'][0]), str(train_result['beta_str'][0]))
                         train_models_dict[model_key] = train_result['lda_model']
 
-                PERFORMANCE_TRAIN_LOG = os.path.join(IMAGE_DIR, f"vis_perf_train_{pd.to_datetime('now').strftime('%Y%m%d%H%M%S%f')}.html")
+                PERFORMANCE_TRAIN_LOG = os.path.join(IMAGE_DIR, "TRAIN_LOG", f"vis_perf_train_{pd.to_datetime('now').strftime('%Y%m%d%H%M%S%f')}.html")
                 train_pylda_vis, train_pcoa_vis = process_visualizations(
                     client, completed_train_futures, "TRAIN", PERFORMANCE_TRAIN_LOG, num_workers, PYLDA_DIR, PCOA_DIR
                 )
@@ -642,7 +642,7 @@ if __name__=="__main__":
             try:
                 dir = os.path.join(LOG_DIR, "VALIDATION")
                 os.makedirs(dir, exist_ok=True)
-                performance_log = os.path.join(dir, f"validation_perf_{pd.to_datetime('now').strftime('%Y%m%d%H%M%S%f')}.html")
+                performance_log = os.path.join(dir, "VALIDATION_LOG", f"validation_perf_{pd.to_datetime('now').strftime('%Y%m%d%H%M%S%f')}.html")
                 with performance_report(filename=performance_log):
                     for scattered_data in scattered_validation_data_futures:
                         model_key = (n_topics, alpha_value, beta_value)
@@ -658,7 +658,7 @@ if __name__=="__main__":
                     completed_validation_futures = [done.result() for done in done_validation]
                     progress_bar.update()
 
-                PERFORMANCE_VALIDATION_LOG = os.path.join(IMAGE_DIR, f"vis_perf_validation_{pd.to_datetime('now').strftime('%Y%m%d%H%M%S%f')}.html")
+                PERFORMANCE_VALIDATION_LOG = os.path.join(IMAGE_DIR, "VALIDATION_LOG",  f"vis_perf_validation_{pd.to_datetime('now').strftime('%Y%m%d%H%M%S%f')}.html")
                 validation_pylda_vis, validation_pcoa_vis = process_visualizations(
                     client, completed_validation_futures, "VALIDATION", PERFORMANCE_VALIDATION_LOG, num_workers, PYLDA_DIR, PCOA_DIR
                 )
@@ -687,7 +687,7 @@ if __name__=="__main__":
             try:
                 dir = os.path.join(LOG_DIR, "TEST")
                 os.makedirs(dir, exist_ok=True)
-                performance_log = os.path.join(dir, f"test_perf_{pd.to_datetime('now').strftime('%Y%m%d%H%M%S%f')}.html")
+                performance_log = os.path.join(dir, "TEST_LOG", f"test_perf_{pd.to_datetime('now').strftime('%Y%m%d%H%M%S%f')}.html")
                 with performance_report(filename=performance_log):
                     for scattered_data in scattered_test_data_futures:
                         model_key = (n_topics, alpha_value, beta_value)
@@ -703,7 +703,7 @@ if __name__=="__main__":
                     completed_test_futures = [done.result() for done in done_test]
                     progress_bar.update()
 
-                PERFORMANCE_TEST_LOG = os.path.join(IMAGE_DIR, f"vis_perf_test_{pd.to_datetime('now').strftime('%Y%m%d%H%M%S%f')}.html")
+                PERFORMANCE_TEST_LOG = os.path.join(IMAGE_DIR, "TEST_LOG" f"vis_perf_test_{pd.to_datetime('now').strftime('%Y%m%d%H%M%S%f')}.html")
                 test_pylda_vis, test_pcoa_vis = process_visualizations(
                     client, completed_test_futures, "TEST", PERFORMANCE_TEST_LOG, num_workers, PYLDA_DIR, PCOA_DIR
                 )
