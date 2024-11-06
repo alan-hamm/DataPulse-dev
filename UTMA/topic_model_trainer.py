@@ -48,10 +48,16 @@ def train_model_v2(n_topics: int, alpha_str: Union[str, float], beta_str: Union[
                    random_state: int, passes: int, iterations: int, update_every: int, eval_every: int, cores: int,
                    per_word_topics: bool, ldamodel=None, **kwargs):
 
-    coherence_score_list = []  # Initialize a list to store coherence scores for evaluation.
-    corpus_batch = []  # Initialize an empty list to hold the corpus in bag-of-words format.
-    validation_test_corpus_batch = []
     time_of_method_call = pd.to_datetime('now')  # Record the current timestamp for logging and metadata.
+
+    coherence_score_list = []  # Initialize a list to store coherence scores for evaluation.
+
+    # Initialize a dictionary to hold the corpus data for each phase
+    corpus_data = {
+        "train": [],
+        "validation": [],
+        "test": []
+    }
 
     try:
         # Compute the Dask collections in `data`, resolving all delayed computations at once.
@@ -78,19 +84,17 @@ def train_model_v2(n_topics: int, alpha_str: Union[str, float], beta_str: Union[
         flattened_batch = [item for sublist in train_batch_documents for item in sublist]
         for doc_tokens in train_batch_documents:
             bow_out = train_dictionary_batch.doc2bow(doc_tokens)  # Convert tokens to BoW format using training dictionary
-            corpus_batch.append(bow_out)  # Add the bag-of-words representation to the training corpus batch
+            corpus_data['train'].append(bow_out)  # Add the bag-of-words representation to the training corpus batch
             number_of_documents += 1  # Increment the document counter
     else:
         # Flatten the list of documents, converting each sublist of tokens into a single list for metadata.
         flattened_batch = [item for sublist in batch_documents for item in sublist]
         for doc_tokens in batch_documents:
             bow_out = train_dictionary_batch.doc2bow(doc_tokens)  # Convert tokens to BoW format using training dictionary
-            validation_test_corpus_batch.append(bow_out)  # Add the bag-of-words representation to the validation/test corpus batch
+            corpus_data[phase].append(bow_out)  # Append the bag-of-words representation to the appropriate phase corpus
             number_of_documents += 1  # Increment the document counter
 
-
-
-    logging.info(f"There was a total of {number_of_documents} documents added to the corpus_batch.")  # Log document count.
+    logging.info(f"There was a total of {number_of_documents} documents added to the corpus_data.")  # Log document count.
 
     # Calculate numeric values for alpha and beta, using custom functions based on input strings or values.
     n_alpha = calculate_numeric_alpha(alpha_str, n_topics)
@@ -112,7 +116,7 @@ def train_model_v2(n_topics: int, alpha_str: Union[str, float], beta_str: Union[
     elif phase == "train":
         try:
             ldamodel = LdaModel(
-                corpus=corpus_batch,
+                corpus=corpus_data["train"],
                 id2word=train_dictionary_batch,
                 num_topics=n_topics,
                 alpha=float(n_alpha),
@@ -148,19 +152,13 @@ def train_model_v2(n_topics: int, alpha_str: Union[str, float], beta_str: Union[
             coherence_score_list.append(coherence_score)
     with np.errstate(divide='ignore', invalid='ignore'):
         try:
-            if phase == "train":
-                convergence_score = ldamodel.bound(corpus_batch)
-            else:
-                convergence_score = ldamodel.bound(validation_test_corpus_batch)
+            convergence_score = ldamodel.bound(corpus_data[phase])
         except Exception as e:
             logging.error(f"Issue calculating convergence score: {e}. Value '{DEFAULT_SCORE}' assigned.")
             convergence_score = DEFAULT_SCORE
     with np.errstate(divide='ignore', invalid='ignore'):
         try:
-            if phase == "train":
-                perplexity_score = ldamodel.log_perplexity(corpus_batch)
-            else:
-                perplexity_score = ldamodel.log_perplexity(validation_test_corpus_batch)
+            perplexity_score = ldamodel.log_perplexity(corpus_data[phase])
         except RuntimeWarning as e:
             logging.info(f"Issue calculating perplexity score: {e}. Value '{DEFAULT_SCORE}' assigned.")
             perplexity_score = DEFAULT_SCORE
@@ -197,7 +195,7 @@ def train_model_v2(n_topics: int, alpha_str: Union[str, float], beta_str: Union[
                 }
             }
         ]
-        
+
     with np.errstate(divide='ignore', invalid='ignore'):
         # Ensure all numerical values are in a JSON-compatible format for downstream compatibility.
         topics_to_store = convert_float32_to_float(topics_to_store)
@@ -210,7 +208,7 @@ def train_model_v2(n_topics: int, alpha_str: Union[str, float], beta_str: Union[
             if phase in ['validation', 'test']:
                 validation_results_to_store = [
                     ldamodel.get_document_topics(bow_doc, minimum_probability=0.01)
-                    for bow_doc in validation_test_corpus_batch
+                    for bow_doc in corpus_data[phase]
                 ]
             else: 
                 validation_results_to_store = ['N/A']
@@ -303,7 +301,7 @@ def train_model_v2(n_topics: int, alpha_str: Union[str, float], beta_str: Union[
     
     # Serialized Data
     'lda_model': ldamodel_bytes,  # Serialized LDA model, if trained in this batch.
-    'corpus': pickle.dumps(corpus_batch),  # Serialized corpus used for training.
+    'corpus': pickle.dumps(corpus_data[phase]),  # Serialized corpus used for training.
     'dictionary': pickle.dumps(train_dictionary_batch),  # Serialized dictionary for topic modeling.
     
     # Visualization Creation Verification Placeholders
