@@ -35,16 +35,16 @@ import logging
 plt.rcParams['figure.max_open_warning'] = 0 # suppress memory warning msgs re too many plots being open simultaneously
 
 
-def create_vis_pylda(ldaModel, corpus, dictionary, topics, phase_name, filename, CORES, PYLDA_DIR):
+def create_vis_pylda(ldaModel, corpus, dictionary, topics, phase_name, filename, CORES, time_key, PYLDA_DIR):
     create_pylda = None
     #print("We are inside Create Vis.")
     try:
         PYLDA_DIR = os.path.join(PYLDA_DIR, phase_name, f"number_of_topics-{topics}")
         os.makedirs(PYLDA_DIR, exist_ok=True)
-        if os.path.exists(PYLDA_DIR):
-            logging.info(f"Confirmed that directory exists: {PYLDA_DIR}")
-        else:
-            logging.error(f"Directory creation failed for: {PYLDA_DIR}")
+        #if os.path.exists(PYLDA_DIR):
+        #    logging.info(f"Confirmed that directory exists: {PYLDA_DIR}")
+        #else:
+        #    logging.error(f"Directory creation failed for: {PYLDA_DIR}")
 
         IMAGEFILE = os.path.join(PYLDA_DIR,f"{filename}.html")
     except Exception as e:
@@ -70,10 +70,10 @@ def create_vis_pylda(ldaModel, corpus, dictionary, topics, phase_name, filename,
         create_pylda = False
 
     #garbage_collection(False,"create_vis(...)")
-    return (filename, create_pylda)
+    return (time_key, create_pylda)
 
 
-def create_vis_pcoa(ldaModel, corpus, topics, phase_name, filename, PCOA_DIR):
+def create_vis_pcoa(ldaModel, corpus, topics, phase_name, filename, time_key, PCOA_DIR):
     create_pcoa = None
     PCoAfilename = filename
 
@@ -152,7 +152,7 @@ def create_vis_pcoa(ldaModel, corpus, topics, phase_name, filename, PCOA_DIR):
         create_pcoa=False
 
     #garbage_collection(False,"create_vis(...)")
-    return (filename, create_pcoa)
+    return (time_key, create_pcoa)
 
 
 def process_visualizations(client, phase_results, phase_name, performance_log, cores, pylda_dir, pcoa_dir):
@@ -181,6 +181,7 @@ def process_visualizations(client, phase_results, phase_name, performance_log, c
                         phase_name,
                         result_dict['text_md5'],  # filename
                         cores,
+                        result_dict['time_key'],
                         pylda_dir
                     )
                     visualization_futures_pylda.append(vis_future_pylda)
@@ -196,6 +197,7 @@ def process_visualizations(client, phase_results, phase_name, performance_log, c
                         result_dict['topics'],  # f'number_of_topics-{topics}'
                         phase_name,
                         result_dict['text_md5'],  # filename
+                        result_dict['time_key'],
                         pcoa_dir
                     )
                     visualization_futures_pcoa.append(vis_future_pcoa)

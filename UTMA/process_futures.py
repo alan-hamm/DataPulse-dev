@@ -114,20 +114,16 @@ def process_completed_futures(connection_string, corpus_label, \
     pylda_results_map = {vis_result[0]: vis_result[1:] for vis_result in vis_pylda if vis_result}
     pcoa_results_map = {vis_result[0]: vis_result[1:] for vis_result in vis_pcoa if vis_result}
     # do union of items
-    #vis_results_map = dict(pylda_results_map.items() | pcoa_results_map.items())
+    # Combine both maps into a unified vis_results_map
     vis_results_map = {}
     for key in set(pylda_results_map) | set(pcoa_results_map):
-        pylda_result = pylda_results_map.get(key)
-        pcoa_result = pcoa_results_map.get(key)
-        
-        # Debug output
-        #logging.info(f"Key: {key}, PyLDA Result: {pylda_result}, PCoA Result: {pcoa_result}")
-
-        # You may choose what to do if one result is missing - perhaps use None or a default value
-        vis_result = (pylda_result if pylda_result is not None else (None, None),
-                    pcoa_result if pcoa_result is not None else (None, None))
-        
+        create_pylda = pylda_results_map.get(key)
+        create_pcoa = pcoa_results_map.get(key)
+        vis_result = (create_pylda if create_pylda is not None else (None, None),
+                      create_pcoa if create_pcoa is not None else (None, None))
         vis_results_map[key] = vis_result
+
+
     # DEBUGGING
     #if visualization_results and len(visualization_results) >= 2:
     #    print(visualization_results[0], visualization_results[1])
@@ -153,8 +149,23 @@ def process_completed_futures(connection_string, corpus_label, \
                                 model_data = {}  # Convert to an empty dictionary to avoid errors and retain the item
 
                             unique_id = model_data.get('time_key')
+                            # Check for exact match in vis_results_map keys
+                            #logging.info(f"Looking up unique_id: '{unique_id}' (length: {len(unique_id)})")
+
+                            # Check for exact match in vis_results_map keys
+                            #match_found = False
+                            #for key in vis_results_map.keys():
+                            #    logging.info(f"Comparing unique_id '{unique_id}' with vis_results_map key '{key}'")
+                            #    if unique_id == key:
+                             #       logging.info(f"Exact match found: unique_id ({unique_id}) matches key ({key})")
+                            #        match_found = True
+                            #        break  # Exit loop as soon as a match is found
+                            #if not match_found:
+                            #    logging.info(f"No match found for unique_id: {unique_id}")
+
                             if unique_id and unique_id in vis_results_map:
                                 create_pylda, create_pcoa = vis_results_map[unique_id]
+                                logging.info(f"Found results for unique_id {unique_id}: create_pylda={create_pylda}, create_pcoa={create_pcoa}")
                                 model_data['create_pylda'] = create_pylda[0]
                                 model_data['create_pcoa'] = create_pcoa[0]
                                 model_data['num_documents'] = num_documents
@@ -246,6 +257,4 @@ def process_completed_futures(connection_string, corpus_label, \
             except Exception as e:
                 logging.error(f"Error occurred during process_completed_futures() add_model_data_to_database() TEST: {e}")
 
-    #del models_data            
-    #garbage_collection(False, 'process_completed_futures(...)')
     return completed_train_futures, completed_validation_futures, completed_test_futures
