@@ -36,44 +36,59 @@ import hashlib  # Generates unique hashes for document metadata, ensuring data c
 import numpy as np  # Enables numerical operations, potentially for data manipulation or vector operations.
 import json  # Provides JSON encoding and decoding, useful for handling data in a structured format.
 from typing import Union  # Allows type hinting for function parameters, improving code readability and debugging.
+import random
+from datetime import datetime
 
 from .alpha_eta import calculate_numeric_alpha, calculate_numeric_beta  # Functions that calculate alpha and beta values for LDA.
 from .utils import convert_float32_to_float  # Utility function for data type conversion, ensuring compatibility within the script.
 
     
 # https://examples.dask.org/applications/embarrassingly-parallel.html
-def train_model_v2(n_topics: int, alpha_str: Union[str, float], beta_str: Union[str, float], data: list, phase: str,
+def train_model_v2(n_topics: int, alpha_str: Union[str, float], beta_str: Union[str, float], train_data: list, data: list, phase: str,
                    random_state: int, passes: int, iterations: int, update_every: int, eval_every: int, cores: int,
-                   per_word_topics: bool, ldamodel=None):
+                   per_word_topics: bool, ldamodel=None, **kwargs):
 
     coherence_score_list = []  # Initialize a list to store coherence scores for evaluation.
     corpus_batch = []  # Initialize an empty list to hold the corpus in bag-of-words format.
+    validation_test_corpus_batch = []
     time_of_method_call = pd.to_datetime('now')  # Record the current timestamp for logging and metadata.
 
     try:
         # Compute the Dask collections in `data`, resolving all delayed computations at once.
+        train_batch_documents = dask.compute(*train_data)
         batch_documents = dask.compute(*data)
         # Set a chunksize for model processing, dividing documents into smaller groups for efficient processing.
-        chunksize = max(1, int(len(batch_documents) // 5))
+        chunksize = max(1, int(len(train_batch_documents) // 5))
     except Exception as e:
         logging.error(f"Error computing streaming_documents data: {e}")  # Log any errors during Dask computation.
         raise  # Re-raise the exception to stop execution if data computation fails.
 
     # Create a Gensim dictionary from the batch documents, mapping words to unique IDs for the corpus.
     try:
-        dictionary_batch = Dictionary(list(batch_documents))
+        train_dictionary_batch = Dictionary(list(train_batch_documents))
     except TypeError:
-        print("Error: The data structure is not correct.")  # Print an error if data format is incompatible.
+        print("Error: The data structure is not correct to create the Dictionary object.")  # Print an error if data format is incompatible.
 
-    # Flatten the list of documents, converting each sublist of tokens into a single list for metadata.
-    flattened_batch = [item for sublist in batch_documents for item in sublist]
 
-    # Convert each document to bag-of-words format (list of word IDs and counts), creating a corpus.
+    # Corrected code inside train_model_v2
     number_of_documents = 0  # Counter for tracking the number of documents processed.
-    for doc_tokens in batch_documents:
-        bow_out = dictionary_batch.doc2bow(doc_tokens)  # Convert tokens to bag-of-words format.
-        corpus_batch.append(bow_out)  # Add the bag-of-words representation to the corpus batch.
-        number_of_documents += 1  # Increment the document counter.
+
+    if phase == "train":
+        # Flatten the list of documents, converting each sublist of tokens into a single list for metadata.
+        flattened_batch = [item for sublist in train_batch_documents for item in sublist]
+        for doc_tokens in train_batch_documents:
+            bow_out = train_dictionary_batch.doc2bow(doc_tokens)  # Convert tokens to BoW format using training dictionary
+            corpus_batch.append(bow_out)  # Add the bag-of-words representation to the training corpus batch
+            number_of_documents += 1  # Increment the document counter
+    else:
+        # Flatten the list of documents, converting each sublist of tokens into a single list for metadata.
+        flattened_batch = [item for sublist in batch_documents for item in sublist]
+        for doc_tokens in batch_documents:
+            bow_out = train_dictionary_batch.doc2bow(doc_tokens)  # Convert tokens to BoW format using training dictionary
+            validation_test_corpus_batch.append(bow_out)  # Add the bag-of-words representation to the validation/test corpus batch
+            number_of_documents += 1  # Increment the document counter
+
+
 
     logging.info(f"There was a total of {number_of_documents} documents added to the corpus_batch.")  # Log document count.
 
@@ -81,121 +96,189 @@ def train_model_v2(n_topics: int, alpha_str: Union[str, float], beta_str: Union[
     n_alpha = calculate_numeric_alpha(alpha_str, n_topics)
     n_beta = calculate_numeric_beta(beta_str, n_topics)
 
+    
+    # Constants for default and failure scores
+    DEFAULT_SCORE = float('-inf')
+
+    if phase in ['validation', 'test']:
+        # For validation and test phases, no model is created
+        ldamodel_bytes = pickle.dumps(ldamodel)  # Re-serialize the trained model for later use and storage.
+        ldamodel = ldamodel  # Model from TRAIN data
+        coherence_score = DEFAULT_SCORE
+        convergence_score = DEFAULT_SCORE
+        perplexity_score = DEFAULT_SCORE
 
     # Only create and train the LdaModel if phase is "train"
-    if phase == "train":
+    elif phase == "train":
         try:
-            # Initialize the LdaModel with specified parameters, using the prepared corpus and dictionary.
             ldamodel = LdaModel(
-                corpus=corpus_batch,  # Bag-of-words corpus representation for training.
-                id2word=dictionary_batch,  # Dictionary that maps word IDs to words.
-                num_topics=n_topics,  # Number of topics to be identified.
-                alpha=float(n_alpha),  # Alpha parameter controlling topic sparsity.
-                eta=float(n_beta),  # Eta parameter affecting word distribution in topics.
-                random_state=random_state,  # Random seed for reproducibility.
-                passes=passes,  # Number of full passes through the corpus.
-                iterations=iterations,  # Maximum number of iterations in each pass.
-                update_every=update_every,  # Number of documents to accumulate before updating.
-                eval_every=eval_every,  # Evaluate model every n updates (for large datasets).
-                chunksize=chunksize,  # Number of documents processed at once.
-                per_word_topics=True  # Flag to compute topics for each word.
+                corpus=corpus_batch,
+                id2word=train_dictionary_batch,
+                num_topics=n_topics,
+                alpha=float(n_alpha),
+                eta=float(n_beta),
+                random_state=random_state,
+                passes=passes,
+                iterations=iterations,
+                update_every=update_every,
+                eval_every=eval_every,
+                chunksize=chunksize,
+                per_word_topics=True
             )
-            ldamodel_bytes = pickle.dumps(ldamodel)  # Serialize the trained model for later use and storage.
+            ldamodel_bytes = pickle.dumps(ldamodel)
         except Exception as e:
-            logging.error(f"An error occurred during LDA model training: {e}")  # Log any errors in training.
+            logging.error(f"An error occurred during LDA model training: {e}")
             raise  # Stop execution if model creation fails.
 
-        # Calculate scores for training phase
+
+    # Calculate scores
+    with np.errstate(divide='ignore', invalid='ignore'):
         try:
-            # Compute coherence score, assessing topic interpretability on a subset of processes.
-            coherence_model_lda = CoherenceModel(
-                model=ldamodel,  # Trained LDA model.
-                processes=math.floor(cores * (1/3)),  # Use a third of available cores for evaluation.
-                dictionary=dictionary_batch,  # Dictionary used for coherence computation.
-                texts=batch_documents,  # Original texts for calculating coherence.
-                coherence='c_v'  # Measure of how coherent the topics are.
-            )
-            coherence_score = coherence_model_lda.get_coherence()  # Get coherence score for topics.
-            coherence_score_list.append(coherence_score)  # Store the score for logging or analysis.
-        except Exception as e:
-            logging.error("Issue calculating coherence score. Value '-Inf' assigned.")  # Log error in coherence calculation.
-            coherence_score = float('-inf')  # Assign default score if calculation fails.
+            if phase == "train":
+                coherence_model_lda = CoherenceModel(  model=ldamodel, processes=math.floor(cores * (1/3)), 
+                                                    dictionary=train_dictionary_batch, texts=train_batch_documents, coherence='c_v' )
+            else:
+                coherence_model_lda = CoherenceModel(  model=ldamodel, processes=math.floor(cores * (1/3)), 
+                                                    dictionary=train_dictionary_batch, texts=batch_documents, coherence='c_v' )
+            coherence_score = coherence_model_lda.get_coherence()
             coherence_score_list.append(coherence_score)
-
-        try:
-            convergence_score = ldamodel.bound(corpus_batch)  # Calculate model convergence score.
         except Exception as e:
-            logging.error("Issue calculating convergence score. Value '-Inf' assigned.")  # Log error in convergence score.
-            convergence_score = float('-inf')  # Assign default score if calculation fails.
-
+            logging.error(f"Issue calculating coherence score: {e}. Value '{DEFAULT_SCORE}' assigned.")
+            coherence_score = DEFAULT_SCORE
+            coherence_score_list.append(coherence_score)
+    with np.errstate(divide='ignore', invalid='ignore'):
         try:
-            perplexity_score = ldamodel.log_perplexity(corpus_batch)  # Calculate model perplexity score.
+            if phase == "train":
+                convergence_score = ldamodel.bound(corpus_batch)
+            else:
+                convergence_score = ldamodel.bound(validation_test_corpus_batch)
+        except Exception as e:
+            logging.error(f"Issue calculating convergence score: {e}. Value '{DEFAULT_SCORE}' assigned.")
+            convergence_score = DEFAULT_SCORE
+    with np.errstate(divide='ignore', invalid='ignore'):
+        try:
+            if phase == "train":
+                perplexity_score = ldamodel.log_perplexity(corpus_batch)
+            else:
+                perplexity_score = ldamodel.log_perplexity(validation_test_corpus_batch)
         except RuntimeWarning as e:
-            logging.info("Issue calculating perplexity score. Value '-Inf' assigned.")  # Log any warnings in perplexity calculation.
-            perplexity_score = float('-inf')  # Assign default score if calculation fails.
-    elif phase in ['validation', 'test']:
-        # For validation and test phases, no model is created
-        ldamodel_bytes = None  # No model is serialized or stored.
-        coherence_score = float('-inf')  # Default coherence score for non-training phases.
-        convergence_score = float('-inf')  # Default convergence score for non-training phases.
-        perplexity_score = float('-inf')  # Default perplexity score for non-training phases.
-  
+            logging.info(f"Issue calculating perplexity score: {e}. Value '{DEFAULT_SCORE}' assigned.")
+            perplexity_score = DEFAULT_SCORE
 
 
     # Set the number of words to display for each topic, allowing deeper insight into topic composition.
     num_words = 30  # Adjust based on the level of detail required for topic terms.
     
     # Retrieve the top words for each topic with their probabilities. This provides the most relevant words defining each topic.
-    show_topics_results = ldamodel.show_topics(num_topics=-1, num_words=num_words, formatted=False)
-    
-    # Format the top words per topic as a list of dictionaries, making the data easier to store and access.
-    topics_to_store = [
-        {
-            "method": "show_topics",           # Indicates the method used for topic representation
-            "topic_id": topic[0],              # Unique identifier for each topic
-            "words": [{"word": word, "prob": prob} for word, prob in topic[1]]  # Words with their probabilities for this topic
-        }
-        for topic in show_topics_results
-    ]
+    try:
+        show_topics_results = ldamodel.show_topics(num_topics=-1, num_words=num_words, formatted=False)
+        topics_to_store = [
+            {
+                "method": "show_topics",
+                "topic_id": topic[0],
+                "words": [{"word": word, "prob": prob} for word, prob in topic[1]]
+            }
+            for topic in show_topics_results
+        ]
+    except Exception as e:
+        # Fallback values with diagnostic information
+        topics_to_store = [
+            {
+                "method": "show_topics",
+                "topic_id": None,  # Set to None since topic_id is unavailable
+                "words": [],       # Empty list for words since there was a failure
+                "error": str(e),   # Store the exception message
+                "record_id": kwargs.get("record_id", "unknown"),  # ID or key to identify the record
+                "parameters": {     # Add any parameters that were relevant to the failure
+                    "num_topics": kwargs.get("num_topics", "unknown"),
+                    "num_words": kwargs.get("num_words", "unknown"),
+                    "alpha": kwargs.get("alpha", "unknown"),
+                    "beta": kwargs.get("beta", "unknown"),
+                }
+            }
+        ]
+        
+    with np.errstate(divide='ignore', invalid='ignore'):
+        # Ensure all numerical values are in a JSON-compatible format for downstream compatibility.
+        topics_to_store = convert_float32_to_float(topics_to_store)
+        # Serialize the topic data to JSON format for structured storage, such as in a database.
+        show_topics_jsonb = json.dumps(topics_to_store)
+        
+    with np.errstate(divide='ignore', invalid='ignore'):
+        # Get the topic distribution for each document in the validation or test corpus
+        try:
+            if phase in ['validation', 'test']:
+                validation_results_to_store = [
+                    ldamodel.get_document_topics(bow_doc, minimum_probability=0.01)
+                    for bow_doc in validation_test_corpus_batch
+                ]
+            else: 
+                validation_results_to_store = ['N/A']
+        except Exception as e:
+            logging.error(f"The validation data could not be generated: {e}")
+            validation_results_to_store = {"error": "Validation data generation failed", "phase": phase}
 
-    # Ensure all numerical values are in a JSON-compatible format for downstream compatibility.
-    topics_to_store = convert_float32_to_float(topics_to_store)
+        # Ensure all numerical values are in a JSON-compatible format for downstream compatibility
+        validation_results_to_store = convert_float32_to_float(validation_results_to_store)
 
-    # Serialize the topic data to JSON format for structured storage, such as in a database.
-    show_topics_jsonb = json.dumps(topics_to_store)
+        # Serialize the validation data to JSON format for structured storage
+        try:
+            validation_results_jsonb = json.dumps(validation_results_to_store)
+        except TypeError as e:
+            logging.error(f"JSON serialization failed due to non-compatible types: {e}")
+            validation_results_jsonb = json.dumps({"error": "Validation data generation failed", "phase": phase})
 
-    # Retrieve the top topics based on coherence scores, which assess how interpretable or meaningful each topic is.
-    topics = ldamodel.top_topics(texts=batch_documents, processes=math.floor(cores * (1/3)))
-    
-    # Extract only the words from each topic, removing the associated scores to provide a simplified view of topic terms.
-    topic_words = []
-    for topic in topics:
-        topic_representation = topic[0]  # Access the list of top words with their coherence-based ordering.
-        words = [word for _, word in topic_representation]  # Isolate just the words for easy reference.
-        topic_words.append(words)  # Store the list of words for each topic.
+    with np.errstate(divide='ignore', invalid='ignore'):
+        try:
+            if phase == "train":
+            # Retrieve the top topics based on coherence scores, which assess how interpretable or meaningful each topic is.
+                topics = ldamodel.top_topics(texts=train_batch_documents, processes=math.floor(cores * (1/3)))
+            else:
+                topics = ldamodel.top_topics(texts=batch_documents, processes=math.floor(cores * (1/3)))
 
+            # Extract only the words from each topic, removing the associated scores to provide a simplified view of topic terms.
+            topic_words = []
+            for topic in topics:
+                topic_representation = topic[0]  # Access the list of top words with their coherence-based ordering.
+                words = [word for _, word in topic_representation]  # Isolate just the words for easy reference.
+                topic_words.append(words)  # Store the list of words for each topic.
+        except Exception as e:
+            logging.error(f"An error occurred while extracting topic words: {e}")
+            # If topics extraction fails, provide a single "N/A" list as a fallback
+            topic_words = [["N/A"]]  # Fallback with one list containing "N/A" to indicate failure
 
-    # Generate unique time-based hashes for identifying and logging model runs.
-    # Get time string with microseconds and simulate nanoseconds
-    time_hash = time_of_method_call.strftime('%Y%m%d%H%M%S%f') + f"{time_of_method_call.microsecond % 1000:03}"  # Adds 3 additional digits for "nanoseconds"
-    text_hash = hashlib.md5(pd.to_datetime('now').strftime('%Y%m%d%H%M%S%f').encode()).hexdigest()  # Hash based on current time.
-    string_time = text_hash.strip() + time_hash.strip()  # Concatenate hashes for unique time key.
+        # Ensure all numerical values are in a JSON-compatible format for downstream compatibility.
+        topics_to_store = convert_float32_to_float(topic_words)
+        topic_words_jsonb = json.dumps(topic_words)  # Serializes to JSON format
+
+    # Generate unique time-based key with document text hash
+    time_of_method_call = datetime.now()
+    time_hash = time_of_method_call.strftime('%Y%m%d%H%M%S%f')
+    random_suffix = f"{random.randint(100, 999)}"
+    unique_time_key = hashlib.md5((time_hash + random_suffix).encode()).hexdigest()
+    text_hash = hashlib.md5(' '.join(flattened_batch).encode()).hexdigest()
+
+    # Concatenate document hash and unique time hash to form the final key
+    string_time = (text_hash + unique_time_key).strip()  # `strip()` is optional here
+    # When creating time_key
+    logging.info(f"Generated time_key: {string_time}")
 
     current_increment_data = {
     # Metadata and Identifiers
     'time_key': string_time,  # Unique identifier for this batch, based on concatenated hash.
     'type': phase,  # Indicates whether this batch is for 'train', 'validation', or 'test'.
-    'time': time_of_method_call,  # Start time of this batch's processing.
+    'start_time': time_of_method_call,  # Start time of this batch's processing.
     'end_time': pd.to_datetime('now'),  # End time of this batch's processing.
-    'num_workers': -1,  # Placeholder for adaptive core count used for this batch.
+    'num_workers': float('-inf'),  # Placeholder for adaptive core count used for this batch.
     
     # Document and Batch Details
     'batch_size': len(batch_documents),  # Number of documents processed in this batch.
     'num_documents': float('-inf'),  # Placeholder for the total document count.
-    'text': [' '.join(flattened_batch)],  # Concatenated text of the batch for metadata/logging.
+    'text': pickle.dumps([' '.join(flattened_batch)]),  # Concatenated text of the batch for metadata/logging.
     'text_json': pickle.dumps(batch_documents),  # Serialized batch documents for reference.
     'show_topics': show_topics_jsonb, # Serialized top terms per topic for analysis
-    'top_words': topic_words, # Most coherent words across topics for comparative analysis
+    'top_words': topic_words_jsonb, # Serialized most coherent words across topics for comparative analysis
+    'validation_result': validation_results_jsonb, 
     'text_sha256': hashlib.sha256(' '.join(flattened_batch).encode()).hexdigest(),  # SHA-256 hash of text for integrity.
     'text_md5': hashlib.md5(' '.join(flattened_batch).encode()).hexdigest(),  # MD5 hash for quick lookups.
     
@@ -221,7 +304,7 @@ def train_model_v2(n_topics: int, alpha_str: Union[str, float], beta_str: Union[
     # Serialized Data
     'lda_model': ldamodel_bytes,  # Serialized LDA model, if trained in this batch.
     'corpus': pickle.dumps(corpus_batch),  # Serialized corpus used for training.
-    'dictionary': pickle.dumps(dictionary_batch),  # Serialized dictionary for topic modeling.
+    'dictionary': pickle.dumps(train_dictionary_batch),  # Serialized dictionary for topic modeling.
     
     # Visualization Creation Verification Placeholders
     'create_pylda': None,  # Placeholder for pyLDA verification of visualization creation.
