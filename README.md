@@ -13,7 +13,7 @@
 **Unified Topic Modeling and Analysis (UTMA)** is a flexible and scalable framework designed for comprehensive topic modeling and analysis. Beyond Latent Dirichlet Allocation (LDA), UTMA integrates adaptive resource management, dynamic topic modeling, and advanced analytical capabilities to support large-scale, distributed computations and diachronic analysis. This framework is ideal for tracking topic evolution over time, making it suitable for a variety of document types and research needs.
 
 ### Key Features
-- **Adaptive Resource Management**: UTMA leverages Dask for distributed parallel processing, dynamically adjusting resources to efficiently handle large datasets and high computational loads.
+- **Adaptive Resource Management**: UTMA leverages Dask for process-based distributed parallelization, harnessing multiple cores and avoiding the limitations of the GIL while dynamically adjusting resources to efficiently handle large datasets and high computational loads.
 - **Comprehensive Topic Modeling**: Supports customizable LDA model configurations and hyperparameter tuning, enabling detailed exploration of topics in diverse document collections.
 - **Diachronic Analysis(_Pending_)**: Facilitates tracking and analyzing topic shifts over time, particularly useful for examining historical changes or comparing topics across decades.
 - **Detailed Metadata Tracking**: Records extensive metadata for each batch, including dynamic core counts, model parameters, and evaluation scores, ensuring complete reproducibility and transparency.
