@@ -338,10 +338,6 @@ sqlalchemy_logger.addHandler(null_handler)
 # Optionally set a higher level if you want to ignore INFO logs from sqlalchemy.engine
 # sqlalchemy_logger.setLevel(logging.WARNING)
 
-# Archive log only once if running in main process
-#if multiprocessing.current_process().name == 'MainProcess':
-#archive_log(logger, LOGFILE, LOG_DIR)
-
 # Enable serialization optimizations 
 dask.config.set(scheduler='distributed', serialize=True)
 dask.config.set({'logging.distributed': 'error'})
@@ -632,7 +628,7 @@ if __name__=="__main__":
                     process_completed_futures(
                         CONNECTION_STRING, CORPUS_LABEL,
                         completed_train_futures, completed_validation_futures, completed_test_futures,
-                        len(completed_train_futures) + len(completed_validation_futures) + len(completed_test_futures),
+                        (len(completed_train_futures) + len(completed_validation_futures) + len(completed_test_futures)),
                         num_workers, BATCH_SIZE, TEXTS_ZIP_DIR, vis_pylda=completed_pylda_vis, vis_pcoa=completed_pcoa_vis
                     )
             except Exception as e:
@@ -648,7 +644,7 @@ if __name__=="__main__":
                     for scattered_data in scattered_validation_data_futures:
                         model_key = (n_topics, alpha_value, beta_value)
                         if model_key in train_models_dict:
-                            ldamodel = train_models_dict[model_key]
+                            ldamodel = pickle.loads(train_models_dict[model_key])
                             future = client.submit(
                                 train_model_v2, n_topics, alpha_value, beta_value, scattered_data, "validation",
                                 RANDOM_STATE, PASSES, ITERATIONS, UPDATE_EVERY, EVAL_EVERY, num_workers, PER_WORD_TOPICS, ldamodel=ldamodel
@@ -677,7 +673,7 @@ if __name__=="__main__":
                     process_completed_futures(
                         CONNECTION_STRING, CORPUS_LABEL,
                         completed_train_futures, completed_validation_futures, completed_test_futures,
-                        len(completed_train_futures) + len(completed_validation_futures) + len(completed_test_futures),
+                        (len(completed_train_futures) + len(completed_validation_futures) + len(completed_test_futures)),
                         num_workers, BATCH_SIZE, TEXTS_ZIP_DIR, vis_pylda=completed_pylda_vis, vis_pcoa=completed_pcoa_vis
                     )
             except Exception as e:
@@ -693,7 +689,7 @@ if __name__=="__main__":
                     for scattered_data in scattered_test_data_futures:
                         model_key = (n_topics, alpha_value, beta_value)
                         if model_key in train_models_dict:
-                            ldamodel = train_models_dict[model_key]
+                            ldamodel = pickle.loads(train_models_dict[model_key])
                             future = client.submit(
                                 train_model_v2, n_topics, alpha_value, beta_value, scattered_data, "test",
                                 RANDOM_STATE, PASSES, ITERATIONS, UPDATE_EVERY, EVAL_EVERY, num_workers, PER_WORD_TOPICS, ldamodel=ldamodel
@@ -723,7 +719,7 @@ if __name__=="__main__":
                     process_completed_futures(
                         CONNECTION_STRING, CORPUS_LABEL,
                         completed_train_futures, completed_validation_futures, completed_test_futures,
-                        len(completed_train_futures) + len(completed_validation_futures) + len(completed_test_futures),
+                        (len(completed_train_futures) + len(completed_validation_futures) + len(completed_test_futures)),
                         num_workers, BATCH_SIZE, TEXTS_ZIP_DIR, vis_pylda=completed_pylda_vis, vis_pcoa=completed_pcoa_vis
                     )
             except Exception as e:
