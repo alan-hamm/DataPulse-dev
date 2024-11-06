@@ -216,7 +216,7 @@ def process_completed_futures(phase, connection_string, corpus_label, \
             try:
                 DynamicModelMetadata = create_dynamic_table_class(corpus_label)
                 create_table_if_not_exists(DynamicModelMetadata, connection_string)
-                add_model_data_to_database(model_data, corpus_label, connection_string,
+                add_model_data_to_database(model_data,phase, corpus_label, connection_string,
                                         num_documents, workers, batchsize, texts_zip_dir)
             except Exception as e:
                 logging.error(f"Error occurred during process_completed_futures() add_model_data_to_database() VALIDATION: {e}")
@@ -252,7 +252,7 @@ def process_completed_futures(phase, connection_string, corpus_label, \
             try:
                 DynamicModelMetadata = create_dynamic_table_class(corpus_label)
                 create_table_if_not_exists(DynamicModelMetadata, connection_string)
-                add_model_data_to_database(model_data, corpus_label, connection_string,
+                add_model_data_to_database(model_data, phase, corpus_label, connection_string,
                                         num_documents, workers, batchsize, texts_zip_dir)
             except Exception as e:
                 logging.error(f"Error occurred during process_completed_futures() add_model_data_to_database() TEST: {e}")
