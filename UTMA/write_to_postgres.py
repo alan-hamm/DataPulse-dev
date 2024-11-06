@@ -34,6 +34,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy import create_engine, Column, String, Integer, Boolean, Float, LargeBinary, DateTime, JSON, TEXT
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.declarative import declarative_base
+import pickle
 from .utils import garbage_collection
 
 Base = declarative_base()
@@ -45,6 +46,7 @@ def save_to_zip(time, top_folder, text_data, text_json, ldamodel, corpus, dictio
     timestamp_str = time
     text_zip_filename = f"{timestamp_str}.zip"
     
+    text = pickle.loads(text_data)
     # Write the text content and model to a zip file within TEXTS_ZIP_DIR
     zip_path = os.path.join(texts_zip_dir,top_folder)
     try:
@@ -56,7 +58,7 @@ def save_to_zip(time, top_folder, text_data, text_json, ldamodel, corpus, dictio
 
     zpath = os.path.join(zip_path, text_zip_filename)
     with zipfile.ZipFile(zpath, mode='w', compression=zipfile.ZIP_DEFLATED) as zf:
-        zf.writestr(f"doc_{timestamp_str}.txt", text_data)
+        zf.writestr(f"doc_{timestamp_str}.txt", text)
         zf.writestr(f"model_{timestamp_str}.pkl", ldamodel)
         zf.writestr(f"dict_{timestamp_str}.pkl", dictionary)
         zf.writestr(f"corpus_{timestamp_str}.pkl", corpus)
@@ -89,17 +91,17 @@ def create_dynamic_table_class(table_name):
         # Metadata and Identifiers
         'time_key' : Column(TEXT, primary_key=True, nullable=False),
         'type' : Column(String),
-        'time' : Column(DateTime),
+        'start_time' : Column(DateTime),
         'end_time' : Column(DateTime),
         'num_workers' : Column(Integer),
         
         # Document and Batch Details
         'batch_size' : Column(Integer),
         'num_documents' : Column(Integer),
-        'text' : Column(TEXT),
+        'text' : Column(LargeBinary),
         'text_json' : Column(LargeBinary),
         'show_topics': Column(JSONB),
-        'top_words': Column(TEXT),
+        'top_words': Column(JSONB),
         'text_sha256' : Column(String),
         'text_md5' : Column(String),
 
@@ -194,11 +196,12 @@ def add_model_data_to_database(model_data, table_name, database_uri,
 
     try:
         logging.info(f"model_data['text_md5'] contents: {model_data.get('text_md5')}")
-        for text_list in model_data['text']:
+        text = [pickle.loads(model_data['text'])]
+        for text_list in text:
             combined_text = ''.join([''.join(sent) for sent in text_list])  # Combine all sentences into one string
 
             logging.info("Calling save_to_zip...")
-            zip_path = save_to_zip(model_data['time_key'], document_dir, combined_text, \
+            zip_path = save_to_zip(model_data['time_key'], document_dir, pickle.dumps(combined_text), \
                                 model_data['text_json'], model_data['lda_model'], \
                                 model_data['corpus'], model_data['dictionary'], texts_zip_dir)
             
