@@ -585,6 +585,7 @@ if __name__=="__main__":
         num_workers = len(client.scheduler_info()["workers"])
 
         # Train Phase
+        train_scattered_data = []
         if train_eval_type == "train":
             try:
                 dir = os.path.join(LOG_DIR, "TRAIN")
@@ -593,11 +594,14 @@ if __name__=="__main__":
                 with performance_report(filename=performance_log):
                     #print(f"Total training batches scattered to Dask: {len(scattered_train_data_futures)}")
                     for scattered_data in scattered_train_data_futures:
+                        batch_info['data'] = "N/A"
+                        none_type_scatter = client.scatter(batch_info['data'])
                         future = client.submit(
-                            train_model_v2, n_topics, alpha_value, beta_value, scattered_data, "train",
+                            train_model_v2, n_topics, alpha_value, beta_value, scattered_data, none_type_scatter, "train",
                             RANDOM_STATE, PASSES, ITERATIONS, UPDATE_EVERY, EVAL_EVERY, num_workers, PER_WORD_TOPICS
                         )
                         train_futures.append(future)
+                        train_scattered_data.append(scattered_data)
 
                     #print(f"Total training tasks submitted to Dask: {len(train_futures)}")
                     done_train, _ = wait(train_futures, timeout=None)
@@ -623,12 +627,11 @@ if __name__=="__main__":
 
             # After processing all train phases in the sorted combinations
             try:
-                #print("\nwe are in the TRAIN process_completed_futures() TRY block.")
                 if completed_train_futures or completed_validation_futures or completed_test_futures:
-                    process_completed_futures(
+                    process_completed_futures("TRAIN",
                         CONNECTION_STRING, CORPUS_LABEL,
                         completed_train_futures, completed_validation_futures, completed_test_futures,
-                        (len(completed_train_futures) + len(completed_validation_futures) + len(completed_test_futures)),
+                        len(completed_train_futures),
                         num_workers, BATCH_SIZE, TEXTS_ZIP_DIR, vis_pylda=completed_pylda_vis, vis_pcoa=completed_pcoa_vis
                     )
             except Exception as e:
@@ -646,7 +649,7 @@ if __name__=="__main__":
                         if model_key in train_models_dict:
                             ldamodel = pickle.loads(train_models_dict[model_key])
                             future = client.submit(
-                                train_model_v2, n_topics, alpha_value, beta_value, scattered_data, "validation",
+                                train_model_v2, n_topics, alpha_value, beta_value, train_scattered_data, scattered_data, "validation",
                                 RANDOM_STATE, PASSES, ITERATIONS, UPDATE_EVERY, EVAL_EVERY, num_workers, PER_WORD_TOPICS, ldamodel=ldamodel
                             )
                             validation_futures.append(future)
@@ -670,10 +673,10 @@ if __name__=="__main__":
             # After processing all validation phases in the sorted combinations
             try:
                 if completed_train_futures or completed_validation_futures or completed_test_futures:
-                    process_completed_futures(
+                    process_completed_futures("VALIDATION",
                         CONNECTION_STRING, CORPUS_LABEL,
                         completed_train_futures, completed_validation_futures, completed_test_futures,
-                        (len(completed_train_futures) + len(completed_validation_futures) + len(completed_test_futures)),
+                        len(completed_validation_futures),
                         num_workers, BATCH_SIZE, TEXTS_ZIP_DIR, vis_pylda=completed_pylda_vis, vis_pcoa=completed_pcoa_vis
                     )
             except Exception as e:
@@ -691,7 +694,7 @@ if __name__=="__main__":
                         if model_key in train_models_dict:
                             ldamodel = pickle.loads(train_models_dict[model_key])
                             future = client.submit(
-                                train_model_v2, n_topics, alpha_value, beta_value, scattered_data, "test",
+                                train_model_v2, n_topics, alpha_value, beta_value, train_scattered_data, scattered_data, "test",
                                 RANDOM_STATE, PASSES, ITERATIONS, UPDATE_EVERY, EVAL_EVERY, num_workers, PER_WORD_TOPICS, ldamodel=ldamodel
                             )
                             test_futures.append(future)
@@ -716,14 +719,14 @@ if __name__=="__main__":
             # After processing all test phases in the sorted combinations
             try:
                 if completed_train_futures or completed_validation_futures or completed_test_futures:
-                    process_completed_futures(
+                    process_completed_futures("TEST",
                         CONNECTION_STRING, CORPUS_LABEL,
                         completed_train_futures, completed_validation_futures, completed_test_futures,
-                        (len(completed_train_futures) + len(completed_validation_futures) + len(completed_test_futures)),
+                        len(completed_test_futures),
                         num_workers, BATCH_SIZE, TEXTS_ZIP_DIR, vis_pylda=completed_pylda_vis, vis_pcoa=completed_pcoa_vis
                     )
             except Exception as e:
-                logging.error(f"Error processing TRAIN completed futures: {e}")
+                logging.error(f"Error processing TEST completed futures: {e}")
 
         # Log the processing time
         elapsed_time = round(((time() - started) / 60), 2)
