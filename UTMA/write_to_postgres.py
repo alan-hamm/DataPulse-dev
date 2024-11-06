@@ -64,7 +64,7 @@ def save_to_zip(time, top_folder, text_data, text_json, ldamodel, corpus, dictio
         zf.writestr(f"corpus_{timestamp_str}.pkl", corpus)
         zf.writestr(f"json_{timestamp_str}.pkl", text_json)
 
-    logging.info(f"Zip file created at: {zip_path}")
+    #logging.info(f"Zip file created at: {zip_path}")
     return zpath
 
 
