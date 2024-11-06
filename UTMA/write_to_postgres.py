@@ -49,12 +49,12 @@ def save_to_zip(time, top_folder, text_data, text_json, ldamodel, corpus, dictio
     text = pickle.loads(text_data)
     # Write the text content and model to a zip file within TEXTS_ZIP_DIR
     zip_path = os.path.join(texts_zip_dir,top_folder)
-    try:
-        logging.info(f"Attempting to create Zip directory: {zip_path}")
-        os.makedirs(zip_path, exist_ok=True)
-        logging.info(f"Zip directory created at: {zip_path}")
-    except Exception as e:
-        logging.error(f"Failed to create ZIP directory: {e}")
+    #try:
+    #    logging.info(f"Attempting to create Zip directory: {zip_path}")
+    #    os.makedirs(zip_path, exist_ok=True)
+    #    logging.info(f"Zip directory created at: {zip_path}")
+    #except Exception as e:
+    #    logging.error(f"Failed to create ZIP directory: {e}")
 
     zpath = os.path.join(zip_path, text_zip_filename)
     with zipfile.ZipFile(zpath, mode='w', compression=zipfile.ZIP_DEFLATED) as zf:
@@ -201,7 +201,7 @@ def add_model_data_to_database(model_data, phase, table_name, database_uri,
         for text_list in text:
             combined_text = ''.join([''.join(sent) for sent in text_list])  # Combine all sentences into one string
 
-            logging.info("Calling save_to_zip...")
+            #logging.info("Calling save_to_zip...")
             zip_path = save_to_zip(model_data['time_key'], document_dir, pickle.dumps(combined_text), \
                                 model_data['text_json'], model_data['lda_model'], \
                                 model_data['corpus'], model_data['dictionary'], texts_zip_dir)

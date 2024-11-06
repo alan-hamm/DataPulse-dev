@@ -80,10 +80,10 @@ def create_vis_pcoa(ldaModel, corpus, topics, phase_name, filename, time_key, PC
     try:
         PCOA_DIR = os.path.join(PCOA_DIR, phase_name, f"number_of_topics-{topics}")
         os.makedirs(PCOA_DIR, exist_ok=True)
-        if os.path.exists(PCOA_DIR):
-            logging.info(f"Confirmed that directory exists: {PCOA_DIR}")
-        else:
-            logging.error(f"Directory creation failed for: {PCOA_DIR}")
+        #if os.path.exists(PCOA_DIR):
+        #    logging.info(f"Confirmed that directory exists: {PCOA_DIR}")
+        #else:
+        #    logging.error(f"Directory creation failed for: {PCOA_DIR}")
 
         PCoAIMAGEFILE = os.path.join(PCOA_DIR, PCoAfilename)
     except Exception as e:
