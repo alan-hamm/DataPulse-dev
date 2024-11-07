@@ -143,7 +143,7 @@ As an example of how data must be preprocessed for UTMA, consider analyzing the 
    -  `--max_batch_size`: Sets the maximum number of documents in a batch, providing flexibility for adaptive batching.
 
 
-   ### 1. **Importance of the --futures_batches Parameter**
+   ### 1. **Importance of the futures_batches Parameter**
    The --futures_batches parameter plays a critical role in processing performance by controlling how many tasks run concurrently. Adjusting this parameter allows you to balance resource use and processing efficiency based on your system’s capacity.
 
    -  Performance Tuning: Higher values for --futures_batches increase parallel task processing, which can speed up execution but may also push memory limits. Lower values, on the other hand, reduce memory usage but may slow down execution by limiting parallelism.
