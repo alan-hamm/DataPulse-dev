@@ -95,10 +95,10 @@ def parse_args():
     # System Resource Management
     parser.add_argument("--num_workers", type=int, help="Minimum number of CPU cores to utilize for parallel processing.")
     parser.add_argument("--max_workers", type=int, help="Maximum number of CPU cores allocated for parallel processing.")
-    parser.add_argument("--num_threads", type=int, help="Maximum number of threads per core for efficient use of resources.")
+    parser.add_argument("--num_threads", type=float, help="Maximum number of threads per core for efficient use of resources.")
     parser.add_argument("--max_memory", type=int, help="Maximum RAM (in GB) allowed per core for processing.")
     parser.add_argument("--mem_threshold", type=int, help="Memory usage threshold (in GB) to trigger data spill to disk.")
-    parser.add_argument("--max_cpu", type=int, help="Maximum CPU utilization percentage to prevent overuse of resources.")
+    parser.add_argument("--max_cpu", type=float, help="Maximum CPU utilization percentage to prevent overuse of resources.")
     parser.add_argument("--mem_spill", type=str, help="Directory for temporarily storing data when memory limits are exceeded.")
 
     # Gensim Model Settings
