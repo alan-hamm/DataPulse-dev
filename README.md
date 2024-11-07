@@ -137,8 +137,6 @@ As an example of how data must be preprocessed for UTMA, consider analyzing the 
 
    Configuring `futures_batches`, `base_batch_size`, and `max_batch_size` is critical to balancing resource utilization and achieving efficient processing times, especially on high-performance systems.
 
-   Configuring `futures_batches`, `base_batch_size`, and `max_batch_size` is critical to balancing resource utilization and achieving efficient processing times, especially on high-performance systems.
-
    ### **Guidlines for Setting Key Batch Size Parameter**
    -  `--futures_batches`: Defines the maximum number of future tasks that can be scheduled in Dask.
    -  `--base_batch_size`: Sets the base number of documents per batch for each phase (training, validation, and test).
