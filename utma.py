@@ -31,6 +31,10 @@ import re
 import yaml # used for logging configuration file
 import logging
 import logging.config
+import logging.handlers
+import gzip
+from shutil import move
+
 import sqlalchemy
 
 import sys
@@ -59,7 +63,7 @@ from bokeh.util.deprecation import BokehDeprecationWarning
 # pyLDAvis throws errors when using jc_PCoA(instead use MMD5)
 from numpy import ComplexWarning
 
-#import multiprocessing
+
 
 ###################################
 # BEGIN SCRIPT CONFIGURATION HERE #
@@ -212,10 +216,10 @@ LOG_DIRECTORY = args.log_dir or os.path.join(ROOT_DIR, "log")
 IMAGE_DIR = os.path.join(ROOT_DIR, "visuals")
 PYLDA_DIR = os.path.join(IMAGE_DIR, 'pyLDAvis')
 PCOA_DIR = os.path.join(IMAGE_DIR, 'PCoA')
-METADATA_DIR = os.path.join(ROOT_DIR, "metadata")
+#METADATA_DIR = os.path.join(ROOT_DIR, "metadata")
 TEXTS_ZIP_DIR = os.path.join(ROOT_DIR, "texts_zip")
 
-for directory in [ROOT_DIR, LOG_DIRECTORY, IMAGE_DIR, PYLDA_DIR, PCOA_DIR, METADATA_DIR, TEXTS_ZIP_DIR]:
+for directory in [ROOT_DIR, LOG_DIRECTORY, IMAGE_DIR, PYLDA_DIR, PCOA_DIR, TEXTS_ZIP_DIR]: # METADATA_DIR
     os.makedirs(directory, exist_ok=True)
 
 # Set JOBLIB_TEMP_FOLDER based on ROOT_DIR and CORPUS_LABEL
@@ -240,10 +244,6 @@ if args.root_dir: ROOT_DIR = args.root_dir
 os.makedirs(ROOT_DIR, exist_ok=True)
 os.makedirs(LOG_DIRECTORY, exist_ok=True)
 
-
-#print("Script started successfully.")
-#sys.exit(0)
-
 # Define the top-level directory and subdirectories
 LOG_DIR = os.path.join(ROOT_DIR, "log")
 IMAGE_DIR = os.path.join(ROOT_DIR, "visuals")
@@ -260,36 +260,42 @@ os.makedirs(PCOA_DIR, exist_ok=True)
 os.makedirs(METADATA_DIR, exist_ok=True)
 os.makedirs(TEXTS_ZIP_DIR, exist_ok=True)
 
-# Redirect stderr to the file
-#sys.stderr = open(f"{LOG_DIR}/stderr.log", "w")
-
-# Get the current date and time for log filename
-#now = datetime.now()
-
 # Format the date and time as per your requirement
 # Note: %w is the day of the week as a decimal (0=Sunday, 6=Saturday)
 #       %Y is the four-digit year
 #       %m is the two-digit month (01-12)
 #       %H%M is the hour (00-23) followed by minute (00-59) in 24hr format
-#log_filename = now.strftime('log-%w-%m-%Y-%H%M.log')
-#log_filename = 'log-0250.log'
 # Check if the environment variable is already set
 if 'LOG_START_TIME' not in os.environ:
     os.environ['LOG_START_TIME'] = datetime.now().strftime('%w-%m-%Y-%H%M')
 
 # Use the fixed timestamp from the environment variable
-log_filename = f"log-{os.environ['LOG_START_TIME']}.log"
-LOGFILE = os.path.join(LOG_DIRECTORY, log_filename)  # Directly join log_filename with LOG_DIRECTORY
+#log_filename = f"log-{os.environ['LOG_START_TIME']}.log"
+log_filename = f"log-{os.environ['LOG_START_TIME']}.gz"
+LOGFILE = os.path.join(LOG_DIR, log_filename)  # Directly join log_filename with LOG_DIRECTORY
 
-# Configure logging to write to a file with this name
+# Database connection parameters
+db_params = {
+    'dbname': 'text_mining',
+    'user': 'postgres',
+    'password': 'admin',
+    'host': 'localhost',
+    'port': 5432
+}
+
+# Initialize the PostgreSQL log handler with a formatter
+postgres_handler = PostgresLoggingHandler(db_params)
+formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+postgres_handler.setFormatter(formatter)
+
+# Configure logging
 logging.basicConfig(
-    filename=LOGFILE,
-    filemode='a',  # Append mode if you want to keep adding to the same file during the day
+    level=logging.INFO,
+    handlers=[postgres_handler],
     format='%(asctime)s - %(levelname)s - %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S',
-    level=logging.INFO  # Set to DEBUG for detailed logging
-    #level=logging.DEBUG  # Set to DEBUG for detailed logging
+    datefmt='%Y-%m-%d %H:%M:%S'
 )
+
 
 ##########################################
 # Filter out the specific warning message
