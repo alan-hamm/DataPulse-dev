@@ -1,7 +1,9 @@
+bokeh==3.5.2
 bs4==0.0.2
 chardet==5.2.0
 dask==2024.8.2
 dask[distributed]
+dask[dataframe]
 distributed==2024.8.2
 filelock==3.16.1
 gensim==4.3.3
@@ -17,6 +19,7 @@ readability-lxml
 spacy==3.7.6
 sqlalchemy==2.0.36
 tqdm==4.66.5
+tornado
 psutil==5.9.0
 psycopg2==2.9.9
 scikit-learn==1.5.1
