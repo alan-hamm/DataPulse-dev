@@ -94,7 +94,7 @@ Documents must be in the following format to bypass preprocessing:
 2. Execute each cell to process and save the documents in the required format.
 3. Move the processed files to the designated input directory.
 
-### Usage
+## Steps to Run the UTMA.py Script
 After setup, run the main script to start the UTMA framework. Here’s an example command:
 
    ```bash
