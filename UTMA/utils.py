@@ -109,3 +109,24 @@ def process_local_file(file_path):
             # Simulate processing
             progress_bar.update(len(chunk))
     print("File processing complete.")
+
+
+import os
+import time
+import shutil
+
+def clear_temp_files(temp_dir, age_threshold=60):
+    """Clear files older than the age threshold in minutes."""
+    current_time = time.time()
+    for root, dirs, files in os.walk(temp_dir):
+        for f in files:
+            file_path = os.path.join(root, f)
+            if current_time - os.path.getmtime(file_path) > age_threshold * 60:
+                os.remove(file_path)
+
+import threading
+
+def periodic_cleanup(temp_dir, interval=1800):  # Run every 30 minutes
+    while True:
+        clear_temp_files(temp_dir)
+        time.sleep(interval)
