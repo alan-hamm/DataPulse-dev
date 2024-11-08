@@ -8,7 +8,7 @@
 # at the package level, providing a cohesive interface for the framework.
 
 # Import essential functions and classes from submodules
-from .utils import garbage_collection, exponential_backoff, convert_float32_to_float, get_file_size, download_from_url, process_local_file
+from .utils import garbage_collection, exponential_backoff, convert_float32_to_float, get_file_size, download_from_url, process_local_file, clear_temp_files, periodic_cleanup
 from .process_futures import process_completed_futures, futures_create_lda_datasets
 from .topic_model_trainer import train_model_v2
 from .alpha_eta import calculate_numeric_alpha, calculate_numeric_beta, validate_alpha_beta, calculate_alpha_beta
@@ -26,6 +26,8 @@ __all__ = [
     'get_file_size',
     'download_from_url',
     'process_local_file',
+    'clear_temp_files',
+    'periodic_cleanup',
 
     #yaml_loader
     'join', 
