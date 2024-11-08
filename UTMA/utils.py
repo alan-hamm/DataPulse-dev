@@ -22,6 +22,9 @@ from datetime import datetime
 import multiprocessing
 import gc
 import numpy as np
+import os
+import requests
+from tqdm import tqdm
 
 def garbage_collection(development: bool, location: str):
     if development:
@@ -76,3 +79,33 @@ def convert_float32_to_float(data):
         return float(data)  # Convert numpy floats and regular floats to JSON-compatible floats
     else:
         return data
+
+def get_file_size(file_path):
+    """Get the size of a local file."""
+    return os.path.getsize(file_path)
+
+def download_from_url(url, output_path):
+    """Download a file from a URL with a progress bar."""
+    response = requests.head(url)
+    file_size = int(response.headers.get('Content-Length', 0))
+    
+    with requests.get(url, stream=True) as response, open(output_path, "wb") as file, tqdm(
+        total=file_size, unit='B', unit_scale=True, desc="Downloading"
+    ) as progress_bar:
+        for chunk in response.iter_content(chunk_size=1024):
+            if chunk:
+                file.write(chunk)
+                progress_bar.update(len(chunk))
+    print("Download complete.")
+
+def process_local_file(file_path):
+    """Process a local file with a progress bar."""
+    file_size = get_file_size(file_path)
+    
+    with open(file_path, "rb") as file, tqdm(
+        total=file_size, unit='B', unit_scale=True, desc="Processing"
+    ) as progress_bar:
+        for chunk in iter(lambda: file.read(1024), b''):
+            # Simulate processing
+            progress_bar.update(len(chunk))
+    print("File processing complete.")
