@@ -12,7 +12,7 @@
 #
 # Dependencies:
 # - Requires PostgreSQL for database operations
-# - Python libraries: SLIF, Dask, Gensim, SQLAlchemy, etc.
+# - Python libraries: UTMA, Dask, Gensim, SQLAlchemy, etc.
 #
 # Developed with AI assistance.
 
@@ -24,6 +24,7 @@ import argparse
 from dask.distributed import Client, LocalCluster, performance_report, wait
 from distributed import Future
 import dask
+import threading
 import socket
 import tornado
 import re
@@ -59,6 +60,7 @@ import pickle
 # Dask dashboard throws deprecation warnings w.r.t. Bokeh
 import warnings
 from bokeh.util.deprecation import BokehDeprecationWarning
+from tornado.iostream import StreamClosedError
 
 # pyLDAvis throws errors when using jc_PCoA(instead use MMD5)
 from numpy import ComplexWarning
@@ -120,7 +122,7 @@ def parse_args():
     parser.add_argument("--increase_factor", type=float, help="Percentage increase in batch size after successful processing.")
     parser.add_argument("--decrease_factor", type=float, help="Percentage decrease in batch size after failed processing.")
     parser.add_argument("--max_retries", type=int, help="Maximum attempts to retry failed batch processing.")
-    parser.add_argument("--base_wait_time", type=int, help="Initial wait time in seconds for exponential backoff during retries.")
+    parser.add_argument("--base_wait_time", type=float, help="Initial wait time in seconds for exponential backoff during retries.")
 
     # Directories and Logging
     parser.add_argument("--log_dir", type=str, help="Directory path for saving log files.")
@@ -186,8 +188,8 @@ THREADS_PER_CORE = args.num_threads if args.num_threads is not None else 1
 # Convert max_memory to a string with "GB" suffix for compatibility with Dask LocalCluster() object
 RAM_MEMORY_LIMIT = f"{args.max_memory}GB" if args.max_memory is not None else "4GB"  # Default to "4GB" if not provided
 MEMORY_UTILIZATION_THRESHOLD = (args.mem_threshold * (1024 ** 3)) if args.mem_threshold else 4 * (1024 ** 3)
-CPU_UTILIZATION_THRESHOLD = args.max_cpu if args.max_cpu is not None else 100
-DASK_DIR = args.mem_spill if args.mem_spill else os.path.expanduser("~/temp/slif/max_spill")
+CPU_UTILIZATION_THRESHOLD = args.max_cpu if args.max_cpu is not None else 120
+DASK_DIR = args.mem_spill if args.mem_spill else os.path.expanduser("~/temp/utma/max_spill")
 os.makedirs(DASK_DIR, exist_ok=True)
 
 # Model configurations
@@ -208,10 +210,10 @@ MIN_BATCH_SIZE = max(1, math.ceil(MAX_BATCH_SIZE * .10)) # the fewest number of 
 INCREASE_FACTOR = args.increase_factor if args.increase_factor is not None else 1.05
 DECREASE_FACTOR = args.decrease_factor if args.decrease_factor is not None else 0.10
 MAX_RETRIES = args.max_retries if args.max_retries is not None else 5
-BASE_WAIT_TIME = args.base_wait_time if args.base_wait_time is not None else 30
+BASE_WAIT_TIME = args.base_wait_time if args.base_wait_time is not None else 1.1
 
 # Ensure required directories exist
-ROOT_DIR = args.root_dir or os.path.expanduser("~/temp/slif/")
+ROOT_DIR = args.root_dir or os.path.expanduser("~/temp/utma/")
 LOG_DIRECTORY = args.log_dir or os.path.join(ROOT_DIR, "log")
 IMAGE_DIR = os.path.join(ROOT_DIR, "visuals")
 PYLDA_DIR = os.path.join(IMAGE_DIR, 'pyLDAvis')
@@ -223,9 +225,9 @@ for directory in [ROOT_DIR, LOG_DIRECTORY, IMAGE_DIR, PYLDA_DIR, PCOA_DIR, TEXTS
     os.makedirs(directory, exist_ok=True)
 
 # Set JOBLIB_TEMP_FOLDER based on ROOT_DIR and CORPUS_LABEL
-JOBLIB_TEMP_FOLDER = os.path.join(ROOT_DIR, "log", "joblib") if CORPUS_LABEL else os.path.join(ROOT_DIR, "log", "joblib")
-os.makedirs(JOBLIB_TEMP_FOLDER, exist_ok=True)
-os.environ['JOBLIB_TEMP_FOLDER'] = JOBLIB_TEMP_FOLDER
+#JOBLIB_TEMP_FOLDER = os.path.join(ROOT_DIR, "log", "joblib") if CORPUS_LABEL else os.path.join(ROOT_DIR, "log", "joblib")
+#os.makedirs(JOBLIB_TEMP_FOLDER, exist_ok=True)
+os.environ['JOBLIB_TEMP_FOLDER'] = DASK_DIR
 
 
 ###############################
@@ -326,8 +328,9 @@ warnings.filterwarnings("ignore", category=Warning, module=r"pyLDAvis\._prepare"
 # \Lib\site-packages\distributed\comm\tcp.py", line 225, in read
 #   frames_nosplit_nbytes_bin = await stream.read_bytes(fmt_size)
 #                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-#tornado.iostream.StreamClosedError: Stream is closed
-#warnings.filterwarnings("ignore", category=tornado.iostream.StreamClosedError)
+class StreamClosedWarning(Warning):
+    pass
+warnings.filterwarnings("ignore", category=StreamClosedWarning)
 logging.getLogger('tornado').setLevel(logging.ERROR)
 
 # Get the logger for 'sqlalchemy.engine' which is used by SQLAlchemy to log SQL queries
@@ -552,6 +555,10 @@ if __name__=="__main__":
     validation_futures = []
     test_futures = []
 
+    # Start the cleanup in a background thread
+    cleanup_thread = threading.Thread(target=periodic_cleanup, args=(DASK_DIR,), daemon=True) # 30 minute intervals. see utils script
+    cleanup_thread.start()
+    
     TOTAL_COMBINATIONS = len(random_combinations) * (len(scattered_train_data_futures) + len(scattered_validation_data_futures) + len(scattered_test_data_futures))
     progress_bar = tqdm(total=TOTAL_COMBINATIONS, desc="Creating and saving models", file=sys.stdout)
 
@@ -612,7 +619,6 @@ if __name__=="__main__":
                     #print(f"Total training tasks submitted to Dask: {len(train_futures)}")
                     done_train, _ = wait(train_futures, timeout=None)
                     completed_train_futures = [done.result() for done in done_train]
-                    progress_bar.update()
 
                     for train_result in completed_train_futures:
                         model_key = (train_result['topics'], str(train_result['alpha_str'][0]), str(train_result['beta_str'][0]))
@@ -626,7 +632,6 @@ if __name__=="__main__":
                 # Accumulate train visualizations into combined lists
                 completed_pylda_vis += train_pylda_vis
                 completed_pcoa_vis += train_pcoa_vis
-                progress_bar.update()
             except Exception as e:
                 logging.error(f"Error in train phase: {e}")
                 continue
@@ -642,6 +647,7 @@ if __name__=="__main__":
                     )
             except Exception as e:
                 logging.error(f"Error processing TRAIN completed futures: {e}")
+            progress_bar.update(len(done_train))
 
         # Validation Phase
         if train_eval_type == "validation":
@@ -662,7 +668,6 @@ if __name__=="__main__":
 
                     done_validation, _ = wait(validation_futures, timeout=None)
                     completed_validation_futures = [done.result() for done in done_validation]
-                    progress_bar.update()
 
                 PERFORMANCE_VALIDATION_LOG = os.path.join(IMAGE_DIR, "VALIDATION_LOG",  f"vis_perf_validation_{pd.to_datetime('now').strftime('%Y%m%d%H%M%S%f')}.html")
                 validation_pylda_vis, validation_pcoa_vis = process_visualizations(
@@ -671,7 +676,6 @@ if __name__=="__main__":
                 # Accumulate validation visualizations into combined lists
                 completed_pylda_vis += validation_pylda_vis
                 completed_pcoa_vis += validation_pcoa_vis
-                progress_bar.update()
             except Exception as e:
                 logging.error(f"Error in validation phase: {e}")
                 continue
@@ -687,6 +691,7 @@ if __name__=="__main__":
                     )
             except Exception as e:
                 logging.error(f"Error processing VALIDATION completed futures: {e}")
+            progress_bar.update(len(done_validation))
 
         # Test Phase
         if train_eval_type == "test":
@@ -707,7 +712,6 @@ if __name__=="__main__":
 
                     done_test, _ = wait(test_futures, timeout=None)
                     completed_test_futures = [done.result() for done in done_test]
-                    progress_bar.update()
 
                 PERFORMANCE_TEST_LOG = os.path.join(IMAGE_DIR, "TEST_LOG" f"vis_perf_test_{pd.to_datetime('now').strftime('%Y%m%d%H%M%S%f')}.html")
                 test_pylda_vis, test_pcoa_vis = process_visualizations(
@@ -716,7 +720,6 @@ if __name__=="__main__":
                 # Accumulate test visualizations into combined lists
                 completed_pylda_vis += test_pylda_vis
                 completed_pcoa_vis += test_pcoa_vis
-                progress_bar.update()
 
             except Exception as e:
                 logging.error(f"Error in test phase: {e}")
@@ -733,6 +736,7 @@ if __name__=="__main__":
                     )
             except Exception as e:
                 logging.error(f"Error processing TEST completed futures: {e}")
+            progress_bar.update(len(done_test))
 
         # Log the processing time
         elapsed_time = round(((time() - started) / 60), 2)
