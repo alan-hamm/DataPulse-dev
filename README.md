@@ -37,10 +37,10 @@ For further configuration tips and performance monitoring, Dask provides a [dash
 - **Python** 3.12.0
 - **Anaconda** (recommended for dependency management)
 - **PostgreSQL** (required for data storage and integration)
-- **Data Preprocessing(_script coming soon_)**: Handle initial data preparation, including tokenization and formatting, for ingestion by the modeling pipeline. See [example](#cdcs-mmwr-2015---2019)
+- **Data Preprocessing(DocumentParser Notebook)**: Handle initial data preparation, including tokenization and formatting, for ingestion by the modeling pipeline. See [example](#cdcs-mmwr-2015---2019)
 - **Dynamic Topic Model Training** (`topic_model_trainer.py`): Manages the LDA model training, evaluation, and metadata generation, with adaptive scaling to optimize resource usage.
 - **Visualization and Analysis**(`visualization.py`): Generates and saves visualizations (e.g., topic coherence plots) for exploring model outputs interactively.
-- **Diachronic Analysis (_Planned_)**: A dedicated module for analyzing and visualizing how topics evolve over time.
+- **Diachronic Analysis (_Pending_)**: A dedicated module for analyzing and visualizing how topics evolve over time.
 - **Database Integration**(`write_to_postgres.py`): Stores all metadata and modeling outputs in a PostgreSQL database for easy access and persistence.
 
 --- 
@@ -48,7 +48,7 @@ For further configuration tips and performance monitoring, Dask provides a [dash
 ### Installation
 To install UTMA, clone the repository and set up the required Python environment. Follow these instructions based on your data's format:
 
-1. **If Preprocessing is Required**: Use the `DocumentParser.ipynb` notebook to prepare your documents according to UTMA's standard format, as outlined in the [CDC's MMWR example](#cdcs-mmwr-2015---2019). Once preprocessing is completed, proceed with the installation steps below.
+1. **If Preprocessing is Required**: Use the `DocumentParser` notebook to prepare your documents according to UTMA's standard format, as outlined in the [CDC's MMWR example](#cdcs-mmwr-2015---2019). Once preprocessing is completed, proceed with the installation steps below.
    
 2. **If Preprocessing is Not Required**: Skip to the installation steps directly.
 
@@ -71,6 +71,8 @@ To install UTMA, clone the repository and set up the required Python environment
 
 ### Distributed Configuration
 
+   **_By default, the settings in `distributed.yaml` are optimized for high-performance processing with Dask on systems with significant CPU and memory resources. Adjust as needed to suit your environment._**
+
 This project includes a custom `distributed.yaml` file for configuring Dask. The `distributed.yaml` file is located in the `config/` directory and contains recommended settings for Dask performance and resource management tailored for UTMA's processing requirements.
 
 To ensure your Dask environment is correctly configured, follow these steps:
@@ -83,8 +85,6 @@ To ensure your Dask environment is correctly configured, follow these steps:
 
    3. **Refer to Setup Instructions**  
       For more detailed instructions on configuring the Dask dashboard and securing it for local access, see the `Dask_Dashboard_Setup_Instructions.txt` file in the `config/` directory.
-
-   **_By default, the settings in `distributed.yaml` are optimized for high-performance processing with Dask on systems with significant CPU and memory resources. Adjust as needed to suit your environment._**
 
 ## Preprocessing with DocumentParser.ipynb
 Use DocumentParser.ipynb if your documents are not in UTMA's expected format. The notebook:
@@ -197,5 +197,5 @@ By organizing and structuring the text data in this format, UTMA can identify re
    **Monitoring Performance**
    After configuring batch sizes, use the Dask dashboard to observe task distribution, resource utilization, and memory usage per worker. Adjust batch sizes further if tasks are not distributed evenly or if memory usage approaches system limits.
 
-<sub>_Last updated: 2024-11-02_</sub>
+<sub>_Last updated: 2024-11-08_</sub>
 
