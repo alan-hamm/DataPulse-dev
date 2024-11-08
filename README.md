@@ -69,6 +69,23 @@ To install UTMA, clone the repository and set up the required Python environment
       ```
 3. **Set Up PostgreSQL Database** Ensure PostgreSQL is installed and running. Create a new database to store UTMA data, and update the connection settings in the project configuration files.
 
+### Distributed Configuration
+
+This project includes a custom `distributed.yaml` file for configuring Dask. The `distributed.yaml` file is located in the `config/` directory and contains recommended settings for Dask performance and resource management tailored for UTMA's processing requirements.
+
+To ensure your Dask environment is correctly configured, follow these steps:
+
+   1. **Review the `distributed.yaml` File**  
+      Examine the `config/distributed.yaml` file to understand its settings, especially if you need to adjust resource limits based on your system’s specifications.
+
+   2. **Customize if Necessary**  
+      Depending on your hardware and workload, you may want to customize certain values (e.g., memory limits, CPU thresholds) in the `distributed.yaml` file.
+
+   3. **Refer to Setup Instructions**  
+      For more detailed instructions on configuring the Dask dashboard and securing it for local access, see the `Dask_Dashboard_Setup_Instructions.txt` file in the `config/` directory.
+
+   **_By default, the settings in `distributed.yaml` are optimized for high-performance processing with Dask on systems with significant CPU and memory resources. Adjust as needed to suit your environment._**
+
 ## Preprocessing with DocumentParser.ipynb
 Use DocumentParser.ipynb if your documents are not in UTMA's expected format. The notebook:
 -  Parses JSON and HTML files, ensuring clean and structured text.
