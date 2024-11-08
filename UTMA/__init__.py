@@ -1,6 +1,6 @@
 # __init__.py - Initialization for UTMA Package
 # Author: Alan Hamm
-# Date: April 2024
+# Date: October 2024
 
 # Description:
 # This __init__.py file initializes the Unified Topic Modeling and Analysis (UTMA) package.
@@ -15,7 +15,7 @@ from .alpha_eta import calculate_numeric_alpha, calculate_numeric_beta, validate
 from .visualization import create_vis_pylda, create_vis_pcoa, process_visualizations, create_vis_pca
 from .write_to_postgres import save_to_zip, create_dynamic_table_class, create_table_if_not_exists, add_model_data_to_database
 from .yaml_loader import join, getenv, get_current_time
-from .compressed_rotating_file_handler  import CompressedRotatingFileHandler
+from .postgres_logging  import  PostgresLoggingHandler
 
 # Define __all__ to control what is imported with "from UTMA import *"
 __all__ = [
@@ -54,5 +54,6 @@ __all__ = [
     'create_table_if_not_exists', 
     'add_model_data_to_database',
     
-    'CompressedRotatingFileHandler'
+    #postgres_logging
+    'PostgresLoggingHandler'
 ]
