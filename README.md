@@ -14,14 +14,24 @@
 
 ### Key Features
 - **Adaptive Resource Management**: UTMA leverages [Dask](https://www.dask.org/) for process-based distributed parallelization, harnessing multiple cores and avoiding the limitations of the GIL while dynamically adjusting resources to efficiently handle large datasets and high computational loads.
--  **Comprehensive Machine Learning Pipeline**: The framework includes a robust machine learning pipeline that handles data preprocessing, model training, evaluation, and hyperparameter tuning, designed to optimize model performance for diverse text corpora.
-- **Diachronic Analysis(_Pending_)**: Facilitates tracking and analyzing topic shifts over time, particularly useful for examining historical changes or comparing topics across decades.
+- **Concurrency, Parallelization, and Multithreading**: The system utilizes a hybrid model of concurrency through Dask’s distributed tasks, allowing concurrent execution, with multiprocessing for resource-heavy operations and multithreading within Dask workers for efficient I/O-bound task management. This design enhances both performance and scalability across different hardware configurations.
+- **Comprehensive Machine Learning Pipeline**: The framework includes a robust machine learning pipeline that handles data preprocessing, model training, evaluation, and hyperparameter tuning, designed to optimize model performance for diverse text corpora.
+- **Diachronic Analysis (_Pending_)**: Facilitates tracking and analyzing topic shifts over time, particularly useful for examining historical changes or comparing topics across decades.
 - **Detailed Metadata Tracking**: Records extensive metadata for each batch, including dynamic core counts, model parameters, and evaluation scores, ensuring complete reproducibility and transparency.
 - **Support for Multiple Document Types**: Designed to handle diverse document sources, from [thousands of free, open access to academic outputs and resources](https://v2.sherpa.ac.uk/opendoar/) and [newspapers](https://en.wikipedia.org/wiki/List_of_free_daily_newspapers) to [novels](https://www.gutenberg.org/), UTMA can analyze any textual dataset requiring topic-based insights.
 - **Integrated Data Persistence and Storage**: Metadata and model outputs are stored in a PostgreSQL database, supporting complex queries and retrieval for downstream analysis.
 
 ### Project Structure
 The project is composed of modular scripts, each dedicated to a specific aspect of the pipeline, including:
+
+- **Dynamic Topic Model Training** (`topic_model_trainer.py`): Manages the LDA model training, evaluation, and metadata generation, with adaptive scaling to optimize resource usage using both multiprocessing and multithreading to enhance performance.
+- **Visualization and Analysis**(`visualization.py`): Generates and saves visualizations (e.g., topic coherence plots) for exploring model outputs interactively, utilizing concurrent processing capabilities.
+- **Database Integration**(`write_to_postgres.py`): Stores all metadata and modeling outputs in a PostgreSQL database for easy access and persistence.
+- **Diachronic Analysis (_Planned_)**: A dedicated module for analyzing and visualizing how topics evolve over time.
+
+---
+
+For further configuration tips and performance monitoring, Dask provides a [dashboard](https://docs.dask.org/en/stable/) for tracking concurrent task execution, resource utilization, and multithreading activity in real-time.
 
 ### Prerequisites
 - **Python** 3.12.0
@@ -36,58 +46,53 @@ The project is composed of modular scripts, each dedicated to a specific aspect 
 --- 
 
 ### Installation
-To install UTMA, clone the repository and set up the required Python environment:
+To install UTMA, clone the repository and set up the required Python environment. Follow these instructions based on your data's format:
 
-### Steps
+1. **If Preprocessing is Required**: Use the `DocumentParser.ipynb` notebook to prepare your documents according to UTMA's standard format, as outlined in the [CDC's MMWR example](#cdcs-mmwr-2015---2019). Once preprocessing is completed, proceed with the installation steps below.
+   
+2. **If Preprocessing is Not Required**: Skip to the installation steps directly.
+
+3. **If Both Steps are Needed**: First, preprocess the data, then follow the installation instructions.
+
+#### Installation Steps
 
 1. **Clone the Repository**
-
-   ```bash
+ ```bash
    git clone https://github.com/your-username/your-repo-name.git
    cd your-repo-name
+  ```
 
-2. **Set Up the Environment**
-Using Anaconda is recommended for managing dependencies:
+2. **Set Up the Environment** Using Anaconda is recommended for managing dependencies:
    ```bash
-   conda create -n utma_env python=3.12.0
-   conda activate utma_env
+      conda create -n utma_env python=3.12.0
+      conda activate utma_env
    ```
-      - **Clone the Repository**
+3. **Install Dependencies** Run the following commands to install the required packages:
+   ```bash
+   pip install -r requirements.txt
+   pip install dask[distributed]=="2024.8.2"
+   ```
+4. **Set Up PostgreSQL Database** Ensure PostgreSQL is installed and running. Create a new database to store UTMA data, and update the connection settings in the project configuration files.
 
-         If you plan to use UTMA without contributing back, clone the repository from GitHub ([UTMA](https://github.com/alan-hamm/Unified-Topic-Modeling-and-Analysis))
+## Preprocessing with DocumentParser.ipynb
+Use DocumentParser.ipynb if your documents are not in UTMA's expected format. The notebook:
+-  Parses JSON and HTML files, ensuring clean and structured text.
+-  Performs tokenization, lemmatization, and bigram extraction.
+-  Produces JSON and JSONL formatted outputs that align with UTMA’s standards.
 
-         ```
-         bash
-         git clone https://github.com/alan-hamm/Unified-Topic-Modeling-and-Analysis.git
-         cd UTMA
-         ```
+Documents must be in the following format to bypass preprocessing:
+```json
+   [
+      ["example", "tokenized", "sentence", "one"],
+      ["another", "example", "sentence", "two"],
+      ["and", "so", "on"]
+   ]
+```
 
-      - **Fork the Repository**
-
-         If you’d like to make contributions or maintain your own version of UTMA, first fork it to your GitHub account, then clone your forked copy:
-
-         ```bash
-         git clone https://github.com/alan-hamm/Unified-Topic-Modeling-and-Analysis.git
-         cd UTMA
-         ```
-3. **Install Dependencies**
-   
-   - Open your terminal and run the following command to install the required packages listed in `requirements.txt`:
-
-     ```bash
-     $ pip install -r requirements.txt
-     ```
-
-   - For Dask's distributed functionality, ensure `dask[distributed]` is installed:
-
-     ```bash
-     $ pip install dask[distributed]=="2024.8.2"
-     ```
-
-4. **Set Up PostgreSQL Database**
-Ensure PostgreSQL is installed and running. Create a new database to store UTMA data, and update the connection settings in the project configuration files.
-
-5. **Run the Application**
+## Steps to Run the Notebook
+1. Open DocumentParser.ipynb, set corpus_path to the folder containing your documents, and adjust file paths for logging and outputs.
+2. Execute each cell to process and save the documents in the required format.
+3. Move the processed files to the designated input directory.
 
 ### Usage
 After setup, run the main script to start the UTMA framework. Here’s an example command:
@@ -117,21 +122,23 @@ After setup, run the main script to start the UTMA framework. Here’s an exampl
 This command manages the distribution of resources, saves model outputs, and logs metadata directly to the database.
 
 #### CDC's MMWR 2015 - 2019
-As an example of how data must be preprocessed for UTMA, consider analyzing the [MMWR Journals](https://www.cdc.gov/mmwr/), as extracted from [CDC text corpora for learners](https://github.com/cmheilig/harvest-cdc-journals/). Each report in the journals can be treated as an individual document within the corpus, requiring tokenization and conversion to a suitable format, such as a bag-of-words model. By segmenting the text this way, UTMA can uncover recurring themes and track the evolution of public health topics like "infection control," "vaccine efficacy," and "disease prevention" across the corpora. Preprocessing each entry in this format prepares the text for topic modeling and diachronic analysis (_in development_).
+A real-world application of UTMA’s data preprocessing capabilities can be seen in analyzing the [MMWR Journals](https://www.cdc.gov/mmwr/), extracted from the [CDC text corpora for learners](https://github.com/cmheilig/harvest-cdc-journals/). Each report in these journals is treated as a standalone document and requires specific preprocessing steps to align with UTMA's standards, including tokenization and formatting as a bag-of-words model.
 
-  Excerpt.
+By organizing and structuring the text data in this format, UTMA can identify recurring themes and track the evolution of key public health topics, such as "infection control," "vaccine efficacy," and "disease prevention." This structured approach allows UTMA to perform diachronic analyses of topic shifts over time, revealing insights into public health trends and topic persistence. Preprocessing each document in this way prepares it for the advanced topic modeling and analysis that UTMA provides.
+
+**Excerpt:**
    ```json
    [
       ["prevalence", "abstinence", "months", "enrollment", "confidence", "interval", "certificate", "confidence_interval"], 
       ["groups", "contributed", "modification", "national", "infection", "prevention", "control", "strategy", "incorporate", "community", "awareness"], 
-      ["Effectiveness", "seasonal", "influenza", "vaccine", "depends", "vaccine", "viruses", "circulating", "influenza", "viruses"], 
-      ["Investigators", "determined", "likely", "factors", "transmission", "included", "bottles", "shared", "football", "players"], 
+      ["effectiveness", "seasonal", "influenza", "vaccine", "depends", "vaccine", "viruses", "circulating", "influenza", "viruses"], 
+      ["investigators", "determined", "likely", "factors", "transmission", "included", "bottles", "shared", "football", "players"], 
       ["collaboration", "agencies", "overseas", "vaccination", "intended", "reduce", "disease", "outbreaks", "ensuring", "refugees", "arrive", "protected"]
    ]
    ```
-   This format aligns with the project's requirements, enabling UTMA to analyze the thematic structure and evolution of health topics in CDC reports.
+   This format aligns with the project’s requirements, enabling UTMA to analyze the thematic structure and evolution of health topics in CDC reports.
 
-   This project supports preprocessing for a range of CDC's journal content, including Emerging Infectious Diseases ([EID](https://wwwnc.cdc.gov/eid)) and Preventing Chronic Disease ([PCD](https://www.cdc.gov/pcd)). Available resources include CDC documents, spanning 42 years: [HTML Mirrors of MMWR, EID, and PCD](https://data.cdc.gov/National-Center-for-State-Tribal-Local-and-Territo/CDC-Text-Corpora-for-Learners-HTML-Mirrors-of-MMWR/ut5n-bmc3/about_data) as well as associated [Corpus Metadata](https://data.cdc.gov/National-Center-for-State-Tribal-Local-and-Territo/CDC-Text-Corpora-for-Learners-MMWR-EID-and-PCD-Art/7rih-tqi5/about_data).
+   The project supports preprocessing for a range of CDC’s journal content, including _Emerging Infectious Diseases_([EID](https://wwwnc.cdc.gov/eid)) and _Preventing Chronic Disease_([PCD](https://www.cdc.gov/pcd)). Available resources include CDC documents, spanning 42 years: [HTML Mirrors of MMWR, EID, and PCD](https://data.cdc.gov/National-Center-for-State-Tribal-Local-and-Territo/CDC-Text-Corpora-for-Learners-HTML-Mirrors-of-MMWR/ut5n-bmc3/about_data) and associated [Corpus Metadata](https://data.cdc.gov/National-Center-for-State-Tribal-Local-and-Territo/CDC-Text-Corpora-for-Learners-MMWR-EID-and-PCD-Art/7rih-tqi5/about_data).
 
 ### **Optimization** 
 
