@@ -287,8 +287,8 @@ logging.basicConfig(
     filemode='a',  # Append mode if you want to keep adding to the same file during the day
     format='%(asctime)s - %(levelname)s - %(message)s',
     datefmt='%Y-%m-%d %H:%M:%S',
-    #level=logging.INFO  # Set to DEBUG for detailed logging
-    level=logging.DEBUG  # Set to DEBUG for detailed logging
+    level=logging.INFO  # Set to DEBUG for detailed logging
+    #level=logging.DEBUG  # Set to DEBUG for detailed logging
 )
 
 ##########################################
