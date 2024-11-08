@@ -57,22 +57,17 @@ To install UTMA, clone the repository and set up the required Python environment
 #### Installation Steps
 
 1. **Clone the Repository**
- ```bash
-   git clone https://github.com/your-username/your-repo-name.git
+   ```bash
+   git clone https://github.com/alan-hamm/Unified-Topic-Modeling-and-Analysis.git
    cd your-repo-name
-  ```
+   ```
 
 2. **Set Up the Environment** Using Anaconda is recommended for managing dependencies:
-   ```bash
-      conda create -n utma_env python=3.12.0
-      conda activate utma_env
-   ```
-3. **Install Dependencies** Run the following commands to install the required packages:
-   ```bash
-   pip install -r requirements.txt
-   pip install dask[distributed]=="2024.8.2"
-   ```
-4. **Set Up PostgreSQL Database** Ensure PostgreSQL is installed and running. Create a new database to store UTMA data, and update the connection settings in the project configuration files.
+      ```bash
+      conda env create -f environment.yaml
+      conda activate utma
+      ```
+3. **Set Up PostgreSQL Database** Ensure PostgreSQL is installed and running. Create a new database to store UTMA data, and update the connection settings in the project configuration files.
 
 ## Preprocessing with DocumentParser.ipynb
 Use DocumentParser.ipynb if your documents are not in UTMA's expected format. The notebook:
@@ -81,13 +76,13 @@ Use DocumentParser.ipynb if your documents are not in UTMA's expected format. Th
 -  Produces JSON and JSONL formatted outputs that align with UTMA’s standards.
 
 Documents must be in the following format to bypass preprocessing:
-```json
+   ```json
    [
       ["example", "tokenized", "sentence", "one"],
       ["another", "example", "sentence", "two"],
       ["and", "so", "on"]
    ]
-```
+   ```
 
 ## Steps to Run the Notebook
 1. Open DocumentParser.ipynb, set corpus_path to the folder containing your documents, and adjust file paths for logging and outputs.
@@ -103,19 +98,19 @@ After setup, run the main script to start the UTMA framework. Here’s an exampl
        --password "admin" \
        --database "UTMA" \
        --corpus_label "mmwr" \
-       --data_source "/path/to/your/data/tokenized-documents/mmwr.json" \
+       --data_source "/path/to/your/data/tokenized-documents/mmwr_year_2015.json" \
        --start_topics 20 \
        --end_topics 60 \
        --step_size 5 \
        --num_workers 10 \
-       --max_workers 14 \
+       --max_workers 12 \
        --num_threads 2 \
-       --max_memory 5 \
-       --mem_threshold 4 \
+       --max_memory 15 \
+       --mem_threshold 14 \
        --max_cpu 110 \
-       --futures_batches 75 \
-       --base_batch_size 100 \
-       --max_batch_size 120 \
+       --futures_batches 275 \
+       --base_batch_size 275 \
+       --max_batch_size 300 \
        --log_dir "/path/to/your/log/" \
        2>"/path/to/your/log/terminal_output.txt"
    ```
