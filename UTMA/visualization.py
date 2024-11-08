@@ -37,7 +37,23 @@ import logging
 plt.rcParams['figure.max_open_warning'] = 0 # suppress memory warning msgs re too many plots being open simultaneously
 
 def fill_distribution_matrix(ldaModel, corpus, num_topics):
-    """Fills the distribution matrix without Numba due to complex object types."""
+    """
+    Constructs a topic distribution matrix for each document in the corpus.
+
+    This function creates a matrix where each row represents a document, and each column 
+    represents a topic. The values in the matrix indicate the probability distribution of 
+    topics across documents as assigned by the LDA model. The function does not use Numba 
+    for optimization due to the complex object types involved in the LDA topic data.
+
+    Parameters:
+    - ldaModel: The trained LDA model used to obtain topic distributions.
+    - corpus: The corpus of documents to analyze, where each document is represented as a bag-of-words.
+    - num_topics: The total number of topics in the LDA model.
+
+    Returns:
+    - distributions_matrix: A NumPy array with shape (num_documents, num_topics), where each entry 
+      represents the topic probability for a document.
+    """
     distributions_matrix = np.zeros((len(corpus), num_topics))
     for i, doc in enumerate(corpus):
         doc_topics = ldaModel.get_document_topics(doc, minimum_probability=0)
@@ -45,45 +61,32 @@ def fill_distribution_matrix(ldaModel, corpus, num_topics):
             distributions_matrix[i, topic_num] = prob
     return distributions_matrix
 
-def create_vis_pylda(ldaModel, corpus, dictionary, topics, phase_name, filename, CORES, time_key, PYLDA_DIR):
-    create_pylda = None
-    #print("We are inside Create Vis.")
-    try:
-        PYLDA_DIR = os.path.join(PYLDA_DIR, phase_name, f"number_of_topics-{topics}")
-        os.makedirs(PYLDA_DIR, exist_ok=True)
-        #if os.path.exists(PYLDA_DIR):
-        #    logging.info(f"Confirmed that directory exists: {PYLDA_DIR}")
-        #else:
-        #    logging.error(f"Directory creation failed for: {PYLDA_DIR}")
-
-        IMAGEFILE = os.path.join(PYLDA_DIR,f"{filename}.html")
-    except Exception as e:
-         logging.error(f"Couldn't create the pyLDA file: {e}")
-
-    # Prepare the visualization data.
-    # Note: sort_topics=False will prevent reordering topics after training.
-    try:
-        # ERROR: Object of type complex128 is not JSON serializable
-        # https://github.com/bmabey/pyLDAvis/issues/69#issuecomment-311337191
-        # as mentioned in the forum, use mds='mmds' instead of default js_PCoA
-        # https://pyldavis.readthedocs.io/en/latest/modules/API.html#pyLDAvis.prepare
-        ldaModel = pickle.loads(ldaModel)
-        corpus = pickle.loads(corpus)
-        dictionary = pickle.loads(dictionary)
-        vis = pyLDAvis.gensim.prepare(ldaModel, corpus, dictionary,  mds='mmds', n_jobs=int(CORES*(2/3)), sort_topics=False)
-
-        pyLDAvis.save_html(vis, IMAGEFILE)
-        create_pylda = True
-
-    except Exception as e:
-        logging.error(f"The pyLDAvis HTML could not be saved: {e}")
-        create_pylda = False
-
-    #garbage_collection(False,"create_vis(...)")
-    return (time_key, create_pylda)
-
-
+# The create_vis_pcoa function utilizes Principal Coordinate Analysis (PCoA) to visualize topic
+# distributions based on Jensen-Shannon divergence. PCoA is beneficial for capturing complex
+# distances, which can reveal nuanced topic relationships. However, PCoA can be computationally
+# intensive on large datasets, so PCA may be used in certain cases for efficiency.
 def create_vis_pcoa(ldaModel, corpus, topics, phase_name, filename, time_key, PCOA_DIR):
+    """
+    Generates a Principal Coordinate Analysis (PCoA) visualization for topic distributions.
+
+    This function uses Jensen-Shannon divergence and Principal Coordinate Analysis (Classical 
+    Multidimensional Scaling) to create a 2D visualization of topic distributions for the 
+    provided LDA model and corpus. It saves the visualization as a JPEG image in the specified directory.
+
+    Parameters:
+    - ldaModel: Serialized LDA model used for topic extraction.
+    - corpus: Serialized corpus of documents to analyze with the LDA model.
+    - topics: Number of topics in the LDA model.
+    - phase_name: Name of the analysis phase (e.g., "train" or "test") for directory organization.
+    - filename: Name of the output image file.
+    - time_key: Unique identifier to track timing or phase.
+    - PCOA_DIR: Root directory to save PCoA visualizations.
+
+    Returns:
+    - Tuple (time_key, create_pcoa): 
+        - time_key: Provided identifier to track the operation's timing or phase.
+        - create_pcoa: Boolean indicating if the visualization was successfully created.
+    """
     create_pcoa = None
     PCoAfilename = filename
 
@@ -165,7 +168,33 @@ def create_vis_pcoa(ldaModel, corpus, topics, phase_name, filename, time_key, PC
     return (time_key, create_pcoa)
 
 
-def create_vis_pcoa2(ldaModel, corpus, topics, phase_name, filename, time_key, PCOA_DIR):
+# The create_vis_pca function employs Principal Component Analysis (PCA) to visualize topic
+# distributions. PCA is preferred here for its computational efficiency and direct interpretation
+# of variance along principal components. While PCA assumes Euclidean distance, it typically
+# provides similar visualizations to PCoA in topic modeling applications and is faster for 
+# large datasets.
+def create_vis_pca(ldaModel, corpus, topics, phase_name, filename, time_key, PCOA_DIR):
+    """
+    Generates a 2D Principal Component Analysis (PCA) visualization for topic distributions.
+
+    This function performs dimensionality reduction on the topic distributions of documents in the 
+    corpus using PCA, then generates and saves a scatter plot of the results. Each topic is color-coded 
+    for distinction, and the plot is saved as a JPEG image.
+
+    Parameters:
+    - ldaModel: Serialized LDA model for topic extraction.
+    - corpus: Serialized corpus of documents to analyze with the LDA model.
+    - topics: Number of topics in the LDA model.
+    - phase_name: Name of the analysis phase (e.g., "train" or "test") for directory organization.
+    - filename: Name of the output image file.
+    - time_key: Unique identifier to track timing or phase.
+    - PCOA_DIR: Root directory to save PCoA visualizations.
+
+    Returns:
+    - Tuple (time_key, create_pcoa): 
+        - time_key: Provided identifier to track the operation's timing or phase.
+        - create_pcoa: Boolean indicating if the visualization was successfully created.
+    """
     create_pcoa = None
     PCoAfilename = filename
 
@@ -229,8 +258,101 @@ def create_vis_pcoa2(ldaModel, corpus, topics, phase_name, filename, time_key, P
     # Return the exact output format as in the original function
     return (time_key, create_pcoa)
 
+def create_vis_pylda(ldaModel, corpus, dictionary, topics, phase_name, filename, CORES, time_key, PYLDA_DIR):
+    """
+    Generates an interactive HTML visualization of LDA topic distributions using pyLDAvis.
+
+    This function prepares and saves a pyLDAvis interactive visualization of the provided LDA model.
+    The visualization allows for detailed exploration of topics and their distributions within the 
+    documents. It saves the HTML file to a specified directory, organized by the analysis phase and 
+    number of topics.
+
+    Parameters:
+    - ldaModel: Serialized LDA model used for topic analysis.
+    - corpus: Serialized corpus of documents to analyze with the LDA model.
+    - dictionary: Serialized Gensim dictionary for the corpus.
+    - topics: Number of topics in the LDA model.
+    - phase_name: Name of the analysis phase (e.g., "train" or "test") for directory organization.
+    - filename: Base name for the output HTML file.
+    - CORES: Number of CPU cores available, used to set parallel processing for pyLDAvis.
+    - time_key: Unique identifier to track timing or phase.
+    - PYLDA_DIR: Root directory to save pyLDAvis visualizations.
+
+    Returns:
+    - Tuple (time_key, create_pylda): 
+        - time_key: Provided identifier to track the operation's timing or phase.
+        - create_pylda: Boolean indicating if the pyLDAvis HTML file was successfully created.
+
+    Notes:
+    - This function uses `mds='mmds'` as the dimensionality reduction method for compatibility.
+    - Topics are not reordered after training (sort_topics=False) to preserve the original topic structure.
+    """
+    create_pylda = None
+    #print("We are inside Create Vis.")
+    try:
+        PYLDA_DIR = os.path.join(PYLDA_DIR, phase_name, f"number_of_topics-{topics}")
+        os.makedirs(PYLDA_DIR, exist_ok=True)
+        #if os.path.exists(PYLDA_DIR):
+        #    logging.info(f"Confirmed that directory exists: {PYLDA_DIR}")
+        #else:
+        #    logging.error(f"Directory creation failed for: {PYLDA_DIR}")
+
+        IMAGEFILE = os.path.join(PYLDA_DIR,f"{filename}.html")
+    except Exception as e:
+         logging.error(f"Couldn't create the pyLDA file: {e}")
+
+    # Prepare the visualization data.
+    # Note: sort_topics=False will prevent reordering topics after training.
+    try:
+        # ERROR: Object of type complex128 is not JSON serializable
+        # https://github.com/bmabey/pyLDAvis/issues/69#issuecomment-311337191
+        # as mentioned in the forum, use mds='mmds' instead of default js_PCoA
+        # https://pyldavis.readthedocs.io/en/latest/modules/API.html#pyLDAvis.prepare
+        ldaModel = pickle.loads(ldaModel)
+        corpus = pickle.loads(corpus)
+        dictionary = pickle.loads(dictionary)
+        vis = pyLDAvis.gensim.prepare(ldaModel, corpus, dictionary,  mds='mmds', n_jobs=int(CORES*(2/3)), sort_topics=False)
+
+        pyLDAvis.save_html(vis, IMAGEFILE)
+        create_pylda = True
+
+    except Exception as e:
+        logging.error(f"The pyLDAvis HTML could not be saved: {e}")
+        create_pylda = False
+
+    #garbage_collection(False,"create_vis(...)")
+    return (time_key, create_pylda)
+
 
 def process_visualizations(client, phase_results, phase_name, performance_log, cores, pylda_dir, pcoa_dir):
+    """
+    Submits and processes visualization tasks for LDA model outputs using Dask, generating 
+    interactive pyLDAvis and PCoA visualizations in parallel.
+
+    This function iterates over LDA model results and submits separate tasks for pyLDAvis and 
+    PCoA visualizations to the Dask client. Visualization tasks are executed concurrently, and 
+    the function waits for their completion before gathering and returning the results. 
+    Performance is logged to track resource usage during the visualization phase.
+
+    Parameters:
+    - client: Dask client used to submit and manage parallel tasks.
+    - phase_results: List of dictionaries containing LDA model outputs and metadata for each document.
+    - phase_name: Name of the phase (e.g., "train" or "test") to label the visualization output.
+    - performance_log: Path to the log file for tracking performance metrics.
+    - cores: Number of CPU cores allocated for pyLDAvis.
+    - pylda_dir: Directory to save pyLDAvis HTML visualizations.
+    - pcoa_dir: Directory to save PCoA image visualizations.
+
+    Returns:
+    - completed_pylda_vis: List of completed pyLDAvis visualization results.
+    - completed_pcoa_vis: List of completed PCoA visualization results.
+
+    Notes:
+    - The function logs warnings if any visualization tasks are incomplete and tracks execution
+      time with a performance report.
+    - pyLDAvis and PCoA visualizations are handled as separate futures, allowing for 
+      concurrent execution.
+    """
     with performance_report(filename=performance_log):
         logging.info(f"Processing {phase_name} visualizations.")
 
@@ -266,7 +388,7 @@ def process_visualizations(client, phase_results, phase_name, performance_log, c
 
                 try:
                     vis_future_pcoa = client.submit(
-                        create_vis_pcoa2,
+                        create_vis_pca,
                         result_dict['lda_model'],
                         result_dict['corpus'],
                         result_dict['topics'],  # f'number_of_topics-{topics}'
