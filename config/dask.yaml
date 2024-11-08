@@ -1,0 +1,44 @@
+logging:
+  version: 1
+  suppress_complex_warnings: true
+  disable_existing_loggers: False
+  formatters:
+    standard:
+      format: '%(asctime)s - %(levelname)s - %(message)s'
+      datefmt: '%Y-%m-%d %H:%M:%S'
+  handlers:
+    file:
+      class: logging.FileHandler
+      level: INFO
+      formatter: standard
+      filename: log_file_path  # Set dynamically in Python
+    console:
+      class: logging.StreamHandler
+      level: WARNING
+      formatter: standard
+  loggers:
+    '':  # Root logger
+      level: INFO
+      handlers: [file, console]
+      propagate: False
+    distributed.utils_perf:
+      level: ERROR
+    tornado:
+      level: ERROR
+    sqlalchemy.engine:
+      level: WARNING
+
+distributed:
+  worker:
+    daemon: false
+    memory:
+      target: false
+      spill: false
+      pause: 0.8
+      terminate: 0.99
+
+warnings:
+  ignore:
+    - category: ComplexWarning
+    - category: DeprecationWarning
+      module: distributed.worker
