@@ -12,9 +12,10 @@ from .utils import garbage_collection, exponential_backoff, convert_float32_to_f
 from .process_futures import process_completed_futures, futures_create_lda_datasets
 from .topic_model_trainer import train_model_v2
 from .alpha_eta import calculate_numeric_alpha, calculate_numeric_beta, validate_alpha_beta, calculate_alpha_beta
-from .visualization import create_vis_pylda, create_vis_pcoa, process_visualizations, create_vis_pcoa2
+from .visualization import create_vis_pylda, create_vis_pcoa, process_visualizations, create_vis_pca
 from .write_to_postgres import save_to_zip, create_dynamic_table_class, create_table_if_not_exists, add_model_data_to_database
 from .yaml_loader import join, getenv, get_current_time
+from .compressed_rotating_file_handler  import CompressedRotatingFileHandler
 
 # Define __all__ to control what is imported with "from UTMA import *"
 __all__ = [
@@ -40,7 +41,7 @@ __all__ = [
     # visualization
     'create_vis_pylda',
     'create_vis_pcoa',
-    'create_vis_pcoa2',
+    'create_vis_pca',
     'process_visualizations',
 
     # process_futures
@@ -51,5 +52,7 @@ __all__ = [
     'save_to_zip', 
     'create_dynamic_table_class',
     'create_table_if_not_exists', 
-    'add_model_data_to_database'
+    'add_model_data_to_database',
+    
+    'CompressedRotatingFileHandler'
 ]
