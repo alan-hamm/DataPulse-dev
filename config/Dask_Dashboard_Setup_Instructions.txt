@@ -1,0 +1,35 @@
+# Dask Dashboard Local Setup Instructions
+
+These instructions explain how to configure the Dask dashboard to restrict access to your local machine for security.
+
+## 1. Binding the Dashboard to Localhost
+
+To ensure the Dask dashboard is only accessible from your local machine, update your `distributed.yaml` file with the following settings. This setup prevents any external access by binding the dashboard to `localhost`.
+
+Add the following in your `distributed.yaml` file:
+
+dashboard:
+  link: "http://localhost:8787/status"
+
+This setting limits access to the machine on which Dask is running.
+
+## 2. Configuring Allowed WebSocket Origins (Optional)
+
+If you want to further restrict the dashboard’s WebSocket origin, you can specify that only `localhost` is allowed:
+
+dashboard:
+  bokeh-application:
+    allow_websocket_origin:
+      - "localhost:8787"
+
+### Important: Avoid Wildcards
+
+Do **not** use a wildcard ("*") in `allow_websocket_origin`, as it would allow any machine to connect to your dashboard, which is less secure. Specifying only `localhost` ensures that only local applications have access.
+
+## 3. Accessing the Dashboard
+
+Once Dask is running, you can monitor your tasks by navigating to `http://localhost:8787/status` in your browser.
+
+---
+
+This configuration ensures that your Dask dashboard remains accessible only from your local machine, providing a secure setup for local-only use.
