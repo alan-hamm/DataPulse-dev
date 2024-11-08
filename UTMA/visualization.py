@@ -27,6 +27,8 @@ import pyLDAvis.gensim_models as gensimvis
 import matplotlib.pyplot as plt
 import matplotlib
 import pickle
+from sklearn.decomposition import PCA
+import logging
 from dask.distributed import performance_report, wait
 matplotlib.use('Agg')
 
@@ -34,6 +36,14 @@ import logging
 # Set max_open_warning to 0 to suppress the warning
 plt.rcParams['figure.max_open_warning'] = 0 # suppress memory warning msgs re too many plots being open simultaneously
 
+def fill_distribution_matrix(ldaModel, corpus, num_topics):
+    """Fills the distribution matrix without Numba due to complex object types."""
+    distributions_matrix = np.zeros((len(corpus), num_topics))
+    for i, doc in enumerate(corpus):
+        doc_topics = ldaModel.get_document_topics(doc, minimum_probability=0)
+        for topic_num, prob in doc_topics:
+            distributions_matrix[i, topic_num] = prob
+    return distributions_matrix
 
 def create_vis_pylda(ldaModel, corpus, dictionary, topics, phase_name, filename, CORES, time_key, PYLDA_DIR):
     create_pylda = None
@@ -155,6 +165,71 @@ def create_vis_pcoa(ldaModel, corpus, topics, phase_name, filename, time_key, PC
     return (time_key, create_pcoa)
 
 
+def create_vis_pcoa2(ldaModel, corpus, topics, phase_name, filename, time_key, PCOA_DIR):
+    create_pcoa = None
+    PCoAfilename = filename
+
+    # Set up directory and output file paths
+    try:
+        PCOA_DIR = os.path.join(PCOA_DIR, phase_name, f"number_of_topics-{topics}")
+        os.makedirs(PCOA_DIR, exist_ok=True)
+        PCoAIMAGEFILE = os.path.join(PCOA_DIR, PCoAfilename)
+    except Exception as e:
+        logging.error(f"Couldn't create PCoA file: {e}")
+
+    # Deserialize model and corpus
+    ldaModel = pickle.loads(ldaModel)
+    corpus = pickle.loads(corpus)
+    num_topics = ldaModel.num_topics
+
+    # Fill the topic distribution matrix
+    distributions_matrix = fill_distribution_matrix(ldaModel, corpus, num_topics)
+
+    # Perform dimensionality reduction with PCA
+    try:
+        pcoa_results = PCA(n_components=2).fit_transform(distributions_matrix)
+        x, y = pcoa_results[:, 0], pcoa_results[:, 1]
+    except Exception as e:
+        logging.error(f"An error occurred during PCoA transformation: {e}")
+        create_pcoa = False
+        return time_key, create_pcoa
+
+    # Plotting and visualization
+    try:
+        fig, ax = plt.subplots(figsize=(10, 10))
+        topic_labels = [f"Topic {max(doc_topics, key=lambda x: x[1])[0]}" for doc_topics in ldaModel.get_document_topics(corpus, minimum_probability=0)]
+        unique_labels = list(set(topic_labels))
+        colors = plt.cm.jet(np.linspace(0, 1, len(unique_labels)))
+        label_to_color = dict(zip(unique_labels, colors))
+
+        # Scatter plot for each topic with assigned colors
+        scatter_plots = {}
+        for i in range(len(x)):
+            if topic_labels[i] not in scatter_plots:
+                scatter_plots[topic_labels[i]] = ax.scatter(x[i], y[i], color=label_to_color[topic_labels[i]], label=topic_labels[i])
+            else:
+                ax.scatter(x[i], y[i], color=label_to_color[topic_labels[i]])
+
+        # Title, labels, and legend setup
+        ax.set_title('PCoA Results')
+        ax.set_xlabel('PC1')
+        ax.set_ylabel('PC2')
+        ax.legend(loc='center left', bbox_to_anchor=(1.04, 0.5), borderaxespad=0)
+
+        # Save the figure
+        fig.savefig(f'{PCoAIMAGEFILE}.jpg', bbox_inches='tight')
+        plt.close(fig)
+
+        create_pcoa = True
+
+    except Exception as e:
+        logging.error(f"Error during PCoA visualization creation: {e}")
+        create_pcoa = False
+
+    # Return the exact output format as in the original function
+    return (time_key, create_pcoa)
+
+
 def process_visualizations(client, phase_results, phase_name, performance_log, cores, pylda_dir, pcoa_dir):
     with performance_report(filename=performance_log):
         logging.info(f"Processing {phase_name} visualizations.")
@@ -191,7 +266,7 @@ def process_visualizations(client, phase_results, phase_name, performance_log, c
 
                 try:
                     vis_future_pcoa = client.submit(
-                        create_vis_pcoa,
+                        create_vis_pcoa2,
                         result_dict['lda_model'],
                         result_dict['corpus'],
                         result_dict['topics'],  # f'number_of_topics-{topics}'
@@ -224,3 +299,4 @@ def process_visualizations(client, phase_results, phase_name, performance_log, c
         logging.info(f"Completed gathering {len(completed_pylda_vis) + len(completed_pcoa_vis)} {phase_name} visualization results.")
 
     return completed_pylda_vis, completed_pcoa_vis
+
