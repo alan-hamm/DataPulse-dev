@@ -1,0 +1,17 @@
+/* custom_styles.css */
+blockquote {
+    background-color: #f0f5ff;
+    padding: 15px;
+    border-left: 5px solid #d0e0ff;
+}
+
+pre {
+    background-color: #e8f4ff;
+    padding: 10px;
+    border-radius: 5px;
+    border: 1px solid #d0e0ff;
+}
+
+h3 {
+    color: #0056b3;
+}
