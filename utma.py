@@ -21,6 +21,7 @@ from UTMA import *
 
 import argparse
 
+from dask.distributed import get_client
 from dask.distributed import Client, LocalCluster, performance_report, wait
 from distributed import Future
 import dask
@@ -285,16 +286,26 @@ db_params = {
     'port': 5432
 }
 
+# Custom filter to add extra field to log records
+class CustomFieldFilter( logging.Filter):
+    def filter(self, record):
+        record.custom_field = f"{CORPUS_LABEL}"  # Replace with your actual value
+        return True
+
 # Initialize the PostgreSQL log handler with a formatter
 postgres_handler = PostgresLoggingHandler(db_params)
-formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+formatter = logging.Formatter(' %(custom_field)s - %(asctime)s - %(levelname)s - %(message)s')
 postgres_handler.setFormatter(formatter)
+
+# Add the custom filter to the handler
+custom_filter = CustomFieldFilter()
+postgres_handler.addFilter(custom_filter)
 
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
     handlers=[postgres_handler],
-    format='%(asctime)s - %(levelname)s - %(message)s',
+    format='%(custom_field)s - %(asctime)s - %(levelname)s - %(message)s',
     datefmt='%Y-%m-%d %H:%M:%S'
 )
 
