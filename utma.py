@@ -601,9 +601,9 @@ if __name__=="__main__":
         train_scattered_data = []
         if train_eval_type == "train":
             try:
-                dir = os.path.join(LOG_DIR, "TRAIN")
+                dir = os.path.join(LOG_DIR, "TRAIN_LOG")
                 os.makedirs(dir, exist_ok=True)
-                performance_log = os.path.join(dir, "TRAIN_LOG", f"train_perf_{pd.to_datetime('now').strftime('%Y%m%d%H%M%S%f')}.html")
+                performance_log = os.path.join(dir, f"train_perf_{pd.to_datetime('now').strftime('%Y%m%d%H%M%S%f')}.html")
                 with performance_report(filename=performance_log):
                     #print(f"Total training batches scattered to Dask: {len(scattered_train_data_futures)}")
                     for scattered_data in scattered_train_data_futures:
@@ -652,9 +652,9 @@ if __name__=="__main__":
         # Validation Phase
         if train_eval_type == "validation":
             try:
-                dir = os.path.join(LOG_DIR, "VALIDATION")
+                dir = os.path.join(LOG_DIR, "VALIDATION_LOG")
                 os.makedirs(dir, exist_ok=True)
-                performance_log = os.path.join(dir, "VALIDATION_LOG", f"validation_perf_{pd.to_datetime('now').strftime('%Y%m%d%H%M%S%f')}.html")
+                performance_log = os.path.join(dir, f"validation_perf_{pd.to_datetime('now').strftime('%Y%m%d%H%M%S%f')}.html")
                 with performance_report(filename=performance_log):
                     for scattered_data in scattered_validation_data_futures:
                         model_key = (n_topics, alpha_value, beta_value)
@@ -696,9 +696,9 @@ if __name__=="__main__":
         # Test Phase
         if train_eval_type == "test":
             try:
-                dir = os.path.join(LOG_DIR, "TEST")
+                dir = os.path.join(LOG_DIR, "TEST_LOG")
                 os.makedirs(dir, exist_ok=True)
-                performance_log = os.path.join(dir, "TEST_LOG", f"test_perf_{pd.to_datetime('now').strftime('%Y%m%d%H%M%S%f')}.html")
+                performance_log = os.path.join(dir, f"test_perf_{pd.to_datetime('now').strftime('%Y%m%d%H%M%S%f')}.html")
                 with performance_report(filename=performance_log):
                     for scattered_data in scattered_test_data_futures:
                         model_key = (n_topics, alpha_value, beta_value)
