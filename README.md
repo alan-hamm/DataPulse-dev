@@ -5,7 +5,6 @@
 - [Key Features](#key-features)
 - [Project Structure](#project-structure)
 - [Installation](#installation)
-- [Usage](#usage)
 - [Example Preprocessing: CDC's Morbidity and Mortality Weekly Report Journals](#cdcs-mmwr-2015---2019)
 - [Optimization](#optimization)
 
@@ -46,28 +45,35 @@ For further configuration tips and performance monitoring, Dask provides a [dash
 --- 
 
 ### Installation
-To install UTMA, clone the repository and set up the required Python environment. Follow these instructions based on your data's format:
-
-1. **If Preprocessing is Required**: Use the `DocumentParser` notebook to prepare your documents according to UTMA's standard format, as outlined in the [CDC's MMWR example](#cdcs-mmwr-2015---2019). Once preprocessing is completed, proceed with the installation steps below.
-   
-2. **If Preprocessing is Not Required**: Skip to the installation steps directly.
-
-3. **If Both Steps are Needed**: First, preprocess the data, then follow the installation instructions.
+To install UTMA, clone the repository and set up the required Python environment. Follow these steps for a smooth setup:
 
 #### Installation Steps
 
 1. **Clone the Repository**
    ```bash
    git clone https://github.com/alan-hamm/Unified-Topic-Modeling-and-Analysis.git
-   cd your-repo-name
+   cd your-directory-name
    ```
 
-2. **Set Up the Environment** Using Anaconda is recommended for managing dependencies:
+2. **Set Up the Environment** 
+      (Using Anaconda is recommended for managing dependencies)
       ```bash
-      conda env create -f environment.yaml
+      conda env create -f config/environment.yaml
       conda activate utma
       ```
-3. **Set Up PostgreSQL Database** Ensure PostgreSQL is installed and running. Create a new database to store UTMA data, and update the connection settings in the project configuration files.
+
+3. **Set Up PostgreSQL Database** Ensure PostgreSQL is installed and running. Create a new database to store UTMA data, and update the connection settings in the project configuration files to point to your database.
+
+#### Data Processing 
+
+If you have documents that require preprocessing, use the following guidelines to prepare your data before proceeding with UTMA analysis:
+
+1. **If Preprocessing is Required**: Use the `DocumentParser` notebook to prepare your documents according to UTMA's standard format, as outlined in the [CDC's MMWR example](#cdcs-mmwr-2015---2019). **IMPORTANT** Make sure the Python environment has been set up(_i.e._, run `environment.yaml`) before using the notebook.
+   
+2. **If Preprocessing is Not Required**: If your documents are already in the required format and you've set up the Python environment with `environment.yaml`, you can skip the preprocessing step and proceed directly to running UTMA.
+
+3. **Combining Installation and Preprocessing**: **Combining Installation and Preprocessing** If both installation and preprocessing are needed, first complete the [installation steps](#installation-steps) above, then preprocess the data using the `DocumentParser` notebook.
+
 
 ### Distributed Configuration
 
@@ -86,7 +92,7 @@ To ensure your Dask environment is correctly configured, follow these steps:
    3. **Refer to Setup Instructions**  
       For more detailed instructions on configuring the Dask dashboard and securing it for local access, see the `Dask_Dashboard_Setup_Instructions.txt` file in the `config/` directory.
 
-## Preprocessing with DocumentParser.ipynb
+## Preprocessing with DocumentParser Notebook
 Use DocumentParser.ipynb if your documents are not in UTMA's expected format. The notebook:
 -  Parses JSON and HTML files, ensuring clean and structured text.
 -  Performs tokenization, lemmatization, and bigram extraction.
@@ -106,7 +112,7 @@ Documents must be in the following format to bypass preprocessing:
 2. Execute each cell to process and save the documents in the required format.
 3. Move the processed files to the designated input directory.
 
-## Steps to Run the UTMA.py Script
+## Steps to Run the UTMA Script
 After setup, run the main script to start the UTMA framework. Here’s an example command:
 
    ```bash
