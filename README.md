@@ -14,6 +14,7 @@
 ### Key Features
 - **Adaptive Resource Management**: UTMA leverages [Dask](https://www.dask.org/) for process-based distributed parallelization, harnessing multiple cores and avoiding the limitations of the GIL while dynamically adjusting resources to efficiently handle large datasets and high computational loads.
 - **Concurrency, Parallelization, and Multithreading**: The system utilizes a hybrid model of concurrency through Dask’s distributed tasks, allowing concurrent execution, with multiprocessing for resource-heavy operations and multithreading within Dask workers for efficient I/O-bound task management. This design enhances both performance and scalability across different hardware configurations.
+-  [**CUDA Acceleration**](https://developer.nvidia.com/about-cuda): UTMA leverages **CUDA** through **CuPy** to accelerate computationally intensive coherence metric calculations. CUDA is specifically applied to mean, median, and standard deviation calculations of coherence scores across large datasets, significantly reducing processing time. By offloading these calculations to the GPU, UTMA can handle high-volume computations more efficiently, maximizing the potential of systems equipped with NVIDIA GPUs.
 - **Comprehensive Machine Learning Pipeline**: The framework includes a robust machine learning pipeline that handles data preprocessing, model training, evaluation, and hyperparameter tuning, designed to optimize model performance for diverse text corpora.
 - **Diachronic Analysis (_Pending_)**: Facilitates tracking and analyzing topic shifts over time, particularly useful for examining historical changes or comparing topics across decades.
 - **Detailed Metadata Tracking**: Records extensive metadata for each batch, including dynamic core counts, model parameters, and evaluation scores, ensuring complete reproducibility and transparency.
@@ -36,6 +37,7 @@ For further configuration tips and performance monitoring, Dask provides a [dash
 - **Python** 3.12.0
 - **Anaconda** (recommended for dependency management)
 - **PostgreSQL** (required for data storage and integration)
+-  **CuPy**: Used in coherence metric calculations to enable CUDA-based acceleration, leveraging GPU resources for high-precision and high-performance computations.
 - **Data Preprocessing(DocumentParser Notebook)**: Handle initial data preparation, including tokenization and formatting, for ingestion by the modeling pipeline. See [example](#cdcs-mmwr-2015---2019)
 - **Dynamic Topic Model Training** (`topic_model_trainer.py`): Manages the LDA model training, evaluation, and metadata generation, with adaptive scaling to optimize resource usage.
 - **Visualization and Analysis**(`visualization.py`): Generates and saves visualizations (e.g., topic coherence plots) for exploring model outputs interactively.
@@ -157,6 +159,7 @@ By organizing and structuring the text data in this format, UTMA can identify re
    This format aligns with the project’s requirements, enabling UTMA to analyze the thematic structure and evolution of health topics in CDC reports.
 
    The project supports preprocessing for a range of CDC’s journal content, including _Emerging Infectious Diseases_([EID](https://wwwnc.cdc.gov/eid)) and _Preventing Chronic Disease_([PCD](https://www.cdc.gov/pcd)). Available resources include CDC documents, spanning 42 years: [HTML Mirrors of MMWR, EID, and PCD](https://data.cdc.gov/National-Center-for-State-Tribal-Local-and-Territo/CDC-Text-Corpora-for-Learners-HTML-Mirrors-of-MMWR/ut5n-bmc3/about_data) and associated [Corpus Metadata](https://data.cdc.gov/National-Center-for-State-Tribal-Local-and-Territo/CDC-Text-Corpora-for-Learners-MMWR-EID-and-PCD-Art/7rih-tqi5/about_data).
+
 
 ### **Optimization** 
 
