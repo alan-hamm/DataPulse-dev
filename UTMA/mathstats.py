@@ -130,7 +130,7 @@ def replace_nan_with_interpolated(data):
     return data
 
 
-# Function to handle NaN replacement with high precision and calculate coherence metrics for all phases
+# Function to handle NaN replacement with high precision and calculate coherence metrics
 def replace_nan_with_high_precision(default_score, data, tolerance=1e-5):
     # Retrieve coherence scores list for calculations and convert it to a CuPy array
     coherence_scores = cp.array(data.get('coherence_scores', []), dtype=cp.float32)
@@ -142,22 +142,27 @@ def replace_nan_with_high_precision(default_score, data, tolerance=1e-5):
     for key, value in data.items():
         if isinstance(value, float) and cp.isnan(value):
             try:
-                if key == 'mean_coherence' and coherence_scores.size > 0:
+                if key == 'mean_coherence' and coherence_scores.size >= 1:
                     # Calculate mean coherence using CuPy
                     mean_coherence = cp.mean(coherence_scores)
-                    data[key] = mean_coherence.get()  # Retrieve value from GPU to CPU memory
+                    data[key] = float(mean_coherence.get())  # Retrieve value from GPU to CPU memory
                     logging.debug(f"Calculated mean_coherence: {data[key]}")
 
-                elif key == 'median_coherence' and coherence_scores.size > 0:
+                elif key == 'median_coherence' and coherence_scores.size >= 1:
                     # Calculate median coherence using CuPy
                     median_coherence = cp.median(coherence_scores)
-                    data[key] = median_coherence.get()  # Retrieve value from GPU to CPU memory
+                    data[key] = float(median_coherence.get())  # Retrieve value from GPU to CPU memory
                     logging.debug(f"Calculated median_coherence: {data[key]}")
 
                 elif key == 'std_coherence' and coherence_scores.size > 1:
                     # Calculate standard deviation coherence using CuPy
                     std_coherence = cp.std(coherence_scores, ddof=1)
-                    data[key] = std_coherence.get()  # Retrieve value from GPU to CPU memory
+                    # Check if std_coherence is close to zero
+                    if cp.isclose(std_coherence, 0, atol=tolerance):
+                        logging.warning("Standard deviation of coherence scores is close to zero. Adjusting to default score.")
+                        data[key] = float(default_score)
+                    else:
+                        data[key] = float(std_coherence.get())  # Retrieve value from GPU to CPU memory
                     logging.debug(f"Calculated std_coherence: {data[key]}")
 
                 else:
