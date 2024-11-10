@@ -134,7 +134,6 @@ def train_model_v2(n_topics: int, alpha_str: Union[str, float], beta_str: Union[
             logging.error(f"An error occurred during LDA model training: {e}")
             raise
 
-
     else:
         # For validation and test phases, use the already-trained model
         ldamodel_bytes = pickle.dumps(ldamodel)
@@ -144,20 +143,12 @@ def train_model_v2(n_topics: int, alpha_str: Union[str, float], beta_str: Union[
         ldamodel, batch_documents if phase != "train" else train_batch_documents, train_dictionary_batch, initial_sample_ratio=0.1
     )
 
-    # Perform full coherence calculation only if mean coherence exceeds threshold (optional for train)
-    if phase == "train" and mean_coherence >= threshold:
-        coherence_model_lda = CoherenceModel(
-            model=ldamodel, dictionary=train_dictionary_batch, texts=train_batch_documents, coherence='c_v',
-            processes=math.floor(cores * (1/3))
-        )
-        coherence_score = coherence_model_lda.get_coherence()
-    elif phase != "train":
-        # Direct coherence calculation for validation and test (no threshold check)
-        coherence_model_lda = CoherenceModel(
-            model=ldamodel, dictionary=train_dictionary_batch, texts=batch_documents, coherence='c_v',
-            processes=math.floor(cores * (1/3))
-        )
-        coherence_score = coherence_model_lda.get_coherence()
+    # Calculate full coherence score without threshold check for debugging
+    coherence_model_lda = CoherenceModel(
+        model=ldamodel, dictionary=train_dictionary_batch, texts=train_batch_documents if phase == "train" else batch_documents, coherence='c_v',
+        processes=math.floor(cores * (1/3))
+    )
+    coherence_score = coherence_model_lda.get_coherence()
 
     # Calculate perplexity and convergence for each phase
     with np.errstate(divide='ignore', invalid='ignore'):
@@ -172,6 +163,7 @@ def train_model_v2(n_topics: int, alpha_str: Union[str, float], beta_str: Union[
         except RuntimeWarning as e:
             logging.info(f"Issue calculating perplexity score: {e}. Value '{DEFAULT_SCORE}' assigned.")
             perplexity_score = DEFAULT_SCORE
+
 
 
     # Set the number of words to display for each topic, allowing deeper insight into topic composition.
