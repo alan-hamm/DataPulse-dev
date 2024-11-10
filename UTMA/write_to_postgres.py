@@ -31,7 +31,7 @@ import sqlalchemy
 from sqlalchemy import create_engine, inspect
 from sqlalchemy.exc import ProgrammingError
 from sqlalchemy.orm import sessionmaker
-from sqlalchemy import create_engine, Column, String, Integer, Boolean, Float, LargeBinary, DateTime, JSON, TEXT
+from sqlalchemy import Column, Integer, String, DateTime, Boolean, LargeBinary, TEXT, JSON, Float, Numeric
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.declarative import declarative_base
 import pickle
@@ -109,9 +109,9 @@ def create_dynamic_table_class(table_name):
         # Model and Training Parameters
         'topics' : Column(Integer),
         'alpha_str' : Column(String),
-        'n_alpha' : Column(Float(precision=32)),
+        'n_alpha' : Column(Numeric(precision=20, scale=15)),
         'beta_str' : Column(String),
-        'n_beta' : Column(Float(precision=32)),
+        'n_beta' : Column(Numeric(precision=20, scale=15)),
         'passes' : Column(Integer),
         'iterations' : Column(Integer),
         'update_every' : Column(Integer),
@@ -121,21 +121,19 @@ def create_dynamic_table_class(table_name):
         'per_word_topics' : Column(Boolean),
         
         # Evaluation Metrics
-        'convergence' : Column(Float(precision=32)),
-        'perplexity' : Column(Float(precision=32)),
-        'coherence' : Column(Float(precision=32)),
-        'mean_coherence': Column(Float(precision=32)),
-        'median_coherence': Column(Float(precision=32)),
-        'mode_coherence': Column(Float(precision=32)),
-        'std_coherence':Column(Float(precision=32)),
-        'threshold':Column(Float(precision=32)),
+        'convergence' : Column(Numeric(precision=20, scale=15)),
+        'perplexity' : Column(Numeric(precision=20, scale=15)),
+        'coherence' : Column(Numeric(precision=20, scale=15)),
+        'mean_coherence': Column(Numeric(precision=20, scale=15)),
+        'median_coherence': Column(Numeric(precision=20, scale=15)),
+        'mode_coherence': Column(Numeric(precision=20, scale=15)),
+        'std_coherence': Column(Numeric(precision=20, scale=15)),
+        'threshold': Column(Numeric(precision=20, scale=15)),
         
         # Visualization Placeholders
         'create_pylda' : Column(Boolean),
         'create_pcoa' : Column(Boolean)
     }
-
-    #return type(table_name, (Base,), attributes)
 
     # Create a new class type with a unique name derived from table_name
     dynamic_class = type(f"DynamicModelMetadata_{table_name}", (Base,), attributes)
