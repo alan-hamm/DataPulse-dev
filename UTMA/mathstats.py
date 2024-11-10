@@ -7,6 +7,7 @@ import numpy as np
 import math
 from decimal import Decimal, InvalidOperation
 
+
 # Sample initial documents for coherence calculation
 def sample_coherence(ldamodel, documents, dictionary, sample_ratio=0.1):
     sample_size = int(len(documents) * sample_ratio)
@@ -64,6 +65,21 @@ def get_statistics(coherence_scores):
     
     return mean_coherence, median_coherence, mode_coherence, std_coherence
 
+def calculate_perplexity(negative_log_likelihood, num_words):
+    """
+    Calculate perplexity from negative log-likelihood.
+
+    Parameters:
+    - negative_log_likelihood (float): The negative log-likelihood from log_perplexity().
+    - num_words (int): The total number of words in the corpus.
+
+    Returns:
+    - float: The perplexity score.
+    """
+    if num_words == 0:
+        raise ValueError("Number of words must be greater than zero to calculate perplexity.")
+    
+    return math.exp(negative_log_likelihood / num_words)
 
 # Calculate perplexity-based threshold
 def calculate_perplexity_threshold(ldamodel: LdaModel, documents):
@@ -113,45 +129,43 @@ def replace_nan_with_interpolated(data):
         
     return data
 
-# Function to handle NaN replacement with high precision using CuPy
-def replace_nan_with_high_precision(default_score, data):
-    # Replace `NaN` values in model data with calculated or meaningful values
-    for key, value in data.items():
-        if isinstance(value, float) and math.isnan(value):
-            try:
-                coherence_scores = data.get('coherence_scores', [])
-                
-                if coherence_scores:
-                    # Convert coherence scores to CuPy array for GPU processing
-                    coherence_scores_cp = cp.array(coherence_scores, dtype=cp.float64)
 
-                    if key == 'mean_coherence':
-                        # Calculate mean coherence using CuPy
-                        mean_coherence = cp.mean(coherence_scores_cp).item()
-                        data[key] = mean_coherence
-                    
-                    elif key == 'median_coherence':
-                        # Calculate median coherence using CuPy
-                        coherence_scores_cp.sort()
-                        mid = len(coherence_scores_cp) // 2
-                        if len(coherence_scores_cp) % 2 == 0:
-                            median_coherence = (coherence_scores_cp[mid - 1] + coherence_scores_cp[mid]) / 2
-                        else:
-                            median_coherence = coherence_scores_cp[mid]
-                        data[key] = median_coherence.item()
-                    
-                    elif key == 'std_coherence':
-                        # Calculate standard deviation coherence using CuPy
-                        std_coherence = cp.std(coherence_scores_cp, ddof=1).item()
-                        data[key] = std_coherence
-                        
-                    else:
-                        data[key] = default_score  # Use a default for other keys if needed
+# Function to handle NaN replacement with high precision and calculate coherence metrics for all phases
+def replace_nan_with_high_precision(default_score, data, tolerance=1e-5):
+    # Retrieve coherence scores list for calculations and convert it to a CuPy array
+    coherence_scores = cp.array(data.get('coherence_scores', []), dtype=cp.float32)
+    
+    # Check if coherence_scores is empty, or contains only values close to zero or one
+    if coherence_scores.size == 0 or cp.all(cp.isclose(coherence_scores, 0, atol=tolerance)) or cp.all(cp.isclose(coherence_scores, 1, atol=tolerance)):
+        logging.warning("Coherence scores list is empty, or contains only values close to zero or one.")
+    
+    for key, value in data.items():
+        if isinstance(value, float) and cp.isnan(value):
+            try:
+                if key == 'mean_coherence' and coherence_scores.size > 0:
+                    # Calculate mean coherence using CuPy
+                    mean_coherence = cp.mean(coherence_scores)
+                    data[key] = mean_coherence.get()  # Retrieve value from GPU to CPU memory
+                    logging.debug(f"Calculated mean_coherence: {data[key]}")
+
+                elif key == 'median_coherence' and coherence_scores.size > 0:
+                    # Calculate median coherence using CuPy
+                    median_coherence = cp.median(coherence_scores)
+                    data[key] = median_coherence.get()  # Retrieve value from GPU to CPU memory
+                    logging.debug(f"Calculated median_coherence: {data[key]}")
+
+                elif key == 'std_coherence' and coherence_scores.size > 1:
+                    # Calculate standard deviation coherence using CuPy
+                    std_coherence = cp.std(coherence_scores, ddof=1)
+                    data[key] = std_coherence.get()  # Retrieve value from GPU to CPU memory
+                    logging.debug(f"Calculated std_coherence: {data[key]}")
 
                 else:
-                    data[key] = default_score  # Use default if coherence_scores is empty
+                    data[key] = default_score  # Fallback for missing values
+                    logging.debug(f"Assigned default value for {key}: {default_score}")
 
-            except InvalidOperation:
-                data[key] = default_score  # Fallback if calculations fail
+            except Exception as e:
+                data[key] = default_score  # Handle calculation errors gracefully
+                logging.error(f"Error calculating {key}. Assigned default value: {default_score}. Error: {e}")
 
     return data

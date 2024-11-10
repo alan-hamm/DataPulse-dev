@@ -29,6 +29,7 @@ __all__ = [
     'coherence_score_decision',
     'replace_nan_with_interpolated',
     'replace_nan_with_high_precision',
+    'calculate_perplexity',
 
     # utils
     'garbage_collection',
