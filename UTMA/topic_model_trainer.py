@@ -42,7 +42,7 @@ from decimal import Decimal, InvalidOperation
 
 from .alpha_eta import calculate_numeric_alpha, calculate_numeric_beta  # Functions that calculate alpha and beta values for LDA.
 from .utils import convert_float32_to_float  # Utility function for data type conversion, ensuring compatibility within the script.
-from .mathstats import calculate_perplexity_threshold, coherence_score_decision, replace_nan_with_high_precision
+from .mathstats import calculate_perplexity_threshold, coherence_score_decision, replace_nan_with_high_precision, calculate_perplexity
 
 
     
@@ -109,7 +109,7 @@ def train_model_v2(n_topics: int, alpha_str: Union[str, float], beta_str: Union[
     if phase in ['validation', 'test']:
         # For validation and test phases, no model is created
         ldamodel_bytes = pickle.dumps(ldamodel)
-        coherence_score = convergence_score = perplexity_score = DEFAULT_SCORE
+        coherence_score = convergence_score = negative_log_likelihood = DEFAULT_SCORE
 
     elif phase == "train":
         try:
@@ -128,7 +128,7 @@ def train_model_v2(n_topics: int, alpha_str: Union[str, float], beta_str: Union[
                 chunksize=chunksize,
                 per_word_topics=True
             )
-            # Calculate perplexity threshold using the BoW corpus
+            # Calculate negative_log_likelihood threshold using the BoW corpus
             threshold = calculate_perplexity_threshold(ldamodel, corpus_data["train"])
             ldamodel_bytes = pickle.dumps(ldamodel)
         except Exception as e:
@@ -138,7 +138,7 @@ def train_model_v2(n_topics: int, alpha_str: Union[str, float], beta_str: Union[
     else:
         # For validation and test phases, use the already-trained model
         ldamodel_bytes = pickle.dumps(ldamodel)
-    # Calculate perplexity and convergence for each phase
+    # Calculate negative_log_likelihood and convergence for each phase
 
     with np.errstate(divide='ignore', invalid='ignore'):
         # Calculate coherence metrics across all phases
@@ -160,10 +160,16 @@ def train_model_v2(n_topics: int, alpha_str: Union[str, float], beta_str: Union[
             convergence_score = DEFAULT_SCORE
 
         try:
-            perplexity_score = ldamodel.log_perplexity(corpus_data[phase])
+            negative_log_likelihood = ldamodel.log_perplexity(corpus_data[phase])
+                
+            # Calculate the total number of words for perplexity calculation
+            num_words = sum(sum(count for _, count in doc) for doc in corpus_data[phase])
+                
+            # Calculate perplexity using the calculate_perplexity function
+            perplexity_score = calculate_perplexity(negative_log_likelihood, num_words)
         except RuntimeWarning as e:
-                logging.info(f"Issue calculating perplexity score: {e}. Value '{DEFAULT_SCORE}' assigned.")
-                perplexity_score = DEFAULT_SCORE
+            logging.info(f"Issue calculating perplexity score: {e}. Value '{DEFAULT_SCORE}' assigned.")
+            negative_log_likelihood = perplexity_score = DEFAULT_SCORE
 
 
 
@@ -205,7 +211,6 @@ def train_model_v2(n_topics: int, alpha_str: Union[str, float], beta_str: Union[
         # Serialize the topic data to JSON format for structured storage, such as in a database.
         show_topics_jsonb = json.dumps(topics_to_store)
         
-    with np.errstate(divide='ignore', invalid='ignore'):
         # Get the topic distribution for each document in the validation or test corpus
         try:
             if phase in ['validation', 'test']:
@@ -229,13 +234,12 @@ def train_model_v2(n_topics: int, alpha_str: Union[str, float], beta_str: Union[
             logging.error(f"JSON serialization failed due to non-compatible types: {e}")
             validation_results_jsonb = json.dumps({"error": "Validation data generation failed", "phase": phase})
 
-    with np.errstate(divide='ignore', invalid='ignore'):
         try:
             if phase == "train":
             # Retrieve the top topics based on coherence scores, which assess how interpretable or meaningful each topic is.
-                topics = ldamodel.top_topics(texts=train_batch_documents, processes=math.floor(cores * (1/3)))
+                topics = ldamodel.top_topics(texts=train_batch_documents, processes=math.floor(cores * (2/3)))
             else:
-                topics = ldamodel.top_topics(texts=batch_documents, processes=math.floor(cores * (1/3)))
+                topics = ldamodel.top_topics(texts=batch_documents, processes=math.floor(cores * (2/3)))
 
             # Extract only the words from each topic, removing the associated scores to provide a simplified view of topic terms.
             topic_words = []
@@ -299,7 +303,8 @@ def train_model_v2(n_topics: int, alpha_str: Union[str, float], beta_str: Union[
     
     # Evaluation Metrics
     'convergence': convergence_score,  # Convergence score for evaluating model stability.
-    'perplexity': perplexity_score,  # Perplexity score to assess model fit.
+    'nll': negative_log_likelihood,  # negative log likelihood
+    'perplexity': perplexity_score, # Perplexity score to assess model fit.
     'coherence': coherence_score,  # Coherence score to measure topic interpretability.
     'mean_coherence': mean_coherence,
     'median_coherence': median_coherence,
@@ -317,6 +322,6 @@ def train_model_v2(n_topics: int, alpha_str: Union[str, float], beta_str: Union[
     'create_pcoa': None  # Placeholder for PCoA verification of visualization creation.
     }
 
-    # Replace NaN values with high-precision calculated values
-    model_data = replace_nan_with_high_precision(DEFAULT_SCORE,current_increment_data)
-    return model_data
+  # Use `replace_nan_with_high_precision` to handle any NaN values with calculated replacements
+    metrics_data = replace_nan_with_high_precision(default_score=DEFAULT_SCORE, data=current_increment_data)  # Replace `default_score=nan` with your desired default if needed
+    return metrics_data

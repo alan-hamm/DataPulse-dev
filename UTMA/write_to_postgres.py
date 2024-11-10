@@ -122,7 +122,8 @@ def create_dynamic_table_class(table_name):
         
         # Evaluation Metrics
         'convergence' : Column(Numeric(precision=20, scale=15)),
-        'perplexity' : Column(Numeric(precision=20, scale=15)),
+        'nll': Column(Numeric(precision=20, scale=15)),
+        'perplexity':  Column(Numeric(precision=20, scale=15)),
         'coherence' : Column(Numeric(precision=20, scale=15)),
         'mean_coherence': Column(Numeric(precision=20, scale=15)),
         'median_coherence': Column(Numeric(precision=20, scale=15)),
