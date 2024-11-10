@@ -124,6 +124,11 @@ def create_dynamic_table_class(table_name):
         'convergence' : Column(Float(precision=32)),
         'perplexity' : Column(Float(precision=32)),
         'coherence' : Column(Float(precision=32)),
+        'mean_coherence': Column(Float(precision=32)),
+        'median_coherence': Column(Float(precision=32)),
+        'mode_coherence': Column(Float(precision=32)),
+        'std_coherence':Column(Float(precision=32)),
+        'threshold':Column(Float(precision=32)),
         
         # Visualization Placeholders
         'create_pylda' : Column(Boolean),

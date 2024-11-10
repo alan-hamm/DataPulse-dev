@@ -41,6 +41,8 @@ from datetime import datetime
 
 from .alpha_eta import calculate_numeric_alpha, calculate_numeric_beta  # Functions that calculate alpha and beta values for LDA.
 from .utils import convert_float32_to_float  # Utility function for data type conversion, ensuring compatibility within the script.
+from .mathstats import sample_coherence_for_phase, get_statistics, calculate_perplexity_threshold, coherence_score_decision
+
 
     
 # https://examples.dask.org/applications/embarrassingly-parallel.html
@@ -100,21 +102,17 @@ def train_model_v2(n_topics: int, alpha_str: Union[str, float], beta_str: Union[
     n_alpha = calculate_numeric_alpha(alpha_str, n_topics)
     n_beta = calculate_numeric_beta(beta_str, n_topics)
 
-    
     # Constants for default and failure scores
-    DEFAULT_SCORE = float('-inf')
+    DEFAULT_SCORE = float('nan')
 
     if phase in ['validation', 'test']:
         # For validation and test phases, no model is created
-        ldamodel_bytes = pickle.dumps(ldamodel)  # Re-serialize the trained model for later use and storage.
-        ldamodel = ldamodel  # Model from TRAIN data
-        coherence_score = DEFAULT_SCORE
-        convergence_score = DEFAULT_SCORE
-        perplexity_score = DEFAULT_SCORE
+        ldamodel_bytes = pickle.dumps(ldamodel)
+        coherence_score = convergence_score = perplexity_score = DEFAULT_SCORE
 
-    # Only create and train the LdaModel if phase is "train"
     elif phase == "train":
         try:
+            # Create and train the LdaModel for the training phase
             ldamodel = LdaModel(
                 corpus=corpus_data["train"],
                 id2word=train_dictionary_batch,
@@ -129,34 +127,46 @@ def train_model_v2(n_topics: int, alpha_str: Union[str, float], beta_str: Union[
                 chunksize=chunksize,
                 per_word_topics=True
             )
+            # Calculate perplexity threshold using the BoW corpus
+            threshold = calculate_perplexity_threshold(ldamodel, corpus_data["train"])
             ldamodel_bytes = pickle.dumps(ldamodel)
         except Exception as e:
             logging.error(f"An error occurred during LDA model training: {e}")
-            raise  # Stop execution if model creation fails.
+            raise
 
 
-    # Calculate scores
-    with np.errstate(divide='ignore', invalid='ignore'):
-        try:
-            if phase == "train":
-                coherence_model_lda = CoherenceModel(  model=ldamodel, processes=math.floor(cores * (1/3)), 
-                                                    dictionary=train_dictionary_batch, texts=train_batch_documents, coherence='c_v' )
-            else:
-                coherence_model_lda = CoherenceModel(  model=ldamodel, processes=math.floor(cores * (1/3)), 
-                                                    dictionary=train_dictionary_batch, texts=batch_documents, coherence='c_v' )
-            coherence_score = coherence_model_lda.get_coherence()
-            coherence_score_list.append(coherence_score)
-        except Exception as e:
-            logging.error(f"Issue calculating coherence score: {e}. Value '{DEFAULT_SCORE}' assigned.")
-            coherence_score = DEFAULT_SCORE
-            coherence_score_list.append(coherence_score)
+    else:
+        # For validation and test phases, use the already-trained model
+        ldamodel_bytes = pickle.dumps(ldamodel)
+
+    # Calculate coherence metrics across all phases
+    coherence_score, mean_coherence, median_coherence, mode_coherence, std_coherence, threshold = coherence_score_decision(
+        ldamodel, batch_documents if phase != "train" else train_batch_documents, train_dictionary_batch, initial_sample_ratio=0.1
+    )
+
+    # Perform full coherence calculation only if mean coherence exceeds threshold (optional for train)
+    if phase == "train" and mean_coherence >= threshold:
+        coherence_model_lda = CoherenceModel(
+            model=ldamodel, dictionary=train_dictionary_batch, texts=train_batch_documents, coherence='c_v',
+            processes=math.floor(cores * (1/3))
+        )
+        coherence_score = coherence_model_lda.get_coherence()
+    elif phase != "train":
+        # Direct coherence calculation for validation and test (no threshold check)
+        coherence_model_lda = CoherenceModel(
+            model=ldamodel, dictionary=train_dictionary_batch, texts=batch_documents, coherence='c_v',
+            processes=math.floor(cores * (1/3))
+        )
+        coherence_score = coherence_model_lda.get_coherence()
+
+    # Calculate perplexity and convergence for each phase
     with np.errstate(divide='ignore', invalid='ignore'):
         try:
             convergence_score = ldamodel.bound(corpus_data[phase])
         except Exception as e:
             logging.error(f"Issue calculating convergence score: {e}. Value '{DEFAULT_SCORE}' assigned.")
             convergence_score = DEFAULT_SCORE
-    with np.errstate(divide='ignore', invalid='ignore'):
+
         try:
             perplexity_score = ldamodel.log_perplexity(corpus_data[phase])
         except RuntimeWarning as e:
@@ -267,11 +277,11 @@ def train_model_v2(n_topics: int, alpha_str: Union[str, float], beta_str: Union[
     'type': phase,  # Indicates whether this batch is for 'train', 'validation', or 'test'.
     'start_time': time_of_method_call,  # Start time of this batch's processing.
     'end_time': pd.to_datetime('now'),  # End time of this batch's processing.
-    'num_workers': float('-inf'),  # Placeholder for adaptive core count used for this batch.
+    'num_workers': float('nan'),  # Placeholder for adaptive core count used for this batch.
     
     # Document and Batch Details
     'batch_size': len(batch_documents),  # Number of documents processed in this batch.
-    'num_documents': float('-inf'),  # Placeholder for the total document count.
+    'num_documents': float('nan'),  # Placeholder for the total document count.
     'text': pickle.dumps([' '.join(flattened_batch)]),  # Concatenated text of the batch for metadata/logging.
     'text_json': pickle.dumps(batch_documents),  # Serialized batch documents for reference.
     'show_topics': show_topics_jsonb, # Serialized top terms per topic for analysis
@@ -298,6 +308,11 @@ def train_model_v2(n_topics: int, alpha_str: Union[str, float], beta_str: Union[
     'convergence': convergence_score,  # Convergence score for evaluating model stability.
     'perplexity': perplexity_score,  # Perplexity score to assess model fit.
     'coherence': coherence_score,  # Coherence score to measure topic interpretability.
+    'mean_coherence': mean_coherence,
+    'median_coherence': median_coherence,
+    'mode_coherence': mode_coherence,
+    'std_coherence': std_coherence,
+    'threshold': threshold,
     
     # Serialized Data
     'lda_model': ldamodel_bytes,  # Serialized LDA model, if trained in this batch.
