@@ -38,10 +38,11 @@ import json  # Provides JSON encoding and decoding, useful for handling data in 
 from typing import Union  # Allows type hinting for function parameters, improving code readability and debugging.
 import random
 from datetime import datetime
+from decimal import Decimal, InvalidOperation
 
 from .alpha_eta import calculate_numeric_alpha, calculate_numeric_beta  # Functions that calculate alpha and beta values for LDA.
 from .utils import convert_float32_to_float  # Utility function for data type conversion, ensuring compatibility within the script.
-from .mathstats import sample_coherence_for_phase, get_statistics, calculate_perplexity_threshold, coherence_score_decision
+from .mathstats import calculate_perplexity_threshold, coherence_score_decision, replace_nan_with_high_precision
 
 
     
@@ -102,8 +103,8 @@ def train_model_v2(n_topics: int, alpha_str: Union[str, float], beta_str: Union[
     n_alpha = calculate_numeric_alpha(alpha_str, n_topics)
     n_beta = calculate_numeric_beta(beta_str, n_topics)
 
-    # Constants for default and failure scores
-    DEFAULT_SCORE = float('nan')
+    # Updated default score as a high-precision Decimal value
+    DEFAULT_SCORE = Decimal('0')
 
     if phase in ['validation', 'test']:
         # For validation and test phases, no model is created
@@ -137,21 +138,21 @@ def train_model_v2(n_topics: int, alpha_str: Union[str, float], beta_str: Union[
     else:
         # For validation and test phases, use the already-trained model
         ldamodel_bytes = pickle.dumps(ldamodel)
-
-    # Calculate coherence metrics across all phases
-    coherence_score, mean_coherence, median_coherence, mode_coherence, std_coherence, threshold = coherence_score_decision(
-        ldamodel, batch_documents if phase != "train" else train_batch_documents, train_dictionary_batch, initial_sample_ratio=0.1
-    )
-
-    # Calculate full coherence score without threshold check for debugging
-    coherence_model_lda = CoherenceModel(
-        model=ldamodel, dictionary=train_dictionary_batch, texts=train_batch_documents if phase == "train" else batch_documents, coherence='c_v',
-        processes=math.floor(cores * (1/3))
-    )
-    coherence_score = coherence_model_lda.get_coherence()
-
     # Calculate perplexity and convergence for each phase
+
     with np.errstate(divide='ignore', invalid='ignore'):
+        # Calculate coherence metrics across all phases
+        coherence_score, mean_coherence, median_coherence, mode_coherence, std_coherence, threshold = coherence_score_decision(
+            ldamodel, batch_documents if phase != "train" else train_batch_documents, train_dictionary_batch, initial_sample_ratio=0.1
+        )
+
+        # Calculate full coherence score without threshold check for debugging
+        coherence_model_lda = CoherenceModel(
+            model=ldamodel, dictionary=train_dictionary_batch, texts=train_batch_documents if phase == "train" else batch_documents, coherence='c_v',
+            processes=math.floor(cores * (1/3))
+        )
+        coherence_score = coherence_model_lda.get_coherence()
+
         try:
             convergence_score = ldamodel.bound(corpus_data[phase])
         except Exception as e:
@@ -161,8 +162,8 @@ def train_model_v2(n_topics: int, alpha_str: Union[str, float], beta_str: Union[
         try:
             perplexity_score = ldamodel.log_perplexity(corpus_data[phase])
         except RuntimeWarning as e:
-            logging.info(f"Issue calculating perplexity score: {e}. Value '{DEFAULT_SCORE}' assigned.")
-            perplexity_score = DEFAULT_SCORE
+                logging.info(f"Issue calculating perplexity score: {e}. Value '{DEFAULT_SCORE}' assigned.")
+                perplexity_score = DEFAULT_SCORE
 
 
 
@@ -316,4 +317,6 @@ def train_model_v2(n_topics: int, alpha_str: Union[str, float], beta_str: Union[
     'create_pcoa': None  # Placeholder for PCoA verification of visualization creation.
     }
 
-    return current_increment_data
+    # Replace NaN values with high-precision calculated values
+    model_data = replace_nan_with_high_precision(DEFAULT_SCORE,current_increment_data)
+    return model_data
