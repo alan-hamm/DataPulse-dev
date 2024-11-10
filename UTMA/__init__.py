@@ -16,9 +16,20 @@ from .visualization import create_vis_pylda, create_vis_pcoa, process_visualizat
 from .write_to_postgres import save_to_zip, create_dynamic_table_class, create_table_if_not_exists, add_model_data_to_database
 from .yaml_loader import join, getenv, get_current_time
 from .postgres_logging  import  PostgresLoggingHandler
+from. mathstats import *
 
 # Define __all__ to control what is imported with "from UTMA import *"
 __all__ = [
+    # mathstats
+    'sample_coherence',
+    'calculate_statistics',
+    'sample_coherence_for_phase',
+    'get_statistics',
+    'calculate_perplexity_threshold',
+    'coherence_score_decision',
+    'replace_nan_with_interpolated',
+    'replace_nan_with_high_precision',
+
     # utils
     'garbage_collection',
     'exponential_backoff',
