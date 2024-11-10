@@ -4,6 +4,8 @@ from gensim.models.coherencemodel import CoherenceModel
 from gensim.corpora.dictionary import Dictionary
 from gensim.models import LdaModel
 import numpy as np
+import math
+from decimal import Decimal, InvalidOperation
 
 # Sample initial documents for coherence calculation
 def sample_coherence(ldamodel, documents, dictionary, sample_ratio=0.1):
@@ -89,3 +91,67 @@ def coherence_score_decision(ldamodel, documents, dictionary, initial_sample_rat
     
     # Ensure all values are returned
     return (coherence_score, mean_coherence, median_coherence, mode_coherence, std_coherence, threshold)
+
+# Function to replace NaN with interpolated values
+def replace_nan_with_interpolated(data):
+    # Calculate mean values for replacement where possible
+    if math.isnan(data.get('mean_coherence', float('nan'))):
+        data['mean_coherence'] = sum(data.get('coherence_scores', [])) / max(len(data.get('coherence_scores', [])), 1)
+        
+    if math.isnan(data.get('median_coherence', float('nan'))):
+        coherence_scores = sorted(data.get('coherence_scores', []))
+        mid = len(coherence_scores) // 2
+        data['median_coherence'] = (coherence_scores[mid] + coherence_scores[~mid]) / 2 if coherence_scores else data['mean_coherence']
+        
+    if math.isnan(data.get('std_coherence', float('nan'))):
+        if len(data.get('coherence_scores', [])) > 1:
+            mean = data['mean_coherence']
+            std_dev = (sum((x - mean) ** 2 for x in data['coherence_scores']) / (len(data['coherence_scores']) - 1)) ** 0.5
+            data['std_coherence'] = std_dev
+        else:
+            data['std_coherence'] = 0  # Standard deviation of a single value is 0
+        
+    return data
+
+# Function to handle NaN replacement with high precision using CuPy
+def replace_nan_with_high_precision(default_score, data):
+    # Replace `NaN` values in model data with calculated or meaningful values
+    for key, value in data.items():
+        if isinstance(value, float) and math.isnan(value):
+            try:
+                coherence_scores = data.get('coherence_scores', [])
+                
+                if coherence_scores:
+                    # Convert coherence scores to CuPy array for GPU processing
+                    coherence_scores_cp = cp.array(coherence_scores, dtype=cp.float64)
+
+                    if key == 'mean_coherence':
+                        # Calculate mean coherence using CuPy
+                        mean_coherence = cp.mean(coherence_scores_cp).item()
+                        data[key] = mean_coherence
+                    
+                    elif key == 'median_coherence':
+                        # Calculate median coherence using CuPy
+                        coherence_scores_cp.sort()
+                        mid = len(coherence_scores_cp) // 2
+                        if len(coherence_scores_cp) % 2 == 0:
+                            median_coherence = (coherence_scores_cp[mid - 1] + coherence_scores_cp[mid]) / 2
+                        else:
+                            median_coherence = coherence_scores_cp[mid]
+                        data[key] = median_coherence.item()
+                    
+                    elif key == 'std_coherence':
+                        # Calculate standard deviation coherence using CuPy
+                        std_coherence = cp.std(coherence_scores_cp, ddof=1).item()
+                        data[key] = std_coherence
+                        
+                    else:
+                        data[key] = default_score  # Use a default for other keys if needed
+
+                else:
+                    data[key] = default_score  # Use default if coherence_scores is empty
+
+            except InvalidOperation:
+                data[key] = default_score  # Fallback if calculations fail
+
+    return data
