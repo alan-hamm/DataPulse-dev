@@ -1,4 +1,6 @@
 import cupy as cp
+from dask import delayed
+from dask.distributed import get_client
 import logging
 from gensim.models.coherencemodel import CoherenceModel
 from gensim.corpora.dictionary import Dictionary
@@ -174,3 +176,31 @@ def replace_nan_with_high_precision(default_score, data, tolerance=1e-5):
                 logging.error(f"Error calculating {key}. Assigned default value: {default_score}. Error: {e}")
 
     return data
+
+@delayed
+def compute_full_coherence_score(ldamodel, dictionary, texts, cores):
+    coherence_model_lda = CoherenceModel(
+        model=ldamodel, 
+        dictionary=dictionary, 
+        texts=texts, 
+        coherence='c_v',
+        processes=math.floor(cores * (1/3))
+    )
+    return coherence_model_lda.get_coherence()
+
+@delayed
+def calculate_convergence(ldamodel, phase_corpus, default_score):
+    try:
+        return ldamodel.bound(phase_corpus)
+    except Exception as e:
+        logging.error(f"Issue calculating convergence score: {e}. Value '{default_score}' assigned.")
+        return default_score
+
+@delayed
+def calculate_perplexity_score(ldamodel, phase_corpus, num_words, default_score):
+    try:
+        negative_log_likelihood = ldamodel.log_perplexity(phase_corpus)
+        return calculate_perplexity(negative_log_likelihood, num_words)
+    except RuntimeWarning as e:
+        logging.info(f"Issue calculating perplexity score: {e}. Value '{default_score}' assigned.")
+        return default_score
