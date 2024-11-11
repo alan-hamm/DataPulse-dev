@@ -105,6 +105,9 @@ def create_dynamic_table_class(table_name):
         'validation_result': Column(JSONB),
         'text_sha256' : Column(String),
         'text_md5' : Column(String),
+        'text_path' : Column(TEXT),
+        'pca_path' : Column(TEXT),
+        'pylda_path' : Column(TEXT),
 
         # Model and Training Parameters
         'topics' : Column(Integer),
@@ -259,3 +262,5 @@ def add_model_data_to_database(model_data, phase, table_name, database_uri,
         # Close the session whether or not an exception occurred
         session.close()
         logging.info("Database session closed.")
+
+        return zip_path
