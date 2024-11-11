@@ -18,7 +18,7 @@
 - **Comprehensive Machine Learning Pipeline**: The framework includes a robust machine learning pipeline that handles data preprocessing, model training, evaluation, and hyperparameter tuning, designed to optimize model performance for diverse text corpora.
 - **Diachronic Analysis (_Pending_)**: Facilitates tracking and analyzing topic shifts over time, particularly useful for examining historical changes or comparing topics across decades.
 - **Detailed Metadata Tracking**: Records extensive metadata for each batch, including dynamic core counts, model parameters, and evaluation scores, ensuring complete reproducibility and transparency.
-- **Support for Multiple Document Types**: Designed to handle diverse document sources, from [thousands of free, open access to academic outputs and resources](https://v2.sherpa.ac.uk/opendoar/) and [newspapers](https://en.wikipedia.org/wiki/List_of_free_daily_newspapers) to [novels](https://www.gutenberg.org/), UTMA can analyze any textual dataset requiring topic-based insights.
+- **Support for Multiple Document Types**: Designed to handle diverse document sources, from [free, open access to academic outputs and resources](https://v2.sherpa.ac.uk/opendoar/) and [newspapers](https://en.wikipedia.org/wiki/List_of_free_daily_newspapers) to [novels](https://www.gutenberg.org/), UTMA can analyze any textual dataset requiring topic-based insights.
 - **Integrated Data Persistence and Storage**: Metadata and model outputs are stored in a PostgreSQL database, supporting complex queries and retrieval for downstream analysis.
 
 ### Project Structure
@@ -34,15 +34,18 @@ The project is composed of modular scripts, each dedicated to a specific aspect 
 For further configuration tips and performance monitoring, Dask provides a [dashboard](https://docs.dask.org/en/stable/) for tracking concurrent task execution, resource utilization, and multithreading activity in real-time.
 
 ### Prerequisites
+
 - **Python** 3.12.0
 - **Anaconda** (recommended for dependency management)
 - **PostgreSQL** (required for data storage and integration)
--  **CuPy**: Used in coherence metric calculations to enable CUDA-based acceleration, leveraging GPU resources for high-precision and high-performance computations.
-- **Data Preprocessing(DocumentParser Notebook)**: Handle initial data preparation, including tokenization and formatting, for ingestion by the modeling pipeline. See [example](#cdcs-mmwr-2015---2019)
+- [**CUDA**](https://developer.nvidia.com/cuda-zone): Required for GPU acceleration. CUDA enables the use of CuPy to accelerate certain computations, particularly useful for handling large datasets and complex calculations in the UTMA framework.
+   - **CuPy**: Used in coherence metric calculations to enable CUDA-based acceleration, leveraging GPU resources for high-precision and high-performance computations. CuPy enhances the speed of computations, especially for coherence and convergence metrics, by offloading tasks to the GPU.
+- **Data Preprocessing** (`DocumentParser Notebook`): Handles initial data preparation, including tokenization and formatting, for ingestion by the modeling pipeline. See [example](#cdcs-mmwr-2015---2019)
 - **Dynamic Topic Model Training** (`topic_model_trainer.py`): Manages the LDA model training, evaluation, and metadata generation, with adaptive scaling to optimize resource usage.
-- **Visualization and Analysis**(`visualization.py`): Generates and saves visualizations (e.g., topic coherence plots) for exploring model outputs interactively.
+- **Visualization and Analysis** (`visualization.py`): Generates and saves visualizations (e.g., topic coherence plots) for exploring model outputs interactively.
 - **Diachronic Analysis (_Pending_)**: A dedicated module for analyzing and visualizing how topics evolve over time.
-- **Database Integration**(`write_to_postgres.py`): Stores all metadata and modeling outputs in a PostgreSQL database for easy access and persistence.
+- **Database Integration** (`write_to_postgres.py`): Stores all metadata and modeling outputs in a PostgreSQL database for easy access and persistence.
+
 
 --- 
 
@@ -81,7 +84,7 @@ If you have documents that require preprocessing, use the following guidelines t
 
    **_By default, the settings in `distributed.yaml` are optimized for high-performance processing with Dask on systems with significant CPU and memory resources. Adjust as needed to suit your environment._**
 
-This project includes a custom `distributed.yaml` file for configuring Dask. The `distributed.yaml` file is located in the `config/` directory and contains recommended settings for Dask performance and resource management tailored for UTMA's processing requirements.
+This project includes a custom `distributed.yaml` file for configuring Dask. The `distributed.yaml` file is located in the [`config/`](https://github.com/alan-hamm/Unified-Topic-Modeling-and-Analysis/tree/main/config) directory and contains recommended settings for Dask performance and resource management tailored for UTMA's processing requirements.
 
 To ensure your Dask environment is correctly configured, follow these steps:
 
@@ -141,7 +144,7 @@ After setup, run the main script to start the UTMA framework. Here’s an exampl
    ```
 This command manages the distribution of resources, saves model outputs, and logs metadata directly to the database.
 
-#### CDC's MMWR 2015 - 2019
+#### CDC's MMWR [2015 - 2019](https://github.com/alan-hamm/Unified-Topic-Modeling-and-Analysis/tree/main/examples)
 A real-world application of UTMA’s data preprocessing capabilities can be seen in analyzing the [MMWR Journals](https://www.cdc.gov/mmwr/), extracted from the [CDC text corpora for learners](https://github.com/cmheilig/harvest-cdc-journals/). Each report in these journals is treated as a standalone document and requires specific preprocessing steps to align with UTMA's standards, including tokenization and formatting as a bag-of-words model.
 
 By organizing and structuring the text data in this format, UTMA can identify recurring themes and track the evolution of key public health topics, such as "infection control," "vaccine efficacy," and "disease prevention." This structured approach allows UTMA to perform diachronic analyses of topic shifts over time, revealing insights into public health trends and topic persistence. Preprocessing each document in this way prepares it for the advanced topic modeling and analysis that UTMA provides.
@@ -161,50 +164,63 @@ By organizing and structuring the text data in this format, UTMA can identify re
    The project supports preprocessing for a range of CDC’s journal content, including _Emerging Infectious Diseases_([EID](https://wwwnc.cdc.gov/eid)) and _Preventing Chronic Disease_([PCD](https://www.cdc.gov/pcd)). Available resources include CDC documents, spanning 42 years: [HTML Mirrors of MMWR, EID, and PCD](https://data.cdc.gov/National-Center-for-State-Tribal-Local-and-Territo/CDC-Text-Corpora-for-Learners-HTML-Mirrors-of-MMWR/ut5n-bmc3/about_data) and associated [Corpus Metadata](https://data.cdc.gov/National-Center-for-State-Tribal-Local-and-Territo/CDC-Text-Corpora-for-Learners-MMWR-EID-and-PCD-Art/7rih-tqi5/about_data).
 
 
-### **Optimization** 
+## **Optimization** 
 
-   Configuring `futures_batches`, `base_batch_size`, and `max_batch_size` is critical to balancing resource utilization and achieving efficient processing times, especially on high-performance systems.
+   Configuring `futures_batches`, `base_batch_size`, and `max_batch_size` is critical to balancing resource utilization and achieving efficient processing times, especially on high-performance systems. The script `batch_estimation.py` is provided for adaptive batch size estimation based on document complexity, memory, and CPU limits. This script is recommended for anyone running UTMA on datasets with varying document sizes or on systems with constrained resources.
+
 
    ### **Guidlines for Setting Key Batch Size Parameter**
-   -  `--futures_batches`: Defines the maximum number of future tasks that can be scheduled in Dask.
-   -  `--base_batch_size`: Sets the base number of documents per batch for each phase (training, validation, and test).
-   -  `--max_batch_size`: Sets the maximum number of documents in a batch, providing flexibility for adaptive batching.
+   
+   1. **Understanding Batch Size Impact**
 
+      -  **Base Batch Size**: Setting an appropriate base batch size is crucial. A batch size too small will increase scheduling overhead, while a batch size too large can exhaust memory resources, leading to performance degradation. For large documents or complex tasks, use larger batch sizes to optimize resource use and reduce scheduling overhead. For smaller tasks, use smaller batch sizes to increase task concurrency and CPU utilization.
+   
+      -  **Max Batch Size**: Defines the upper limit for document processing per batch. Adaptive batching helps to manage tasks dynamically based on resource availability. Setting this value appropriately helps UTMA adapt to different document types without exhausting memory.
 
-   ### 1. **Importance of the futures_batches Parameter**
-   The --futures_batches parameter plays a critical role in processing performance by controlling how many tasks run concurrently. Adjusting this parameter allows you to balance resource use and processing efficiency based on your system’s capacity.
+   2. **Batch Calculation and System Resource Balance**
 
-   -  Performance Tuning: Higher values for --futures_batches increase parallel task processing, which can speed up execution but may also push memory limits. Lower values, on the other hand, reduce memory usage but may slow down execution by limiting parallelism.
+      Batch size should be calculated to balance memory usage and task efficiency. The `batch_estimation.py` script automates this process by analyzing document complexity, system memory, and CPU limits to suggest an optimal batch size for both standard and large documents. This script is highly recommended for fine-tuning `futures_batches`, `base_batch_size`, and `max_batch_size` based on empirical testing.
 
-   -  Dynamic Adaptation: Start with a conservative value for --futures_batches, such as 3–10, depending on your system’s memory and processing power. Gradually increase this value to find the optimal balance between parallelism and resource availability.
+         **Example Usage of `batch_estimation.py`**:
+         ```python
+         from batch_estimation import estimate_futures_batches
+         optimal_batch_size = estimate_futures_batches(document="path/to/document.json")
+         ```
 
-   ### 2. Setting Minimum and Maximum Batch Sizes
-   Choosing the right batch sizes is essential for balancing load and maximizing efficiency based on task complexity.
+   3. **Optimal Futures Batches**
 
-   -  Complex Tasks: For resource-intensive tasks (e.g., large-scale modeling), set a larger batch size to reduce the overhead associated with task scheduling and communication between processes.
+      The `futures_batches` parameter is essential for parallel task processing. Setting this to a higher value allows more concurrent tasks but may increase memory usage. For initial configurations, a conservative value (e.g., 3–10) is recommended, then adjust based on system performance. Higher values can improve speed but risk memory overflow.
 
-   -  Lightweight Tasks: For simpler, less memory-intensive tasks, use smaller batches. This allows more tasks to be processed concurrently, maximizing CPU utilization, especially in environments with limited memory.
+   4. **Benefits of Adaptive Batch Sizes**
 
-      **Example Configuration:** `--futures_batches=75`, `--base_batch_size=200`, `--max_batch_size=220`
+      Adaptive batch sizes calculated by 'batch_estimation.py' allow the UTMA framework to better handle document variability and optimize resource usage. This approach reduces memory-related issues, as batch sizes are optimized for current system capacity and workload, ensuring smooth execution without overwhelming resources.
 
-   ### 3. **Core Count and Thread Configuration**
-   For UTMA, while memory is essential for handling large datasets, **the number of cores and threads available significantly impacts performance**.
-   -  **Higher Core Counts:** Increasing the number of cores for training and inference improves performance, especially on multi-threaded systems.
-   -  **Thread Utilization:** Configuring an optimal number of threads per worker improves processing time while managing memory efficiency.
+   5. **Monitoring and Iterative Adjustment**
+
+      Use the [Dask dashboard](https://docs.dask.org/en/latest/dashboard.html) to observe task distribution, memory usage, and performance metrics. Monitor the impact of changes in batch size on system utilization, and adjust batch sizes if memory or CPU usage approaches system thresholds.
+
+   6. **RAM Allocation and Management**
+
+      UTMA is memory-intensive, especially when handling large datasets or high batch sizes. Setting a high memory_limit in the Dask LocalCluster configuration is recommended if system RAM allows. For optimal memory usage:
+
+      -  Adjust memory_limit based on available system RAM and the expected load. As a rule of thumb, ensure that memory_limit per worker is balanced with the total number of workers to avoid exceeding system memory.
+      -  Monitor RAM usage in the Dask dashboard. If you notice frequent memory spills or high memory consumption, consider reducing base_batch_size or max_batch_size.
+      -  Use Adaptive Scaling to optimize worker utilization without overloading RAM. Configure min_workers and max_workers according to your system's capabilities. For instance, setting min_workers=10 and max_workers=14 can dynamically scale tasks without overwhelming available memory.
+
+   7. **Core and Thread Configuration**
+
+      Adjust 'num_workers', 'max_workers', and 'num_threads' based on the core count of your system. Higher core counts improve model training speed, while thread configuration impacts memory efficiency. Example configurations:
 
       #### **Example Configurations:**
       -  **High-Core Count Systems:** `--num_workers=10`, `--max_workers 14`, `--num_threads=2`.
       -  **Low-Core Count Systems:** `--num_workers=4`, `--max_workers 6`, `--num_threads=1`.
 
-      Profiling parallel code can be challenging, but Dask's distributed scheduler offers an interactive [dashboard](https://docs.dask.org/en/latest/dashboard.html) for diagnostics that simplifies real-time computation monitoring. Built with Bokeh, the dashboard is available upon starting the scheduler and provides a user-specified link(_e.g._ http://localhost:8787/status) to track task progress and resource usage according to your Dask configuration.
+   Profiling parallel code can be challenging, but Dask's distributed scheduler offers an [interactived dashboard](https://docs.dask.org/en/latest/dashboard.html) for diagnostics that simplifies real-time computation monitoring. Built with Bokeh, the dashboard is available upon starting the scheduler and provides a user-specified link(_e.g._ http://localhost:8787/status) to track task progress and resource usage according to your Dask configuration.
 
-      See **[Dask documentation](https://docs.dask.org/en/stable/)**
-
-   Testing and Adjustment:
-   -  Start with sample data to test batch sizes, adjusting iteratively to balance performance and resource limits.
+   ## See [How to diagnose performance](https://distributed.dask.org/en/latest/diagnosing-performance.html)\,  [Diagnostics(local)](https://docs.dask.org/en/stable/diagnostics-local.html)\,  and [Diagnostics(distributed)](https://docs.dask.org/en/stable/diagnostics-distributed.html)
 
    **Monitoring Performance**
    After configuring batch sizes, use the Dask dashboard to observe task distribution, resource utilization, and memory usage per worker. Adjust batch sizes further if tasks are not distributed evenly or if memory usage approaches system limits.
 
-<sub>_Last updated: 2024-11-08_</sub>
+<sub>_Last updated: 2024-11-11_</sub>
 
