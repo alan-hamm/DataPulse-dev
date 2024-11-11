@@ -30,6 +30,9 @@ __all__ = [
     'replace_nan_with_interpolated',
     'replace_nan_with_high_precision',
     'calculate_perplexity',
+    'compute_full_coherence_score',
+    'calculate_convergence',
+    'calculate_perplexity_score',
 
     # utils
     'garbage_collection',
