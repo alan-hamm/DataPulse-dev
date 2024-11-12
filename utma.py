@@ -21,6 +21,7 @@ from UTMA import *
 
 import argparse
 
+from gensim.corpora import Dictionary
 from dask.distributed import get_client
 from dask.distributed import Client, LocalCluster, performance_report, wait
 from distributed import Future
@@ -313,6 +314,12 @@ logging.basicConfig(
 ##########################################
 # Filter out the specific warning message
 ##########################################
+# suppress RuntimeWarning: overflow encountered in exp2 globally across the entire script <- caused by ldamodel.py
+warnings.filterwarnings("ignore", category=RuntimeWarning, message="overflow encountered in exp2")
+
+# Lib\site-packages\gensim\topic_coherence\direct_confirmation_measure.py:204
+warnings.filterwarnings("ignore", category=RuntimeWarning, message="divide by zero encountered in scalar divide")
+
 # Suppress ComplexWarnings generated in create_vis() function with pyLDAvis, note: this 
 # is caused by using js_PCoA in the prepare() method call. Intsead of js_PCoA, MMDS is 
 # implemented.
@@ -358,6 +365,9 @@ sqlalchemy_logger.addHandler(null_handler)
 # Optionally set a higher level if you want to ignore INFO logs from sqlalchemy.engine
 # sqlalchemy_logger.setLevel(logging.WARNING)
 
+# Suppress overflow warning from numpy
+warnings.filterwarnings("ignore", category=RuntimeWarning, message="overflow encountered in exp2")
+
 # Enable serialization optimizations 
 dask.config.set(scheduler='distributed', serialize=True)
 dask.config.set({'logging.distributed': 'error'})
@@ -374,6 +384,11 @@ dask.config.set({'distributed.worker.memory.target': False,
 
 # https://distributed.dask.org/en/latest/worker-memory.html#memory-not-released-back-to-the-os
 if __name__=="__main__":
+    # Capture the start time
+    start_time = pd.Timestamp.now()
+    formatted_start_time = start_time.strftime('%Y-%m-%d %H:%M:%S')
+    logging.info(f"START TIME OF PROCESSING THE CORPUS: {formatted_start_time}")
+
     # Multiprocessing (processes=True): This mode creates multiple separate Python processes, 
     # each with its own Python interpreter and memory space. Since each process has its own GIL, 
     # they can execute CPU-bound tasks in true parallel on multiple cores without being affected 
@@ -580,69 +595,82 @@ if __name__=="__main__":
         key=lambda x: phase_order[x[3]]
     )
     # Initialize combined visualization lists outside the loop
-    completed_pylda_vis = []
-    completed_pcoa_vis = []
-    train_models_dict = {}
+    completed_pylda_vis, completed_pcoa_vis = [], []
+    train_models_dict, validation_models_dict, test_models_dict = {}, {}, {}
     completed_train_futures, completed_validation_futures, completed_test_futures = [], [], []
+
+    # Create a unified dictionary for each (n_topics, alpha_value, beta_value) combination
+    computed_train_data  = client.gather(scattered_train_data_futures)
+    unified_train_data = [doc for scattered_data in computed_train_data for doc in scattered_data]
+    unified_dictionary = Dictionary(unified_train_data)  # Using the complete training dataset
+    
     # Process sorted combinations by train, validation, and test phases
     for i, (n_topics, alpha_value, beta_value, train_eval_type) in enumerate(sorted_combinations):
 
-        # Adaptive throttling
+        # Adaptive throttling logic remains here
         logging.info("Evaluating if adaptive throttling is necessary...")
         throttle_attempt = 0
-
         while throttle_attempt < MAX_RETRIES:
             scheduler_info = client.scheduler_info()
-            all_workers_below_cpu_threshold = all(worker['metrics']['cpu'] < CPU_UTILIZATION_THRESHOLD for worker in scheduler_info['workers'].values())
-            all_workers_below_memory_threshold = all(worker['metrics']['memory'] < MEMORY_UTILIZATION_THRESHOLD for worker in scheduler_info['workers'].values())
-
+            all_workers_below_cpu_threshold = all(
+                worker['metrics']['cpu'] < CPU_UTILIZATION_THRESHOLD for worker in scheduler_info['workers'].values()
+            )
+            all_workers_below_memory_threshold = all(
+                worker['metrics']['memory'] < MEMORY_UTILIZATION_THRESHOLD for worker in scheduler_info['workers'].values()
+            )
             if not (all_workers_below_cpu_threshold and all_workers_below_memory_threshold):
                 logging.warning(f"Adaptive throttling (attempt {throttle_attempt + 1} of {MAX_RETRIES})")
                 sleep(exponential_backoff(throttle_attempt, BASE_WAIT_TIME=BASE_WAIT_TIME))
                 throttle_attempt += 1
             else:
                 break
-
         if throttle_attempt == MAX_RETRIES:
             logging.warning("Maximum retries reached; proceeding despite resource usage.")
-        
+
         num_workers = len(client.scheduler_info()["workers"])
 
         # Train Phase
-        train_scattered_data = []
         if train_eval_type == "train":
             try:
-                dir = os.path.join(LOG_DIR, "TRAIN_LOG")
-                os.makedirs(dir, exist_ok=True)
-                performance_log = os.path.join(dir, f"train_perf_{pd.to_datetime('now').strftime('%Y%m%d%H%M%S%f')}.html")
-                with performance_report(filename=performance_log):
-                    #print(f"Total training batches scattered to Dask: {len(scattered_train_data_futures)}")
-                    for scattered_data in scattered_train_data_futures:
-                        batch_info['data'] = "N/A"
-                        none_type_scatter = client.scatter(batch_info['data'])
-                        future = client.submit(
-                            train_model_v2, n_topics, alpha_value, beta_value, scattered_data, none_type_scatter, "train",
-                            RANDOM_STATE, PASSES, ITERATIONS, UPDATE_EVERY, EVAL_EVERY, num_workers, PER_WORD_TOPICS
-                        )
-                        train_futures.append(future)
-                        train_scattered_data.append(scattered_data)
+                # Train phase logic
+                for scattered_data in scattered_train_data_futures:
+                    batch_info['data'] = "N/A"
+                    none_type_scatter = client.scatter(batch_info['data'])
+                    model_key = (n_topics, alpha_value, beta_value)
+                    future = client.submit(
+                        train_model_v2, n_topics, alpha_value, beta_value, TEXTS_ZIP_DIR, PYLDA_DIR, PCOA_DIR, unified_dictionary, none_type_scatter, "train",
+                        RANDOM_STATE, PASSES, ITERATIONS, UPDATE_EVERY, EVAL_EVERY, num_workers, PER_WORD_TOPICS
+                    )
+                    train_futures.append(future)
+                    progress_bar.update()
+                
+                # Wait for all training futures and then process results
+                done_train, _ = wait(train_futures, timeout=None)
+                completed_train_futures = [done.result() for done in done_train]
+                
+                # Gather model results and visualize
+                for train_result in completed_train_futures:
+                    model_key = (train_result['topics'], str(train_result['alpha_str'][0]), str(train_result['beta_str'][0]))
+                    train_models_dict[model_key] = train_result['lda_model']
 
-                    #print(f"Total training tasks submitted to Dask: {len(train_futures)}")
-                    done_train, _ = wait(train_futures, timeout=None)
-                    completed_train_futures = [done.result() for done in done_train]
+                    # Visualization tasks
+                    train_pcoa_vis = create_vis_pca(
+                        pickle.loads(train_result['lda_model']),
+                        pickle.loads(train_result['corpus']),
+                        n_topics, "TRAIN", train_result['text_md5'],
+                        train_result['time_key'], PCOA_DIR
+                    )
+                    train_pylda_vis = create_vis_pylda(
+                        pickle.loads(train_result['lda_model']),
+                        pickle.loads(train_result['corpus']),
+                        pickle.loads(train_result['dictionary']),
+                        n_topics, "TRAIN", train_result['text_md5'], CORES,
+                        train_result['time_key'], PYLDA_DIR
+                    )
 
-                    for train_result in completed_train_futures:
-                        model_key = (train_result['topics'], str(train_result['alpha_str'][0]), str(train_result['beta_str'][0]))
-                        train_models_dict[model_key] = train_result['lda_model']
-
-                PERFORMANCE_TRAIN_LOG = os.path.join(IMAGE_DIR, "TRAIN_LOG", f"vis_perf_train_{pd.to_datetime('now').strftime('%Y%m%d%H%M%S%f')}.html")
-                train_pylda_vis, train_pcoa_vis = process_visualizations(
-                    client, completed_train_futures, "TRAIN", PERFORMANCE_TRAIN_LOG, num_workers, PYLDA_DIR, PCOA_DIR
-                )
-
-                # Accumulate train visualizations into combined lists
-                completed_pylda_vis += train_pylda_vis
-                completed_pcoa_vis += train_pcoa_vis
+                    # Compute visualization results
+                    completed_pylda_vis.append(train_pylda_vis.compute())
+                    completed_pcoa_vis.append(train_pcoa_vis.compute())
             except Exception as e:
                 logging.error(f"Error in train phase: {e}")
                 continue
@@ -658,96 +686,116 @@ if __name__=="__main__":
                     )
             except Exception as e:
                 logging.error(f"Error processing TRAIN completed futures: {e}")
-            progress_bar.update(len(done_train))
 
         # Validation Phase
-        if train_eval_type == "validation":
-            try:
-                dir = os.path.join(LOG_DIR, "VALIDATION_LOG")
-                os.makedirs(dir, exist_ok=True)
-                performance_log = os.path.join(dir, f"validation_perf_{pd.to_datetime('now').strftime('%Y%m%d%H%M%S%f')}.html")
-                with performance_report(filename=performance_log):
-                    for scattered_data in scattered_validation_data_futures:
-                        model_key = (n_topics, alpha_value, beta_value)
-                        if model_key in train_models_dict:
-                            ldamodel = pickle.loads(train_models_dict[model_key])
-                            future = client.submit(
-                                train_model_v2, n_topics, alpha_value, beta_value, train_scattered_data, scattered_data, "validation",
-                                RANDOM_STATE, PASSES, ITERATIONS, UPDATE_EVERY, EVAL_EVERY, num_workers, PER_WORD_TOPICS, ldamodel=ldamodel
-                            )
-                            validation_futures.append(future)
-
-                    done_validation, _ = wait(validation_futures, timeout=None)
-                    completed_validation_futures = [done.result() for done in done_validation]
-
-                PERFORMANCE_VALIDATION_LOG = os.path.join(IMAGE_DIR, "VALIDATION_LOG",  f"vis_perf_validation_{pd.to_datetime('now').strftime('%Y%m%d%H%M%S%f')}.html")
-                validation_pylda_vis, validation_pcoa_vis = process_visualizations(
-                    client, completed_validation_futures, "VALIDATION", PERFORMANCE_VALIDATION_LOG, num_workers, PYLDA_DIR, PCOA_DIR
+        try:
+            for scattered_data in scattered_validation_data_futures:
+                model_key = (n_topics, alpha_value, beta_value)
+                ldamodel = pickle.loads(train_models_dict[model_key])
+                future = client.submit(
+                    train_model_v2, n_topics, alpha_value, beta_value, TEXTS_ZIP_DIR, PYLDA_DIR, PCOA_DIR, unified_dictionary, scattered_data, "validation",
+                    RANDOM_STATE, PASSES, ITERATIONS, UPDATE_EVERY, EVAL_EVERY, num_workers, PER_WORD_TOPICS, ldamodel=ldamodel
                 )
-                # Accumulate validation visualizations into combined lists
-                completed_pylda_vis += validation_pylda_vis
-                completed_pcoa_vis += validation_pcoa_vis
-            except Exception as e:
-                logging.error(f"Error in validation phase: {e}")
-                continue
+                validation_futures.append(future)
+                progress_bar.update()
 
-            # After processing all validation phases in the sorted combinations
-            try:
-                if completed_train_futures or completed_validation_futures or completed_test_futures:
-                    process_completed_futures("VALIDATION",
+                # Wait for validation futures and update progress
+                done_validation, _ = wait(validation_futures, timeout=None)
+                completed_validation_futures = [done.result() for done in done_validation]
+                
+                # Gather model results and visualize
+                for validation_result in completed_validation_futures:
+                    model_key = (validation_result['topics'], str(validation_result['alpha_str'][0]), str(validation_result['beta_str'][0]))
+                    validation_models_dict[model_key] = validation_result['lda_model']
+
+                    # Visualization tasks
+                    validation_pcoa_vis = create_vis_pca(
+                        pickle.loads(validation_result['lda_model']),
+                        pickle.loads(validation_result['corpus']),
+                        n_topics, "TRAIN", validation_result['text_md5'],
+                        validation_result['time_key'], PCOA_DIR
+                    )
+                    validation_pylda_vis = create_vis_pylda(
+                        pickle.loads(validation_result['lda_model']),
+                        pickle.loads(validation_result['corpus']),
+                        pickle.loads(validation_result['dictionary']),
+                        n_topics, "TRAIN", validation_result['text_md5'], CORES,
+                        validation_result['time_key'], PYLDA_DIR
+                    )
+
+                    # Compute visualization results
+                    completed_pylda_vis.append(validation_pylda_vis.compute())
+                    completed_pcoa_vis.append(validation_pcoa_vis.compute())
+        except Exception as e:
+            logging.error(f"Error in validation phase: {e}")
+            continue
+
+        # After processing all train phases in the sorted combinations
+        try:
+            if completed_train_futures or completed_validation_futures or completed_test_futures:
+                process_completed_futures("VALIDATION",
                         CONNECTION_STRING, CORPUS_LABEL,
                         completed_train_futures, completed_validation_futures, completed_test_futures,
                         len(completed_validation_futures),
                         num_workers, BATCH_SIZE, TEXTS_ZIP_DIR, vis_pylda=completed_pylda_vis, vis_pcoa=completed_pcoa_vis
-                    )
-            except Exception as e:
-                logging.error(f"Error processing VALIDATION completed futures: {e}")
-            progress_bar.update(len(done_validation))
+                )
+        except Exception as e:
+            logging.error(f"Error processing VALIDATION completed futures: {e}")
 
         # Test Phase
-        if train_eval_type == "test":
-            try:
-                dir = os.path.join(LOG_DIR, "TEST_LOG")
-                os.makedirs(dir, exist_ok=True)
-                performance_log = os.path.join(dir, f"test_perf_{pd.to_datetime('now').strftime('%Y%m%d%H%M%S%f')}.html")
-                with performance_report(filename=performance_log):
-                    for scattered_data in scattered_test_data_futures:
-                        model_key = (n_topics, alpha_value, beta_value)
-                        if model_key in train_models_dict:
-                            ldamodel = pickle.loads(train_models_dict[model_key])
-                            future = client.submit(
-                                train_model_v2, n_topics, alpha_value, beta_value, train_scattered_data, scattered_data, "test",
-                                RANDOM_STATE, PASSES, ITERATIONS, UPDATE_EVERY, EVAL_EVERY, num_workers, PER_WORD_TOPICS, ldamodel=ldamodel
-                            )
-                            test_futures.append(future)
-
-                    done_test, _ = wait(test_futures, timeout=None)
-                    completed_test_futures = [done.result() for done in done_test]
-
-                PERFORMANCE_TEST_LOG = os.path.join(IMAGE_DIR, "TEST_LOG" f"vis_perf_test_{pd.to_datetime('now').strftime('%Y%m%d%H%M%S%f')}.html")
-                test_pylda_vis, test_pcoa_vis = process_visualizations(
-                    client, completed_test_futures, "TEST", PERFORMANCE_TEST_LOG, num_workers, PYLDA_DIR, PCOA_DIR
+        try:
+            for scattered_data in scattered_test_data_futures:
+                model_key = (n_topics, alpha_value, beta_value)
+                ldamodel = pickle.loads(test_models_dict[model_key])
+                future = client.submit(
+                    train_model_v2, n_topics, alpha_value, beta_value, TEXTS_ZIP_DIR, PYLDA_DIR, PCOA_DIR, unified_dictionary, scattered_data, "test",
+                    RANDOM_STATE, PASSES, ITERATIONS, UPDATE_EVERY, EVAL_EVERY, num_workers, PER_WORD_TOPICS, ldamodel=ldamodel
                 )
-                # Accumulate test visualizations into combined lists
-                completed_pylda_vis += test_pylda_vis
-                completed_pcoa_vis += test_pcoa_vis
+                test_futures.append(future)
+                progress_bar.update()
 
-            except Exception as e:
-                logging.error(f"Error in test phase: {e}")
-                continue
+            # Wait for test futures and update progress
+            done_test, _ = wait(test_futures, timeout=None)
+            completed_test_futures = [done.result() for done in done_test]
 
-            # After processing all test phases in the sorted combinations
-            try:
-                if completed_train_futures or completed_validation_futures or completed_test_futures:
+            # Gather model results and visualize
+            for test_resut in completed_test_futures:
+                model_key = (test_resut['topics'], str(test_resut['alpha_str'][0]), str(test_resut['beta_str'][0]))
+                test_models_dict[model_key] = test_resut['lda_model']
+
+                # Visualization tasks
+                test_pcoa_vis = create_vis_pca(
+                    pickle.loads(test_resut['lda_model']),
+                    pickle.loads(test_resut['corpus']),
+                    n_topics, "TRAIN", test_resut['text_md5'],
+                    test_resut['time_key'], PCOA_DIR
+                )
+                test_pylda_vis = create_vis_pylda(
+                    pickle.loads(test_resut['lda_model']),
+                    pickle.loads(test_resut['corpus']),
+                    pickle.loads(test_resut['dictionary']),
+                    n_topics, "TRAIN", test_resut['text_md5'], CORES,
+                    test_resut['time_key'], PYLDA_DIR
+                )
+
+                # Compute visualization results
+                completed_pylda_vis.append(test_pylda_vis.compute())
+                completed_pcoa_vis.append(test_pcoa_vis.compute())
+        except Exception as e:
+            logging.error(f"Error in test phase: {e}")
+            continue
+
+        # After processing all train phases in the sorted combinations
+        try:
+            if completed_train_futures or completed_validation_futures or completed_test_futures:
                     process_completed_futures("TEST",
                         CONNECTION_STRING, CORPUS_LABEL,
                         completed_train_futures, completed_validation_futures, completed_test_futures,
                         len(completed_test_futures),
                         num_workers, BATCH_SIZE, TEXTS_ZIP_DIR, vis_pylda=completed_pylda_vis, vis_pcoa=completed_pcoa_vis
                     )
-            except Exception as e:
-                logging.error(f"Error processing TEST completed futures: {e}")
-            progress_bar.update(len(done_test))
+        except Exception as e:
+            logging.error(f"Error processing TEST completed futures: {e}")
 
         # Log the processing time
         elapsed_time = round(((time() - started) / 60), 2)
@@ -761,6 +809,19 @@ if __name__=="__main__":
         train_futures.clear()
         client.rebalance()
 
+    # Capture the end time
+    end_time = pd.Timestamp.now()
+    formatted_end_time = end_time.strftime('%Y-%m-%d %H:%M:%S')
+    logging.info(f"END TIME OF PROCESSING THE CORPUS: {formatted_end_time}")
+
+    # Calculate and log the time difference
+    time_difference = end_time - start_time
+    days = time_difference.days
+    hours, remainder = divmod(time_difference.seconds, 3600)
+    minutes, seconds = divmod(remainder, 60)
+
+    logging.info(f"TOTAL PROCESSING TIME: {days} days, {hours} hours, {minutes} minutes, {seconds} seconds")
+    print(f"TOTAL PROCESSING TIME: {days} days, {hours} hours, {minutes} minutes, {seconds} seconds")
     progress_bar.close()        
     client.close()
     cluster.close()
