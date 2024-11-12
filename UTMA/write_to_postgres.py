@@ -89,7 +89,7 @@ def create_dynamic_table_class(table_name):
         '__table_args__': {'extend_existing': True},
         
         # Metadata and Identifiers
-        'time_key' : Column(TEXT, primary_key=True, nullable=False),
+        'primary_key' : Column(TEXT, primary_key=True, nullable=False),
         'type' : Column(String),
         'start_time' : Column(DateTime),
         'end_time' : Column(DateTime),
