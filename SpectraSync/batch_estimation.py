@@ -1,20 +1,21 @@
-# batch_estimation.py - Adaptive Batch Estimation for UTMA
+# batch_estimation.py - SpectraSync: Adaptive Batch Estimation Engine
 # Author: Alan Hamm
 # Date: November 2024
 #
 # Description:
-# This script provides functions to estimate optimal batch sizes for the Unified Topic Modeling and Analysis (UTMA)
-# framework. It dynamically calculates `futures_batches` based on document structure and available system resources.
-# The functions consider document complexity, memory, and CPU constraints to provide efficient and balanced batch counts.
+# This module equips SpectraSync with dynamic, precision-tuned batch estimation functions, designed to optimize
+# workload distribution for high-performance topic modeling. By analyzing document complexity and system capacity,
+# it determines the ideal `futures_batches` for efficient and balanced processing, aligning with SpectraSync's resource-adaptive ethos.
 #
 # Functions:
-# - estimate_futures_batches: Estimates a reasonable `futures_batches` count for standard documents.
-# - estimate_futures_batches_large_docs: Adjusted batch estimation for processing very large documents.
+# - estimate_futures_batches: Calculates optimal `futures_batches` for typical document sets, balancing throughput and resource use.
+# - estimate_futures_batches_large_docs: Tailors batch estimation for particularly large or complex documents, maximizing system efficiency.
 #
 # Dependencies:
-# - Python libraries: psutil, math
+# - Python libraries: psutil, math, cupy (for GPU-accelerated computation)
 #
-# Developed with AI assistance.
+# Developed with AI assistance to power SpectraSync’s adaptive, high-capacity processing.
+
 
 import psutil
 import math

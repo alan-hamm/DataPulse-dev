@@ -1,22 +1,23 @@
 """
-PostgresLoggingHandler - Custom logging handler to store logs in a PostgreSQL database.
+PostgresLoggingHandler - SpectraSync: Direct-to-Database Logging Handler for PostgreSQL
 
-This script defines a custom logging handler, `PostgresLoggingHandler`, that uses a PostgreSQL
-connection pool to efficiently manage connections for logging purposes. Log entries are stored 
-in a specified table in the database, which is created automatically if it does not exist.
+This module introduces `PostgresLoggingHandler`, a custom logging interface engineered to channel logs
+directly into a PostgreSQL database, creating a real-time audit trail of SpectraSync's activities. 
+By leveraging a PostgreSQL connection pool, this handler optimizes connections, ensuring seamless 
+and efficient logging in a high-demand environment. The logging table is auto-generated if it doesn’t exist,
+streamlining setup and integration.
 
 Author: Alan Hamm
 Date: November 2024
-Created with AI-Assistance
+Developed with AI Assistance
 
 Classes:
-    PostgresLoggingHandler: Custom logging handler for PostgreSQL that uses a connection pool 
-                            and automatically creates a logging table if needed.
+    PostgresLoggingHandler: A bespoke logging handler that leverages a PostgreSQL connection pool to log messages
+                            directly into the database, with adaptive table creation for ease of setup.
 
 Usage:
-    Initialize the `PostgresLoggingHandler` with database parameters, a table name, and 
-    connection pool settings. Attach the handler to Python's logging system to log messages
-    directly to PostgreSQL.
+    Instantiate `PostgresLoggingHandler` with database credentials, the target table name, and connection pool parameters.
+    Attach the handler to Python’s logging system to send logs to PostgreSQL.
 
 Example:
     db_params = {
@@ -31,10 +32,11 @@ Example:
     logger.addHandler(postgres_handler)
 
 Notes:
-    - Ensure PostgreSQL server settings allow sufficient concurrent connections as specified by 
-      minconn and maxconn parameters in `SimpleConnectionPool`.
-    - This script requires the psycopg2 library for PostgreSQL connectivity.
+    - Ensure PostgreSQL is configured to allow concurrent connections as defined by the minconn and maxconn parameters
+      in `SimpleConnectionPool`.
+    - Requires the psycopg2 library for PostgreSQL connectivity.
 """
+
 
 import logging
 import psycopg2

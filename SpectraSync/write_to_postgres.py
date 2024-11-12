@@ -1,22 +1,24 @@
-# write_to_postgres.py - Database Utilities for SLIF
+# write_to_postgres.py - SpectraSync: Dynamic Database Interface for Topic Modeling Data
 # Author: Alan Hamm
 # Date: April 2024
 #
 # Description:
-# This script provides functions for interacting with a PostgreSQL database within the Unified Topic Modeling and Analysis (UTMA).
-# It includes utilities for dynamically creating tables, inserting LDA model data, and managing database connections,
-# leveraging SQLAlchemy for ORM capabilities.
+# This module empowers SpectraSync with robust PostgreSQL utilities for storing and managing topic modeling data.
+# It facilitates seamless database interactions, providing dynamic table creation, efficient data insertion, and
+# streamlined connection management—all optimized to handle large-scale data with Dask and SQLAlchemy. Designed
+# to support SpectraSync’s multi-dimensional topic analysis, this interface ensures data integrity and efficiency.
 #
 # Functions:
-# - Table creation: Defines functions for dynamically creating tables to store model data.
-# - Data insertion: Includes methods for inserting large datasets efficiently using Dask and SQLAlchemy.
-# - Connection management: Manages database connections and sessions.
+# - Table creation: Dynamic functions to create structured tables for storing model insights and metadata.
+# - Data insertion: High-efficiency methods for bulk data insertion, leveraging Dask and SQLAlchemy’s ORM.
+# - Connection management: Manages persistent database connections and sessions for stable, high-volume transactions.
 #
 # Dependencies:
 # - Python libraries: os, json, random, hashlib, zipfile, logging, numpy, pandas
 # - Database libraries: sqlalchemy, dask.dataframe
 #
-# Developed with AI assistance.
+# Developed with AI assistance to power SpectraSync’s scalable and adaptive data architecture.
+
 
 import os
 from json import load

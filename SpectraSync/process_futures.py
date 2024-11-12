@@ -1,22 +1,22 @@
-# process_futures.py - Distributed Future Processing for SLIF
+# process_futures.py - SpectraSync: Distributed Future Management for Topic Modeling
 # Author: Alan Hamm
 # Date: April 2024
 #
 # Description:
-# This script manages the processing of distributed futures within the Unified Topic Modeling and Analysis (UTMA).
-# It includes functions for creating LDA datasets, handling task retries with exponential backoff, and
-# managing database interactions for processed results.
+# This module orchestrates the distributed processing of futures in SpectraSync, ensuring that data flows smoothly 
+# through LDA preparation, error handling, and database storage. It empowers SpectraSync to manage high-dimensional 
+# datasets, with adaptive retries and resource management that keep the analysis engine running at peak efficiency.
 #
 # Functions:
-# - futures_create_lda_datasets: Creates datasets for LDA training and validation from input files.
-# - Database utilities: Includes functions for dynamically creating and updating tables in PostgreSQL.
-# - Error handling: Implements exponential backoff for retrying failed tasks and garbage collection to manage memory.
+# - futures_create_lda_datasets: Constructs LDA-ready datasets for training and validation phases from raw input.
+# - Database utilities: Dynamic PostgreSQL utilities for creating and updating tables to store analysis results.
+# - Error handling: Implements exponential backoff for failed tasks, with garbage collection to optimize memory usage.
 #
 # Dependencies:
 # - Python libraries: time, os, json, random, pandas, logging
-# - Dask libraries: distributed
+# - Dask libraries: distributed (for parallel processing)
 #
-# Developed with AI assistance.
+# Developed with AI assistance to maximize SpectraSync’s distributed processing capabilities.
 
 from .utils import exponential_backoff, garbage_collection
 from .write_to_postgres import add_model_data_to_database, create_dynamic_table_class, create_table_if_not_exists

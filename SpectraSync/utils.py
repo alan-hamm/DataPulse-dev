@@ -1,20 +1,21 @@
-# utils.py - Utility Functions for SLIF
+# utils.py - SpectraSync: Core Utility Functions for System Optimization
 # Author: Alan Hamm
 # Date: April 2024
 #
 # Description:
-# This script provides a collection of utility functions for the Unified Topic Modeling and Analysis (UTMA),
-# including garbage collection management, multiprocessing tools, and general-purpose helper functions.
+# This module is the backbone of SpectraSync's operational stability, offering a suite of utility functions for 
+# resource management, memory optimization, and streamlined data handling. Designed for efficiency, these utilities 
+# ensure SpectraSync runs with precision and adaptability, managing everything from garbage collection to multiprocessing 
+# with tools that maximize performance in high-demand environments.
 #
 # Functions:
-# - garbage_collection: Performs garbage collection with debugging options, useful for memory management.
-# - Additional utilities: Provides miscellaneous helper functions for data processing and system resource management.
+# - garbage_collection: Executes garbage collection with debugging options, critical for memory stability in large datasets.
+# - Additional utilities: Helper functions for data processing, logging, progress tracking, and system resource management.
 #
 # Dependencies:
-# - Python libraries: os, logging, datetime, multiprocessing, gc, numpy
+# - Python libraries: os, logging, datetime, multiprocessing, gc, numpy, requests, tqdm
 #
-# Developed with AI assistance.
-
+# Developed with AI assistance to support SpectraSync’s high-efficiency analytical framework.
 
 import os
 import logging
@@ -22,9 +23,11 @@ from datetime import datetime
 import multiprocessing
 import gc
 import numpy as np
-import os
 import requests
 from tqdm import tqdm
+import os
+import time
+import shutil
 
 def garbage_collection(development: bool, location: str):
     if development:
@@ -111,10 +114,6 @@ def process_local_file(file_path):
     print("File processing complete.")
 
 
-import os
-import time
-import shutil
-
 def clear_temp_files(temp_dir, age_threshold=60):
     """Clear files older than the age threshold in minutes."""
     current_time = time.time()
@@ -124,7 +123,6 @@ def clear_temp_files(temp_dir, age_threshold=60):
             if current_time - os.path.getmtime(file_path) > age_threshold * 60:
                 os.remove(file_path)
 
-import threading
 
 def periodic_cleanup(temp_dir, interval=1800):  # Run every 30 minutes
     while True:

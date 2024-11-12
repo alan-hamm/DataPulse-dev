@@ -1,3 +1,23 @@
+# mathstats.py - SpectraSync: High-Precision Statistics and Coherence Calculations
+# Author: Alan Hamm
+# Date: November 2024
+#
+# Description:
+# This module provides GPU-accelerated statistical computations and coherence sampling functions, crafted to optimize
+# SpectraSync's analytical edge in topic modeling. Designed for high-performance data analysis, it leverages CuPy and Dask
+# to deliver rapid, scalable insights into model coherence, enabling SpectraSync to stay adaptive and efficient.
+#
+# Functions:
+# - sample_coherence: Samples coherence scores across documents, providing a snapshot of topic coherence.
+# - calculate_statistics: Computes mean, median, and mode using GPU acceleration for maximum performance.
+# - sample_coherence_for_phase: Wraps coherence sampling for different training phases to ensure accurate phase-specific insights.
+#
+# Dependencies:
+# - Python libraries: CuPy (for GPU acceleration), Dask, Gensim, Numpy, and Decimal for high-precision calculations.
+#
+# Developed with AI assistance to enhance SpectraSync’s statistical and coherence analysis capabilities.
+
+
 import cupy as cp
 # Set up memory pooling for CuPy
 cp.cuda.set_allocator(cp.cuda.MemoryPool().malloc)
@@ -31,20 +51,6 @@ def calculate_statistics(coherence_scores):
     mode_coherence = cp.argmax(cp.bincount(coherence_array.astype(int))).item()
     return mean_coherence, median_coherence, mode_coherence
 
-# Wrapper to sample coherence scores for a specific training phase
-#  -    The function sample_coherence_for_phase is a wrapper designed to call another 
-#       function named sample_coherence, which is not defined in the provided code snippet. In typical setups, sample_coherence would be implemented to:
-#
-#   -   Randomly sample a subset of documents based on sample_ratio.
-#   -   Compute coherence scores for the sampled documents using the LDA model.
-#   -   The source of the sample would be the list of documents passed to sample_coherence_for_phase, with sample_ratio determining the proportion of
-#        documents to use in coherence calculation. If sample_coherence is defined elsewhere, it would be expected to look something like this:
-
-    # Sampling: random.sample takes a subset of documents based on sample_ratio.
-    # Coherence Calculation: Uses only the sampled documents to calculate the coherence score.
-    # You would call sample_coherence_for_phase, which in turn calls sample_coherence to perform the sampling and 
-    # coherence scoring. The sample_ratio allows control over the sample size, helping reduce computation if only a small 
-    # subset is needed for an approximate coherence score.
 @delayed
 def sample_coherence_for_phase(ldamodel, documents, dictionary, sample_ratio=0.1):
     return sample_coherence(ldamodel, documents, dictionary, sample_ratio)

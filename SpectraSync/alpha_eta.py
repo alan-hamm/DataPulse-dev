@@ -1,20 +1,21 @@
-# alpha_eta.py - Alpha and Eta Calculation Helper Functions
+# alpha_eta.py - SpectraSync: Precision Tuning of Alpha and Eta Parameters
 # Author: Alan Hamm
 # Date: April 2024
 #
 # Description:
-# This script defines helper functions for computing numeric values of alpha and eta
-# for Latent Dirichlet Allocation (LDA) topic modeling. It is designed for use within
-# the Unified Topic Modeling and Analysis (UTMA).
+# This module houses specialized functions for calculating and fine-tuning the alpha and eta hyperparameters
+# for Latent Dirichlet Allocation (LDA) models. Essential to SpectraSync’s high-dimensional topic modeling,
+# these functions help shape the probabilistic backbone, ensuring the spectral fidelity of each thematic layer.
 #
 # Functions:
-# - calculate_numeric_alpha: Computes alpha based on input type ('symmetric', 'asymmetric', or specific value).
-# - calculate_numeric_beta: Computes eta with similar options.
+# - calculate_numeric_alpha: Determines alpha, adjusting model sensitivity based on input ('symmetric', 'asymmetric', or fixed).
+# - calculate_numeric_beta: Configures eta with parallel options to refine topic-word distributions.
 #
 # Dependencies:
-# - Python libraries: numpy
+# - Python libraries: numpy (for mathematical precision)
 #
-# Developed with AI assistance.
+# Crafted with AI assistance to power SpectraSync’s dynamic LDA capabilities.
+
 
 import logging 
 from decimal import Decimal

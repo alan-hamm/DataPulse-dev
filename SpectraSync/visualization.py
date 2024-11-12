@@ -1,21 +1,24 @@
-# visualization.py - Visualization Tools for SLIF Topic Modeling
+# visualization.py - SpectraSync: Immersive Visualization Engine for Topic Modeling
 # Author: Alan Hamm
 # Date: April 2024
 #
 # Description:
-# This script provides visualization tools for exploring and analyzing topic models generated within the
-# Unified Topic Modeling and Analysis (UTMA). It includes functions for interactive visualizations and static
-# plotting, leveraging pyLDAvis and matplotlib.
+# This module powers SpectraSync's visualization capabilities, transforming data into a sensory experience that bridges
+# the analytical with the interactive. Equipped with both interactive and static plotting functions, it lets users explore
+# the thematic architecture of topic models as if walking through a digital landscape. Interactive visualizations reveal 
+# connections and topic coherence through pyLDAvis, while static plots generated with matplotlib serve as snapshots of 
+# SpectraSync's multi-dimensional insights.
 #
 # Functions:
-# - Interactive visualization: Uses pyLDAvis for interactive exploration of LDA topics.
-# - Static plotting: Configures and manages matplotlib plots for visual representation of topics.
+# - Interactive visualization: Deploys pyLDAvis to create immersive, interactive topic maps for in-depth exploration.
+# - Static plotting: Crafts static topic plots with matplotlib, enabling users to capture the thematic distribution at a glance.
 #
 # Dependencies:
 # - Python libraries: os, numpy, logging, pickle
 # - Visualization libraries: pyLDAvis, matplotlib
 #
-# Developed with AI assistance.
+# Developed with AI assistance to deliver SpectraSync’s visually engaging, data-driven experiences.
+
 
 import os
 import pickle

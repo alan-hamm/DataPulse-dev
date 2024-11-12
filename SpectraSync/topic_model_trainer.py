@@ -1,24 +1,25 @@
-# train_eval_topic_model.py - Adaptive Topic Modeling and Parallel Processing for SLIF
+# train_eval_topic_model.py - SpectraSync: Adaptive Topic Modeling and Parallel Processing Engine
 # Author: Alan Hamm
 # Date: April 2024
 #
 # Description:
-# This script manages model training, evaluation, and metadata generation for topic modeling tasks within the
-# Unified Topic Modeling and Analysis (UTMA). It leverages Dask for distributed, adaptive parallel processing
-# to efficiently handle large-scale data and variable resource availability. This includes tracking the dynamic
-# allocation of cores used in each batch, adaptive scaling, and comprehensive metadata storage for reproducibility.
+# This is the command center of SpectraSync, orchestrating model training, evaluation, and metadata generation 
+# for high-dimensional topic modeling. Utilizing Dask’s distributed framework, it adapts dynamically to system resources, 
+# tracking core allocation, scaling workloads, and ensuring seamless handling of expansive datasets. Each batch is logged 
+# with meticulous metadata for reproducibility, enabling a powerful and efficient analysis pipeline.
 #
 # Functions:
-# - Trains and evaluates LDA models for topic modeling based on dynamic, adaptive resource allocation
-# - Tracks batch-specific metadata, including dynamic core count, model parameters, and evaluation scores
-# - Manages parallelized workflows and efficient data processing using Dask's Client and LocalCluster
+# - Trains and evaluates LDA models, adapting core and memory resources based on workload demands.
+# - Captures batch-specific metadata, including dynamic core usage, model parameters, and evaluation metrics.
+# - Manages parallel workflows through Dask’s Client and LocalCluster, optimizing performance across distributed resources.
 #
 # Dependencies:
 # - Python libraries: pandas, logging, pickle, hashlib, math, numpy, json, typing
-# - Dask libraries: distributed
+# - Dask libraries: distributed (for adaptive parallel processing)
 # - Gensim library for LDA modeling and coherence scoring
 #
-# Developed with AI assistance.
+# Developed with AI assistance to power SpectraSync’s scalable, data-driven analysis engine.
+
 
 import os
 import pandas as pd  # Used to handle timestamps and date formatting for logging and metadata.
