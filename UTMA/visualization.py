@@ -30,6 +30,8 @@ import pickle
 from sklearn.decomposition import PCA
 import logging
 from dask.distributed import performance_report, wait
+from dask.distributed import get_client
+from dask import delayed
 matplotlib.use('Agg')
 
 import logging
@@ -91,7 +93,7 @@ def create_vis_pcoa(ldaModel, corpus, topics, phase_name, filename, time_key, PC
     PCoAfilename = filename
 
     try:
-        PCOA_DIR = os.path.join(PCOA_DIR, phase_name, f"number_of_topics-{topics}")
+        PCOA_DIR = os.path.join(PCOA_DIR, phase_name, f"number_of_topics-{topics.compute()}")
         os.makedirs(PCOA_DIR, exist_ok=True)
         #if os.path.exists(PCOA_DIR):
         #    logging.info(f"Confirmed that directory exists: {PCOA_DIR}")
@@ -168,60 +170,56 @@ def create_vis_pcoa(ldaModel, corpus, topics, phase_name, filename, time_key, PC
     return (time_key, create_pcoa)
 
 
-# The create_vis_pca function employs Principal Component Analysis (PCA) to visualize topic
-# distributions. PCA is preferred here for its computational efficiency and direct interpretation
-# of variance along principal components. While PCA assumes Euclidean distance, it typically
-# provides similar visualizations to PCoA in topic modeling applications and is faster for 
-# large datasets.
+from dask import delayed
+import os
+import pickle
+import logging
+import numpy as np
+import matplotlib.pyplot as plt
+from sklearn.decomposition import PCA
+
+from dask import delayed
+import os
+import pickle
+import logging
+import numpy as np
+import matplotlib.pyplot as plt
+from sklearn.decomposition import PCA
+
+@delayed
 def create_vis_pca(ldaModel, corpus, topics, phase_name, filename, time_key, PCOA_DIR):
     """
     Generates a 2D Principal Component Analysis (PCA) visualization for topic distributions.
-
-    This function performs dimensionality reduction on the topic distributions of documents in the 
-    corpus using PCA, then generates and saves a scatter plot of the results. Each topic is color-coded 
-    for distinction, and the plot is saved as a JPEG image.
-
-    Parameters:
-    - ldaModel: Serialized LDA model for topic extraction.
-    - corpus: Serialized corpus of documents to analyze with the LDA model.
-    - topics: Number of topics in the LDA model.
-    - phase_name: Name of the analysis phase (e.g., "train" or "test") for directory organization.
-    - filename: Name of the output image file.
-    - time_key: Unique identifier to track timing or phase.
-    - PCOA_DIR: Root directory to save PCoA visualizations.
-
-    Returns:
-    - Tuple (time_key, create_pcoa): 
-        - time_key: Provided identifier to track the operation's timing or phase.
-        - create_pcoa: Boolean indicating if the visualization was successfully created.
     """
     create_pcoa = None
     PCoAfilename = filename
 
     # Set up directory and output file paths
     try:
+        # Build the output directory
         PCOA_DIR = os.path.join(PCOA_DIR, phase_name, f"number_of_topics-{topics}")
         os.makedirs(PCOA_DIR, exist_ok=True)
         PCoAIMAGEFILE = os.path.join(PCOA_DIR, PCoAfilename)
     except Exception as e:
         logging.error(f"Couldn't create PCoA file: {e}")
+        return time_key, False
 
-    # Deserialize model and corpus
-    ldaModel = pickle.loads(ldaModel)
-    corpus = pickle.loads(corpus)
     num_topics = ldaModel.num_topics
 
     # Fill the topic distribution matrix
-    distributions_matrix = fill_distribution_matrix(ldaModel, corpus, num_topics)
+    try:
+        distributions_matrix = fill_distribution_matrix(ldaModel, corpus, num_topics)
+    except Exception as e:
+        logging.error(f"Error filling distribution matrix: {e}")
+        return time_key, False
 
     # Perform dimensionality reduction with PCA
     try:
         pcoa_results = PCA(n_components=2).fit_transform(distributions_matrix)
         x, y = pcoa_results[:, 0], pcoa_results[:, 1]
     except Exception as e:
-        logging.error(f"An error occurred during PCoA transformation: {e}")
-        create_pcoa = False
-        return time_key, create_pcoa
+        logging.error(f"An error occurred during PCA transformation: {e}")
+        return time_key, False
 
     # Plotting and visualization
     try:
@@ -245,84 +243,69 @@ def create_vis_pca(ldaModel, corpus, topics, phase_name, filename, time_key, PCO
         ax.set_ylabel('PC2')
         ax.legend(loc='center left', bbox_to_anchor=(1.04, 0.5), borderaxespad=0)
 
-        # Save the figure
-        fig.savefig(f'{PCoAIMAGEFILE}.jpg', bbox_inches='tight')
-        plt.close(fig)
+        # Attempt to save the figure
+        try:
+            fig.savefig(f'{PCoAIMAGEFILE}.jpg', bbox_inches='tight')
+            logging.info(f"Figure saved successfully to {PCoAIMAGEFILE}.jpg")
+        except Exception as save_error:
+            logging.error(f"Failed to save figure: {save_error}")
+        finally:
+            plt.close(fig)
 
         create_pcoa = True
 
     except Exception as e:
-        logging.error(f"Error during PCoA visualization creation: {e}")
+        logging.error(f"Error during PCA visualization creation: {e}")
         create_pcoa = False
 
-    # Return the exact output format as in the original function
     return (time_key, create_pcoa)
 
+
+@delayed
 def create_vis_pylda(ldaModel, corpus, dictionary, topics, phase_name, filename, CORES, time_key, PYLDA_DIR):
     """
     Generates an interactive HTML visualization of LDA topic distributions using pyLDAvis.
-
-    This function prepares and saves a pyLDAvis interactive visualization of the provided LDA model.
-    The visualization allows for detailed exploration of topics and their distributions within the 
-    documents. It saves the HTML file to a specified directory, organized by the analysis phase and 
-    number of topics.
-
-    Parameters:
-    - ldaModel: Serialized LDA model used for topic analysis.
-    - corpus: Serialized corpus of documents to analyze with the LDA model.
-    - dictionary: Serialized Gensim dictionary for the corpus.
-    - topics: Number of topics in the LDA model.
-    - phase_name: Name of the analysis phase (e.g., "train" or "test") for directory organization.
-    - filename: Base name for the output HTML file.
-    - CORES: Number of CPU cores available, used to set parallel processing for pyLDAvis.
-    - time_key: Unique identifier to track timing or phase.
-    - PYLDA_DIR: Root directory to save pyLDAvis visualizations.
-
-    Returns:
-    - Tuple (time_key, create_pylda): 
-        - time_key: Provided identifier to track the operation's timing or phase.
-        - create_pylda: Boolean indicating if the pyLDAvis HTML file was successfully created.
-
-    Notes:
-    - This function uses `mds='mmds'` as the dimensionality reduction method for compatibility.
-    - Topics are not reordered after training (sort_topics=False) to preserve the original topic structure.
     """
     create_pylda = None
-    #print("We are inside Create Vis.")
+
+    # Set up directory and file path
     try:
         PYLDA_DIR = os.path.join(PYLDA_DIR, phase_name, f"number_of_topics-{topics}")
         os.makedirs(PYLDA_DIR, exist_ok=True)
-        #if os.path.exists(PYLDA_DIR):
-        #    logging.info(f"Confirmed that directory exists: {PYLDA_DIR}")
-        #else:
-        #    logging.error(f"Directory creation failed for: {PYLDA_DIR}")
-
-        IMAGEFILE = os.path.join(PYLDA_DIR,f"{filename}.html")
+        IMAGEFILE = os.path.join(PYLDA_DIR, f"{filename}.html")
     except Exception as e:
-         logging.error(f"Couldn't create the pyLDA file: {e}")
+        logging.error(f"Couldn't create the pyLDA file: {e}")
+        return time_key, False
 
-    # Prepare the visualization data.
-    # Note: sort_topics=False will prevent reordering topics after training.
+    # Ensure data is deserialized (remove pickle.loads if data is already deserialized)
     try:
-        # ERROR: Object of type complex128 is not JSON serializable
-        # https://github.com/bmabey/pyLDAvis/issues/69#issuecomment-311337191
-        # as mentioned in the forum, use mds='mmds' instead of default js_PCoA
-        # https://pyldavis.readthedocs.io/en/latest/modules/API.html#pyLDAvis.prepare
-        ldaModel = pickle.loads(ldaModel)
-        corpus = pickle.loads(corpus)
-        dictionary = pickle.loads(dictionary)
-        vis = pyLDAvis.gensim.prepare(ldaModel, corpus, dictionary,  mds='mmds', n_jobs=int(CORES*(2/3)), sort_topics=False)
-
-        pyLDAvis.save_html(vis, IMAGEFILE)
-        create_pylda = True
-
+        ldaModel = pickle.loads(ldaModel) if isinstance(ldaModel, bytes) else ldaModel
+        corpus = pickle.loads(corpus) if isinstance(corpus, bytes) else corpus
+        dictionary = pickle.loads(dictionary) if isinstance(dictionary, bytes) else dictionary
+    except Exception as e:
+        logging.error(f"Deserialization error: {e}")
+        return time_key, False
     except Exception as e:
         logging.error(f"The pyLDAvis HTML could not be saved: {e}")
         create_pylda = False
 
-    #garbage_collection(False,"create_vis(...)")
-    return (time_key, create_pylda)
+    try:
+        # Generate visualization
+        vis = pyLDAvis.gensim.prepare(
+            ldaModel, corpus, dictionary, mds='mmds', n_jobs=int(CORES * (2 / 3)), sort_topics=False
+        )
 
+        # Save using pyLDAvis' standard save_html
+        with open(IMAGEFILE, 'w') as f:
+            f.write(pyLDAvis.prepared_data_to_html(vis))
+        create_pylda = True
+        logging.info(f"pyLDAvis HTML saved successfully at {IMAGEFILE}")
+
+    except Exception as e:
+        logging.error(f"Error during pyLDAvis visualization creation: {e}")
+        create_pylda = False
+
+    return (time_key, create_pylda)
 
 def process_visualizations(client, phase_results, phase_name, performance_log, cores, pylda_dir, pcoa_dir):
     """
@@ -367,7 +350,7 @@ def process_visualizations(client, phase_results, phase_name, performance_log, c
                 if unique_id is None:
                     print("Warning: 'time_key' is missing in result_dict.")
                     continue
-
+                """
                 try:
                     vis_future_pylda = client.submit(
                         create_vis_pylda,
@@ -385,7 +368,7 @@ def process_visualizations(client, phase_results, phase_name, performance_log, c
                 except Exception as e:
                     logging.error(f"Error in create_vis_pylda() Dask operation: {e}")
                     logging.error(f"TYPE: pyLDA -- MD5: {result_dict['text_md5']}")
-
+                """
                 try:
                     vis_future_pcoa = client.submit(
                         create_vis_pca,
