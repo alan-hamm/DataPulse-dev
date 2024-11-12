@@ -33,15 +33,79 @@ from gensim.models import LdaModel
 import numpy as np
 import math
 from decimal import Decimal, InvalidOperation
+from scipy.stats import gaussian_kde
+import random
 
 
-# Sample initial documents for coherence calculation
-def sample_coherence(ldamodel, documents, dictionary, sample_ratio=0.1):
-    sample_size = int(len(documents) * sample_ratio)
-    sample_indices = np.random.choice(len(documents), sample_size, replace=False)
-    sample_docs = [documents[i] for i in sample_indices]
-    coherence_model = CoherenceModel(model=ldamodel, texts=sample_docs, dictionary=dictionary, coherence='c_v')
-    return coherence_model.get_coherence_per_topic()
+def calculate_value(cv1, cv2):
+    """
+    Calculate the cosine similarity between two vectors using CuPy for GPU acceleration,
+    with error handling for invalid operations.
+
+    This function computes the cosine similarity between two vectors `cv1` and `cv2`.
+    In case of invalid operations (e.g., division by zero or `NaN` results), it returns
+    `Decimal(0)` to indicate an incomplete record, which simplifies further analysis.
+
+    Parameters:
+    cv1 (cupy.ndarray): The first vector for similarity calculation.
+    cv2 (cupy.ndarray): The second vector for similarity calculation.
+
+    Returns:
+    Decimal: The cosine similarity value between `cv1` and `cv2`.
+             Returns `Decimal(0)` if a division error or `NaN` occurs.
+
+    Notes:
+    - The vectors should be compatible for dot product calculation.
+    - Uses the `Decimal` class to ensure consistency in results, especially for database storage.
+    """
+    try:
+        # Convert vectors to CuPy arrays
+        cv1 = cp.asarray(cv1)
+        cv2 = cp.asarray(cv2)
+
+        # Calculate cosine similarity
+        result = cv1.T.dot(cv2) / (cp.linalg.norm(cv1) * cp.linalg.norm(cv2))
+
+        # Check if the result is NaN and replace it with Decimal(0)
+        if cp.isnan(result):
+            return Decimal(0)  # Use Decimal(0) as an indicator for an incomplete record
+        return Decimal(result.get())  # Convert back to a Python scalar
+    except ZeroDivisionError:
+        # Handle division by zero if applicable
+        return Decimal(0)  # Use Decimal(0) as an indicator for an incomplete record
+    
+
+def kde_mode_estimation(coherence_scores):
+    """
+    Estimate the mode using kernel density estimation (KDE) with GPU acceleration.
+
+    Parameters:
+    coherence_scores (cupy.ndarray or list): Coherence scores to estimate the mode.
+
+    Returns:
+    float: Estimated mode of the coherence scores.
+    """
+    # Convert coherence scores to a CuPy array if they are not already
+    coherence_array = cp.asarray(coherence_scores)
+
+    # Convert to CPU memory for KDE calculation (scipy does not directly use GPU)
+    # Alternatively, we can implement KDE entirely in CuPy, but this uses scipy.stats as an example
+    coherence_array_cpu = coherence_array.get()
+
+    # Perform kernel density estimation using Gaussian KDE
+    kde = gaussian_kde(coherence_array_cpu)
+
+    # Evaluate the density over a range of values
+    min_value, max_value = cp.min(coherence_array), cp.max(coherence_array)
+    values = cp.linspace(min_value, max_value, 1000).get()  # Create a range of 1000 values for evaluation
+    density = kde(values)
+
+    # Find the value with the highest density as the mode estimate
+    mode_index = cp.argmax(density)
+    mode_value = values[mode_index]
+
+    return float(mode_value)
+
 
 # Calculate mean, median, and mode using CuPy for GPU acceleration
 def calculate_statistics(coherence_scores):
@@ -50,6 +114,14 @@ def calculate_statistics(coherence_scores):
     median_coherence = cp.median(coherence_array).item()
     mode_coherence = cp.argmax(cp.bincount(coherence_array.astype(int))).item()
     return mean_coherence, median_coherence, mode_coherence
+
+# Sample initial documents for coherence calculation
+def sample_coherence(ldamodel, documents, dictionary, sample_ratio=0.2):
+    sample_size = int(len(documents) * sample_ratio)
+    sample_indices = np.random.choice(len(documents), sample_size, replace=False)
+    sample_docs = [documents[i] for i in sample_indices]
+    coherence_model = CoherenceModel(model=ldamodel, texts=sample_docs, dictionary=dictionary, coherence='c_v')
+    return coherence_model.get_coherence_per_topic()
 
 @delayed
 def sample_coherence_for_phase(ldamodel, documents, dictionary, sample_ratio=0.1):
@@ -144,7 +216,23 @@ def replace_nan_with_interpolated(data):
 
 # Function to handle NaN replacement with high precision and calculate coherence metrics
 @delayed
-def replace_nan_with_high_precision(default_score, data, tolerance=1e-5):
+def replace_nan_with_high_precision(default_score, data, ldamodel=None, dictionary=None, texts=None, tolerance=1e-5, retry_attempts=2):
+    """
+    Handle NaN values by recalculating coherence scores with different sample sizes if empty.
+    Uses CuPy to ensure high-precision calculations and retries coherence calculation if needed.
+
+    Parameters:
+    - default_score (Decimal): Default value to use if calculation fails.
+    - data (dict): Dictionary containing coherence scores and other metrics.
+    - ldamodel (LdaModel): The LDA model for recalculating coherence if needed.
+    - dictionary (Dictionary): The Gensim dictionary used for topic modeling.
+    - texts (list): Tokenized documents for recalculating coherence if needed.
+    - tolerance (float): Tolerance to filter near-zero or near-one coherence scores.
+    - retry_attempts (int): Number of attempts to retry coherence calculation if scores are empty.
+
+    Returns:
+    - dict: Updated data dictionary with high-precision coherence metrics.
+    """
     # Retrieve coherence scores list for calculations and convert it to a CuPy array
     coherence_scores = cp.array(data.get('coherence_scores', []), dtype=cp.float32)
     
@@ -152,27 +240,46 @@ def replace_nan_with_high_precision(default_score, data, tolerance=1e-5):
     coherence_scores = coherence_scores[~cp.isclose(coherence_scores, 0, atol=tolerance)]
     coherence_scores = coherence_scores[~cp.isclose(coherence_scores, 1, atol=tolerance)]
     
-    # Check if coherence_scores is empty after filtering
+    # Retry logic if coherence scores are empty after filtering
+    attempts = 0
+    while coherence_scores.size == 0 and attempts < retry_attempts:
+        attempts += 1
+        logging.warning(f"Coherence scores list is empty after filtering. Retrying coherence calculation, attempt {attempts}.")
+        
+        # If ldamodel, dictionary, and texts are provided, retry coherence calculation with a larger sample ratio
+        if ldamodel and dictionary and texts:
+            try:
+                new_sample_ratio = min(1.0, 0.2 + random.uniform(0.1, 0.3) * attempts)  # Increase the sample ratio
+                coherence_scores = cp.array(sample_coherence(ldamodel, texts, dictionary, sample_ratio=new_sample_ratio), dtype=cp.float32)
+                
+                # Filter again after recalculating coherence scores
+                coherence_scores = coherence_scores[~cp.isclose(coherence_scores, 0, atol=tolerance)]
+                coherence_scores = coherence_scores[~cp.isclose(coherence_scores, 1, atol=tolerance)]
+            except Exception as e:
+                logging.error(f"Retry coherence calculation failed on attempt {attempts}: {e}")
+
+    # If coherence scores are still empty, log an error and set metrics to default
     if coherence_scores.size == 0:
-        logging.warning("Coherence scores list is empty after filtering.")
+        logging.error("Coherence scores list is still empty after all retries.")
         data['mean_coherence'] = data['median_coherence'] = data['std_coherence'] = data['mode_coherence'] = default_score
         return data  # Return early if no coherence scores to process
 
     # Calculate and replace NaNs with high-precision values
-    data.setdefault('mean_coherence', float(cp.mean(coherence_scores).get()))
-    data.setdefault('median_coherence', float(cp.median(coherence_scores).get()))
-    data.setdefault('std_coherence', float(cp.std(coherence_scores).get()))
+    data['mean_coherence'] = float(cp.mean(coherence_scores).get())
+    data['median_coherence'] = float(cp.median(coherence_scores).get())
+    data['std_coherence'] = float(cp.std(coherence_scores).get())
     
     # Calculate mode, with fallback if bincount fails
     try:
         mode_value = float(cp.argmax(cp.bincount(coherence_scores.astype(int))).get())
     except ValueError:
-        mode_value = default_score  # Fallback if mode calculation fails
-    data.setdefault('mode_coherence', mode_value)
+        logging.warning("Mode calculation using bincount failed. Falling back to KDE-based mode estimation.")
+        # Use KDE-based mode estimation if bincount fails
+        mode_value = kde_mode_estimation(coherence_scores)
+
+    data['mode_coherence'] = mode_value
 
     return data
-
-
 
 
 @delayed
