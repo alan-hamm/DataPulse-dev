@@ -18,6 +18,7 @@
 #
 # Developed with AI assistance to maximize SpectraSync’s distributed processing capabilities.
 
+import sys
 from .utils import exponential_backoff, garbage_collection
 from .write_to_postgres import add_model_data_to_database, create_dynamic_table_class, create_table_if_not_exists
 
@@ -36,7 +37,7 @@ def futures_create_lda_datasets(filename, train_ratio, validation_ratio, batch_s
         data = load(jsonfile)
         print(f"The number of records read from the JSON file: {len(data)}")
         num_samples = len(data)
-        
+      
     indices = list(range(num_samples))
     shuffle(indices)
         
@@ -48,7 +49,7 @@ def futures_create_lda_datasets(filename, train_ratio, validation_ratio, batch_s
     print(f"Total documents assigned to training set: {num_train_samples}")
     print(f"Total documents assigned to validation set: {num_validation_samples}")
     print(f"Total documents assigned to test set: {num_test_samples}")
-        
+
     cumulative_count = 0
     train_count, validation_count, test_count = 0, num_train_samples, num_train_samples + num_validation_samples
 
@@ -56,10 +57,15 @@ def futures_create_lda_datasets(filename, train_ratio, validation_ratio, batch_s
         if train_count < num_train_samples:
             # Ensure we only yield up to the remaining samples in the training set
             train_indices_batch = indices[train_count:min(train_count + batch_size, num_train_samples)]
-            train_data_batch = [data[idx] for idx in train_indices_batch]
+            train_data_batch = [data[idx] for idx in train_indices_batch]       
+
+            if len(train_data_batch) == 0:
+                # Abort the system if the training batch is empty, as it will result in invalid modeling
+                print("Error: Training batch is empty. Aborting the process to ensure data integrity.")
+                sys.exit(1)
+
             if len(train_data_batch) > 0:
                 cumulative_count += len(train_data_batch)
-                #print(f"Yielding train batch: {len(train_data_batch)}, cumulative_count: {cumulative_count}")
                 yield {
                     'type': "train",
                     'data': train_data_batch,
