@@ -6,5 +6,5 @@ SELECT log_time,           -- Timestamp of the log entry
        func_name,          -- Function name where the log was generated
        line_no             -- Line number in the code where the log was generated
 FROM logs
-WHERE log_level IN ('ERROR', 'CRITICAL')  -- Filter for ERROR and CRITICAL logs only
-ORDER BY log_time DESC;    -- Order results by most recent log entries
+WHERE log_level IN ('WARNING','ERROR')  -- Filter for ERROR and CRITICAL logs only
+ORDER BY log_time asc;    -- Order results by most recent log entries
