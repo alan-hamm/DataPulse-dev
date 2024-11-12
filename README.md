@@ -40,13 +40,13 @@ For further configuration tips and performance monitoring, Dask provides a [dash
 - **Anaconda** (recommended for dependency management)
 - **PostgreSQL** (required for data storage and integration)
 - [**CUDA**](https://developer.nvidia.com/cuda-zone): Required for GPU acceleration. CUDA enables the use of CuPy to accelerate certain computations, particularly useful for handling large datasets and complex calculations in the UTMA framework.
-   - **CuPy**: Used in coherence metric calculations to enable CUDA-based acceleration, leveraging GPU resources for high-precision and high-performance computations. CuPy enhances the speed of computations, especially for coherence and convergence metrics, by offloading tasks to the GPU.
+   - **CuPy** Utilized for high-speed, GPU-accelerated calculations, enhancing the performance of statistical operations such as mean, median, and standard deviation across large datasets by offloading these tasks to the GPU. This acceleration is particularly beneficial for handling extensive data with high precision and efficiency.
 - **Data Preprocessing** (`DocumentParser Notebook`): Handles initial data preparation, including tokenization and formatting, for ingestion by the modeling pipeline. See [example](#cdcs-mmwr-2015---2019)
 - **Dynamic Topic Model Training** (`topic_model_trainer.py`): Manages the LDA model training, evaluation, and metadata generation, with adaptive scaling to optimize resource usage.
 - **Visualization and Analysis** (`visualization.py`): Generates and saves visualizations (e.g., topic coherence plots) for exploring model outputs interactively.
 - **Diachronic Analysis (_Pending_)**: A dedicated module for analyzing and visualizing how topics evolve over time.
 - **Database Integration** (`write_to_postgres.py`): Stores all metadata and modeling outputs in a PostgreSQL database for easy access and persistence.
- **Dask Distributed Configuration**: UTMA includes a custom `distributed.yaml` file in the `config/` directory with recommended settings for Dask performance and resource management tailored to UTMA’s processing requirements.
+-  **Dask Distributed Configuration**: UTMA includes a custom `distributed.yaml` file in the `config/` directory with recommended settings for Dask performance and resource management tailored to UTMA’s processing requirements.
 
 --- 
 
