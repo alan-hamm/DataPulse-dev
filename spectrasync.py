@@ -18,7 +18,7 @@
 # Developed with AI assistance and designed for those who push the boundaries of data exploration.
 
 #%%
-from UTMA import *
+from SpectraSync import *
 
 import argparse
 
@@ -192,7 +192,7 @@ THREADS_PER_CORE = args.num_threads if args.num_threads is not None else 1
 RAM_MEMORY_LIMIT = f"{args.max_memory}GB" if args.max_memory is not None else "4GB"  # Default to "4GB" if not provided
 MEMORY_UTILIZATION_THRESHOLD = (args.mem_threshold * (1024 ** 3)) if args.mem_threshold else 4 * (1024 ** 3)
 CPU_UTILIZATION_THRESHOLD = args.max_cpu if args.max_cpu is not None else 120
-DASK_DIR = args.mem_spill if args.mem_spill else os.path.expanduser("~/temp/utma/max_spill")
+DASK_DIR = args.mem_spill if args.mem_spill else os.path.expanduser("~/temp/SpectraSync/max_spill")
 os.makedirs(DASK_DIR, exist_ok=True)
 
 # Model configurations
@@ -216,7 +216,7 @@ MAX_RETRIES = args.max_retries if args.max_retries is not None else 5
 BASE_WAIT_TIME = args.base_wait_time if args.base_wait_time is not None else 1.1
 
 # Ensure required directories exist
-ROOT_DIR = args.root_dir or os.path.expanduser("~/temp/utma/")
+ROOT_DIR = args.root_dir or os.path.expanduser("~/temp/SpectraSync/")
 LOG_DIRECTORY = args.log_dir or os.path.join(ROOT_DIR, "log")
 IMAGE_DIR = os.path.join(ROOT_DIR, "visuals")
 PYLDA_DIR = os.path.join(IMAGE_DIR, 'pyLDAvis')
@@ -635,11 +635,9 @@ if __name__=="__main__":
             try:
                 # Train phase logic
                 for scattered_data in scattered_train_data_futures:
-                    batch_info['data'] = "N/A"
-                    none_type_scatter = client.scatter(batch_info['data'])
                     model_key = (n_topics, alpha_value, beta_value)
                     future = client.submit(
-                        train_model_v2, n_topics, alpha_value, beta_value, TEXTS_ZIP_DIR, PYLDA_DIR, PCOA_DIR, unified_dictionary, none_type_scatter, "train",
+                        train_model_v2, n_topics, alpha_value, beta_value, TEXTS_ZIP_DIR, PYLDA_DIR, PCOA_DIR, unified_dictionary, scattered_data, "train",
                         RANDOM_STATE, PASSES, ITERATIONS, UPDATE_EVERY, EVAL_EVERY, num_workers, PER_WORD_TOPICS
                     )
                     train_futures.append(future)
