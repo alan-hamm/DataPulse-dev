@@ -31,7 +31,6 @@ import logging  # Provides error logging and information tracking throughout the
 
 from gensim.models import LdaModel  # Implements Latent Dirichlet Allocation (LDA) for topic modeling.
 from gensim.corpora import Dictionary  # Converts tokenized text data into a bag-of-words format for LDA.
-from gensim.models import CoherenceModel  # Evaluates topic model coherence to measure topic interpretability.
 
 import pickle  # Serializes models and data structures to store results or share between processes.
 import math  # Supports mathematical calculations, such as computing fractional core usage for parallel processing.
@@ -44,7 +43,8 @@ from datetime import datetime
 from decimal import Decimal, InvalidOperation
 
 from .alpha_eta import calculate_numeric_alpha, calculate_numeric_beta  # Functions that calculate alpha and beta values for LDA.
-from .utils import convert_float32_to_float  # Utility function for data type conversion, ensuring compatibility within the script.
+from .utils import convert_float32_to_float  # Utility functions for data type conversion, ensuring compatibility within the script.
+from .utils import NumpyEncoder
 from .mathstats import *
 from .visualization import create_vis_pca
 
@@ -192,7 +192,7 @@ def train_model_v2(n_topics: int, alpha_str: Union[str, float], beta_str: Union[
             # Assign fallback values directly
             mean_coherence = median_coherence = std_coherence = mode_coherence = DEFAULT_SCORE
 
-            
+
 
         try:
             # Create a delayed task for convergence score calculation without computing it immediately
@@ -284,22 +284,57 @@ def train_model_v2(n_topics: int, alpha_str: Union[str, float], beta_str: Union[
 
         # Log the computed structure before conversion for debugging purposes
         logging.debug(f"Validation results before type conversion: {validation_results_to_store}")
-        
-        # Ensure all numerical values are in a JSON-compatible format for downstream compatibility
+
+
+        # Ensure all numerical values are in a JSON-compatible format for downstream compatibility 
         validation_results_to_store = convert_float32_to_float(validation_results_to_store)
 
         # Serialize the validation data to JSON format for structured storage
         try:
+            # First attempt at JSON serialization
             validation_results_jsonb = json.dumps(validation_results_to_store)
+
         except TypeError as e:
-            logging.error(f"JSON serialization failed due to non-compatible types: {e}")
-            # Log the problematic types for debugging
+            logging.warning(f"JSON serialization failed on first attempt due to non-compatible types: {e}")
+            
+            try:
+                # Second attempt with custom fallback handler using the 'default' parameter
+                validation_results_jsonb = json.dumps(validation_results_to_store, default=lambda obj: float(obj) if isinstance(obj, (np.float32, np.float64)) else str(obj))
+            
+            except TypeError as e:
+                logging.warning(f"JSON serialization failed on second attempt due to non-compatible types: {e}")
+                
+                try:
+                    # Third attempt with custom JSON encoder class for NumPy types
+                    validation_results_jsonb = json.dumps(validation_results_to_store, cls=NumpyEncoder)
+
+                except TypeError as e:
+                    logging.error(f"JSON serialization failed on third attempt due to non-compatible types: {e}")
+                    
+                    # Attempt a conversion to handle numpy arrays or pandas DataFrame if present
+                    if isinstance(validation_results_to_store, np.ndarray):
+                        logging.info("Attempting to convert NumPy array to list for serialization.")
+                        data = validation_results_to_store.astype(float).tolist()
+                        validation_results_jsonb = json.dumps(data)
+
+                    elif isinstance(validation_results_to_store, pd.DataFrame):
+                        logging.info("Attempting to convert pandas DataFrame to JSON-compatible format.")
+                        data = validation_results_to_store.applymap(lambda x: float(x) if isinstance(x, (np.float32, np.float64)) else x)
+                        validation_results_jsonb = json.dumps(data)
+
+                    else:
+                        # If all attempts fail, serialize an error message
+                        logging.error("JSON serialization failed after all attempts.")
+                        validation_results_jsonb = json.dumps({"error": "Validation data generation failed", "phase": phase})
+
+        # Log the problematic types for debugging if the final attempt still fails
+        if not validation_results_jsonb:
+            logging.error("Final JSON serialization failed. Logging problematic types.")
             for item in validation_results_to_store:
                 if isinstance(item, dict):
                     for key, value in item.items():
                         logging.error(f"Type of {key}: {type(value)}")
-            validation_results_jsonb = json.dumps({"error": "Validation data generation failed", "phase": phase})
-                    
+             
 
         try:
             if phase == "train":
