@@ -162,4 +162,4 @@ dependencies:
       - wrapt==1.16.0
       - xyzservices==2024.6.0
       - zict==3.0.0
-prefix: C:\Users\pqn7\.conda\envs\lda
+prefix: C:\.conda\envs\spectrasync
