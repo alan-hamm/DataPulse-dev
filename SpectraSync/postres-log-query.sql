@@ -7,4 +7,4 @@ SELECT log_time,           -- Timestamp of the log entry
        line_no             -- Line number in the code where the log was generated
 FROM logs
 WHERE log_level IN ('WARNING','ERROR')  -- Filter for ERROR and CRITICAL logs only
-ORDER BY log_time asc;    -- Order results by most recent log entries
+ORDER BY log_time desc;    -- Order results by most recent log entries
