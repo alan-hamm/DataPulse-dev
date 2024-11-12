@@ -35,6 +35,10 @@ __all__ = [
     'calculate_convergence',
     'calculate_perplexity_score',
 
+    # batch estimation
+    'estimate_futures_batches_large_docs',
+    'estimate_futures_batches',
+
     # utils
     'garbage_collection',
     'exponential_backoff',
@@ -45,10 +49,6 @@ __all__ = [
     'clear_temp_files',
     'periodic_cleanup',
 
-    # batch estimation
-    'estimate_futures_batches', 
-    'estimate_futures_batches_large_docs',
-    
     #yaml_loader
     'join', 
     'getenv', 
