@@ -17,24 +17,23 @@
 #
 # Developed with AI assistance.
 
-
-from .utils import garbage_collection
-import os 
+import os
+import pickle
+import logging
 import numpy as np
+import matplotlib.pyplot as plt
 import pyLDAvis
 import pyLDAvis.gensim  # Library for interactive topic model visualization
 import pyLDAvis.gensim_models as gensimvis
-import matplotlib.pyplot as plt
-import matplotlib
-import pickle
 from sklearn.decomposition import PCA
-import logging
-from dask.distributed import performance_report, wait
-from dask.distributed import get_client
 from dask import delayed
+from dask.distributed import performance_report, wait, get_client
+import matplotlib
+from .utils import garbage_collection
+
 matplotlib.use('Agg')
 
-import logging
+
 # Set max_open_warning to 0 to suppress the warning
 plt.rcParams['figure.max_open_warning'] = 0 # suppress memory warning msgs re too many plots being open simultaneously
 
@@ -168,23 +167,6 @@ def create_vis_pcoa(ldaModel, corpus, topics, phase_name, filename, time_key, PC
 
     #garbage_collection(False,"create_vis(...)")
     return (time_key, create_pcoa)
-
-
-from dask import delayed
-import os
-import pickle
-import logging
-import numpy as np
-import matplotlib.pyplot as plt
-from sklearn.decomposition import PCA
-
-from dask import delayed
-import os
-import pickle
-import logging
-import numpy as np
-import matplotlib.pyplot as plt
-from sklearn.decomposition import PCA
 
 @delayed
 def create_vis_pca(ldaModel, corpus, topics, phase_name, filename, time_key, PCOA_DIR):
@@ -350,7 +332,7 @@ def process_visualizations(client, phase_results, phase_name, performance_log, c
                 if unique_id is None:
                     print("Warning: 'time_key' is missing in result_dict.")
                     continue
-                """
+                
                 try:
                     vis_future_pylda = client.submit(
                         create_vis_pylda,
@@ -368,7 +350,7 @@ def process_visualizations(client, phase_results, phase_name, performance_log, c
                 except Exception as e:
                     logging.error(f"Error in create_vis_pylda() Dask operation: {e}")
                     logging.error(f"TYPE: pyLDA -- MD5: {result_dict['text_md5']}")
-                """
+                
                 try:
                     vis_future_pcoa = client.submit(
                         create_vis_pca,
