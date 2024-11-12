@@ -87,17 +87,13 @@ def train_model_v2(n_topics: int, alpha_str: Union[str, float], beta_str: Union[
     number_of_documents = 0  # Counter for tracking the number of documents processed.
 
     flattened_batch = []
-    corpus_to_pickle ='this is a placeholder'
-    if phase != 'train':
-        # Flatten the list of documents, converting each sublist of tokens into a single list for metadata.
-        flattened_batch = [item for sublist in batch_documents for item in sublist]
-        for doc_tokens in batch_documents:
-            bow_out = train_dictionary_batch.doc2bow(doc_tokens)  # Convert tokens to BoW format using training dictionary
-            corpus_data[phase].append(bow_out)  # Append the bag-of-words representation to the appropriate phase corpus
-            number_of_documents += 1  # Increment the document counter
-        corpus_to_pickle = corpus_data[phase]
-    else:
-        corpus_data["train"] = [train_dictionary_batch.doc2bow(['no','training','docs','avaiable','dictionary','used','in','its','place'])]
+    # Flatten the list of documents, converting each sublist of tokens into a single list for metadata.
+    flattened_batch = [item for sublist in batch_documents for item in sublist]
+    for doc_tokens in batch_documents:
+        bow_out = train_dictionary_batch.doc2bow(doc_tokens)  # Convert tokens to BoW format using training dictionary
+        corpus_data[phase].append(bow_out)  # Append the bag-of-words representation to the appropriate phase corpus
+        number_of_documents += 1  # Increment the document counter
+    corpus_to_pickle = corpus_data[phase]
 
     logging.info(f"There was a total of {number_of_documents} documents added to the corpus_data.")  # Log document count.
 
@@ -268,17 +264,10 @@ def train_model_v2(n_topics: int, alpha_str: Union[str, float], beta_str: Union[
         show_topics_jsonb = json.dumps(topics_to_store)
 
         try:
-            if phase in ['validation', 'test']:
-                # Create a delayed task for document topic extraction
-                validation_results_task_delayed = dask.delayed(lambda: [
-                    ldamodel.get_document_topics(bow_doc, minimum_probability=0.01) for bow_doc in corpus_data[phase]
-                ])()
-            else:
-                # Create a delayed placeholder message task
-                validation_results_task_delayed = dask.delayed(lambda: [
-                    'no training docs available and as such the training dictionary is used in its place'
-                ])()
-
+            # Create a delayed task for document topic extraction
+            validation_results_task_delayed = dask.delayed(lambda: [
+                ldamodel.get_document_topics(bow_doc, minimum_probability=0.01) for bow_doc in corpus_data[phase]
+            ])()
         except Exception as e:
             # Create a delayed error handling task
             validation_results_task_delayed = dask.delayed(lambda: {
@@ -287,12 +276,15 @@ def train_model_v2(n_topics: int, alpha_str: Union[str, float], beta_str: Union[
             })()
 
 
-        # Create the delayed task without computing it immediately
+        # Create a delayed task without computing it immediately
         validation_results_task = dask.delayed(validation_results_task_delayed)
 
         # Later in the code, retrieve the results by calling .compute()
         validation_results_to_store = validation_results_task.compute()
 
+        # Log the computed structure before conversion for debugging purposes
+        logging.debug(f"Validation results before type conversion: {validation_results_to_store}")
+        
         # Ensure all numerical values are in a JSON-compatible format for downstream compatibility
         validation_results_to_store = convert_float32_to_float(validation_results_to_store)
 
@@ -301,8 +293,13 @@ def train_model_v2(n_topics: int, alpha_str: Union[str, float], beta_str: Union[
             validation_results_jsonb = json.dumps(validation_results_to_store)
         except TypeError as e:
             logging.error(f"JSON serialization failed due to non-compatible types: {e}")
+            # Log the problematic types for debugging
+            for item in validation_results_to_store:
+                if isinstance(item, dict):
+                    for key, value in item.items():
+                        logging.error(f"Type of {key}: {type(value)}")
             validation_results_jsonb = json.dumps({"error": "Validation data generation failed", "phase": phase})
-            
+                    
 
         try:
             if phase == "train":
