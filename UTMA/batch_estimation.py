@@ -19,7 +19,6 @@
 import psutil
 import math
 import json
-import codecs
 
 def estimate_futures_batches(document, min_batch_size=10, max_batch_size=100, memory_limit_ratio=0.5, cpu_factor=2):
     """
@@ -77,7 +76,7 @@ def estimate_futures_batches_large_docs(document, min_batch_size=5, max_batch_si
     """
 
     # Load document data
-    with codecs.open(document, "r", encoding='utf-8') as file:
+    with open(document, "r") as file:
         document = json.load(file)
         
     # Step 1: Document Analysis
@@ -98,4 +97,3 @@ def estimate_futures_batches_large_docs(document, min_batch_size=5, max_batch_si
 
     print(f"Optimized futures_batches size for large document: {batch_count}")
     return batch_count
-
