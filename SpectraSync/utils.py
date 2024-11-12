@@ -19,6 +19,7 @@
 
 import os
 import logging
+import json
 from datetime import datetime
 import multiprocessing
 import gc
@@ -28,7 +29,40 @@ from tqdm import tqdm
 import os
 import time
 import shutil
+from decimal import Decimal
 
+
+# Define a custom encoder class for NumPy types
+class NumpyEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, (np.float32, np.float64)):
+                return float(obj)
+        if isinstance(obj, np.integer):
+            return int(obj)
+        # Add other conversions as needed
+        return super().default(obj)
+            
+# Helper function to ensure JSON compatibility by converting float32 and float values to native Python floats
+def convert_float32_to_float(data):
+    if isinstance(data, list):
+        return [convert_float32_to_float(item) for item in data]
+    elif isinstance(data, dict):
+        return {key: convert_float32_to_float(value) for key, value in data.items()}
+    elif isinstance(data, (np.float32, np.float64, float, Decimal)):
+        return float(data)  # Convert numpy floats, Decimal, and regular floats to JSON-compatible floats
+    elif isinstance(data, (np.ndarray,)):
+        return [convert_float32_to_float(item) for item in data.tolist()]  # Convert numpy arrays to lists and handle recursively
+    else:
+        return data
+
+def json_fallback_handler(obj):
+    if isinstance(obj, (np.float32, np.float64, float)):
+        return float(obj)
+    if isinstance(obj, np.integer):
+        return int(obj)
+    # Handle other types if necessary
+    raise TypeError(f"Object of type {type(obj)} is not JSON serializable")
+ 
 def garbage_collection(development: bool, location: str):
     if development:
         # Enable debugging flags for leak statistics
@@ -71,20 +105,6 @@ def close_logger(logger):
     for handler in handlers:
         handler.close()
         logger.removeHandler(handler)
-
-# Helper function to ensure JSON compatibility by converting float32 and float values to native Python floats
-def convert_float32_to_float(data):
-    if isinstance(data, list):
-        return [convert_float32_to_float(item) for item in data]
-    elif isinstance(data, dict):
-        return {key: convert_float32_to_float(value) for key, value in data.items()}
-    elif isinstance(data, (np.float32, np.float64, float, Decimal)):
-        return float(data)  # Convert numpy floats, Decimal, and regular floats to JSON-compatible floats
-    elif isinstance(data, (np.ndarray,)):
-        return [convert_float32_to_float(item) for item in data.tolist()]  # Convert numpy arrays to lists and handle recursively
-    else:
-        return data
-
 
 def get_file_size(file_path):
     """Get the size of a local file."""
