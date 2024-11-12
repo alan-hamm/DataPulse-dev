@@ -13,6 +13,7 @@
 
 ### Key Features
 - **Adaptive Resource Management**: UTMA leverages [Dask](https://www.dask.org/) for process-based distributed parallelization, harnessing multiple cores and avoiding the limitations of the GIL while dynamically adjusting resources to efficiently handle large datasets and high computational loads.
+-  **Dask Delayed Integration**: UTMA makes extensive use of Dask’s `@delayed` decorator to transform functions and tasks into Dask-delayed objects, enabling the lazy evaluation of computational tasks. This design optimizes resource use by building up a task graph before executing it in parallel, allowing UTMA to handle large, complex workflows more efficiently.
 - **Concurrency, Parallelization, and Multithreading**: The system utilizes a hybrid model of concurrency through Dask’s distributed tasks, allowing concurrent execution, with multiprocessing for resource-heavy operations and multithreading within Dask workers for efficient I/O-bound task management. This design enhances both performance and scalability across different hardware configurations.
 -  [**CUDA Acceleration**](https://developer.nvidia.com/about-cuda): UTMA leverages **CUDA** through **CuPy** to accelerate computationally intensive coherence metric calculations. CUDA is specifically applied to mean, median, and standard deviation calculations of coherence scores across large datasets, significantly reducing processing time. By offloading these calculations to the GPU, UTMA can handle high-volume computations more efficiently, maximizing the potential of systems equipped with NVIDIA GPUs.
 - **Comprehensive Machine Learning Pipeline**: The framework includes a robust machine learning pipeline that handles data preprocessing, model training, evaluation, and hyperparameter tuning, designed to optimize model performance for diverse text corpora.
@@ -45,7 +46,7 @@ For further configuration tips and performance monitoring, Dask provides a [dash
 - **Visualization and Analysis** (`visualization.py`): Generates and saves visualizations (e.g., topic coherence plots) for exploring model outputs interactively.
 - **Diachronic Analysis (_Pending_)**: A dedicated module for analyzing and visualizing how topics evolve over time.
 - **Database Integration** (`write_to_postgres.py`): Stores all metadata and modeling outputs in a PostgreSQL database for easy access and persistence.
-
+ **Dask Distributed Configuration**: UTMA includes a custom `distributed.yaml` file in the `config/` directory with recommended settings for Dask performance and resource management tailored to UTMA’s processing requirements.
 
 --- 
 
@@ -217,7 +218,7 @@ By organizing and structuring the text data in this format, UTMA can identify re
 
    Profiling parallel code can be challenging, but Dask's distributed scheduler offers an [interactived dashboard](https://docs.dask.org/en/latest/dashboard.html) for diagnostics that simplifies real-time computation monitoring. Built with Bokeh, the dashboard is available upon starting the scheduler and provides a user-specified link(_e.g._ http://localhost:8787/status) to track task progress and resource usage according to your Dask configuration.
 
-   ## See [How to diagnose performance](https://distributed.dask.org/en/latest/diagnosing-performance.html)\,  [Diagnostics(local)](https://docs.dask.org/en/stable/diagnostics-local.html)\,  and [Diagnostics(distributed)](https://docs.dask.org/en/stable/diagnostics-distributed.html)
+   See [How to diagnose performance](https://distributed.dask.org/en/latest/diagnosing-performance.html)\,  [Diagnostics(local)](https://docs.dask.org/en/stable/diagnostics-local.html)\,  and [Diagnostics(distributed)](https://docs.dask.org/en/stable/diagnostics-distributed.html)
 
    **Monitoring Performance**
    After configuring batch sizes, use the Dask dashboard to observe task distribution, resource utilization, and memory usage per worker. Adjust batch sizes further if tasks are not distributed evenly or if memory usage approaches system limits.
