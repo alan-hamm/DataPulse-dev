@@ -1,14 +1,14 @@
-# __init__.py - Initialization for UTMA Package
+# __init__.py - Initialization for SpectraSync Package
 # Author: Alan Hamm
 # Date: October 2024
 
 # Description:
-# This __init__.py file initializes the Unified Topic Modeling and Analysis (UTMA) package.
+# This __init__.py file initializes the Unified Topic Modeling and Analysis (SpectraSync) package.
 # It exposes key functions and classes from various submodules to simplify access
 # at the package level, providing a cohesive interface for the framework.
 
 # Import essential functions and classes from submodules
-from .utils import garbage_collection, exponential_backoff, convert_float32_to_float, get_file_size, download_from_url, process_local_file, clear_temp_files, periodic_cleanup
+from .utils import *
 from .process_futures import process_completed_futures, futures_create_lda_datasets
 from .topic_model_trainer import train_model_v2
 from .alpha_eta import calculate_numeric_alpha, calculate_numeric_beta, validate_alpha_beta, calculate_alpha_beta
@@ -19,7 +19,7 @@ from .postgres_logging  import  PostgresLoggingHandler
 from .mathstats import *
 from .batch_estimation import estimate_futures_batches, estimate_futures_batches_large_docs
 
-# Define __all__ to control what is imported with "from UTMA import *"
+# Define __all__ to control what is imported with "from SpectraSync import *"
 __all__ = [
     # mathstats
     'sample_coherence',
@@ -34,6 +34,7 @@ __all__ = [
     'compute_full_coherence_score',
     'calculate_convergence',
     'calculate_perplexity_score',
+    'calculate_value',
 
     # batch estimation
     'estimate_futures_batches_large_docs',
@@ -43,11 +44,13 @@ __all__ = [
     'garbage_collection',
     'exponential_backoff',
     'convert_float32_to_float',
+    'json_fallback_handler',
     'get_file_size',
     'download_from_url',
     'process_local_file',
     'clear_temp_files',
     'periodic_cleanup',
+
 
     #yaml_loader
     'join', 
