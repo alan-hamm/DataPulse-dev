@@ -78,10 +78,13 @@ def convert_float32_to_float(data):
         return [convert_float32_to_float(item) for item in data]
     elif isinstance(data, dict):
         return {key: convert_float32_to_float(value) for key, value in data.items()}
-    elif isinstance(data, (np.float32, np.float64, float)):
-        return float(data)  # Convert numpy floats and regular floats to JSON-compatible floats
+    elif isinstance(data, (np.float32, np.float64, float, Decimal)):
+        return float(data)  # Convert numpy floats, Decimal, and regular floats to JSON-compatible floats
+    elif isinstance(data, (np.ndarray,)):
+        return [convert_float32_to_float(item) for item in data.tolist()]  # Convert numpy arrays to lists and handle recursively
     else:
         return data
+
 
 def get_file_size(file_path):
     """Get the size of a local file."""
