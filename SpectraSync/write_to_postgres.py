@@ -87,58 +87,58 @@ def create_dynamic_table_class(table_name):
     
     # Define a class that describes the table structure
     attributes = {
-        '__tablename__' : table_name,
-        '__table_args__': {'extend_existing': True},
-        
-        # Metadata and Identifiers
-        'primary_key' : Column(TEXT, primary_key=True, nullable=False),
-        'type' : Column(String),
-        'start_time' : Column(DateTime),
-        'end_time' : Column(DateTime),
-        'num_workers' : Column(Integer),
-        
-        # Document and Batch Details
-        'batch_size' : Column(Integer),
-        'num_documents' : Column(Integer),
-        'text' : Column(LargeBinary),
-        'text_json' : Column(LargeBinary),
-        'show_topics': Column(JSONB),
-        'top_words': Column(JSONB),
-        'validation_result': Column(JSONB),
-        'text_sha256' : Column(String),
-        'text_md5' : Column(String),
-        'text_path' : Column(TEXT),
-        'pca_path' : Column(TEXT),
-        'pylda_path' : Column(TEXT),
+    '__tablename__' : table_name,
+    '__table_args__': {'extend_existing': True},
+    
+    # Metadata and Identifiers
+    'primary_key' : Column(TEXT, primary_key=True, nullable=False),
+    'type' : Column(String, nullable=True),
+    'start_time' : Column(DateTime, nullable=True),
+    'end_time' : Column(DateTime, nullable=True),
+    'num_workers' : Column(Integer, nullable=True),
+    
+    # Document and Batch Details
+    'batch_size' : Column(Integer, nullable=False),
+    'num_documents' : Column(Integer, nullable=True),
+    'text' : Column(LargeBinary, nullable=True),
+    'text_json' : Column(LargeBinary, nullable=True),
+    'show_topics': Column(JSONB, nullable=True),
+    'top_words': Column(JSONB, nullable=True),
+    'validation_result': Column(JSONB, nullable=True),
+    'text_sha256' : Column(String(64), nullable=False),
+    'text_md5' : Column(String(32), nullable=False),
+    'text_path' : Column(TEXT, nullable=True),
+    'pca_path' : Column(TEXT, nullable=True),
+    'pylda_path' : Column(TEXT, nullable=True),
 
-        # Model and Training Parameters
-        'topics' : Column(Integer),
-        'alpha_str' : Column(String),
-        'n_alpha' : Column(Numeric(precision=20, scale=15)),
-        'beta_str' : Column(String),
-        'n_beta' : Column(Numeric(precision=20, scale=15)),
-        'passes' : Column(Integer),
-        'iterations' : Column(Integer),
-        'update_every' : Column(Integer),
-        'eval_every' : Column(Integer),
-        'chunksize' : Column(Integer),
-        'random_state' : Column(Integer),
-        'per_word_topics' : Column(Boolean),
-        
-        # Evaluation Metrics
-        'convergence' : Column(Numeric(precision=20, scale=15)),
-        'nll': Column(Numeric(precision=20, scale=15)),
-        'perplexity':  Column(Numeric(precision=20, scale=15)),
-        'coherence' : Column(Numeric(precision=20, scale=15)),
-        'mean_coherence': Column(Numeric(precision=20, scale=15)),
-        'median_coherence': Column(Numeric(precision=20, scale=15)),
-        'mode_coherence': Column(Numeric(precision=20, scale=15)),
-        'std_coherence': Column(Numeric(precision=20, scale=15)),
-        'threshold': Column(Numeric(precision=20, scale=15)),
-        
-        # Visualization Placeholders
-        'create_pylda' : Column(Boolean),
-        'create_pcoa' : Column(Boolean)
+    # Model and Training Parameters
+    'topics' : Column(Integer, nullable=True),
+    'alpha_str' : Column(String(20), nullable=True),
+    'n_alpha' : Column(Numeric(precision=20, scale=15), nullable=True),
+    'beta_str' : Column(String(20), nullable=True),
+    'n_beta' : Column(Numeric(precision=20, scale=15), nullable=True),
+    'passes' : Column(Integer, nullable=True),
+    'iterations' : Column(Integer, nullable=True),
+    'update_every' : Column(Integer, nullable=True),
+    'eval_every' : Column(Integer, nullable=True),
+    'chunksize' : Column(Integer, nullable=True),
+    'random_state' : Column(Integer, nullable=True),
+    'per_word_topics' : Column(Boolean, nullable=True),
+    
+    # Evaluation Metrics
+    'convergence' : Column(Numeric(precision=20, scale=15), nullable=True),
+    'nll': Column(Numeric(precision=20, scale=15), nullable=True),
+    'perplexity':  Column(Numeric(precision=20, scale=15), nullable=True),
+    'coherence' : Column(Numeric(precision=20, scale=15), nullable=True),
+    'mean_coherence': Column(Numeric(precision=20, scale=15), nullable=True),
+    'median_coherence': Column(Numeric(precision=20, scale=15), nullable=True),
+    'mode_coherence': Column(Numeric(precision=20, scale=15), nullable=True),
+    'std_coherence': Column(Numeric(precision=20, scale=15), nullable=True),
+    'threshold': Column(Numeric(precision=20, scale=15), nullable=True),
+    
+    # Visualization Placeholders
+    'create_pylda' : Column(Boolean, nullable=True),
+    'create_pcoa' : Column(Boolean, nullable=True)
     }
 
     # Create a new class type with a unique name derived from table_name
