@@ -46,7 +46,6 @@ from .alpha_eta import calculate_numeric_alpha, calculate_numeric_beta  # Functi
 from .utils import convert_float32_to_float  # Utility functions for data type conversion, ensuring compatibility within the script.
 from .utils import NumpyEncoder
 from .mathstats import *
-from .visualization import create_vis_pca
 
     
 # https://examples.dask.org/applications/embarrassingly-parallel.html
@@ -64,13 +63,45 @@ def train_model_v2(n_topics: int, alpha_str: Union[str, float], beta_str: Union[
         "test": []
     }
 
+
     try:
-        batch_documents = dask.compute(*validation_test_data)
+        # Compute the Dask future and convert the result to a list to make it mutable
+        batch_documents = list(dask.compute(*validation_test_data))
+
+        # Flatten the list of documents if needed
+        if len(batch_documents) == 1 and all(isinstance(item, list) for item in batch_documents[0]):
+            # Flatten only if batch_documents[0] is a list of lists
+            batch_documents = batch_documents[0]
+
+        # Ensure each element in batch_documents is a list of tokens, even if it contains only one word
+        for idx, doc in enumerate(batch_documents):
+            # Convert to a list if it's not already
+            if isinstance(doc, str):
+                # If it's a single string, wrap it in a list to make it a list of tokens
+                batch_documents[idx] = [doc]
+            elif isinstance(doc, list):
+                # If it's already a list, convert all elements to strings if needed
+                batch_documents[idx] = [str(token) for token in doc]
+            else:
+                # Raise an error if it's not a string or list
+                raise ValueError(f"Unexpected type at index {idx}. Expected a list or string, got: {type(doc)}")
+
+        # Additional validation to ensure that each document is a properly formatted list of strings
+        for idx, doc in enumerate(batch_documents):
+            if not isinstance(doc, list):
+                raise ValueError(f"Document at index {idx} is not properly formatted. Expected a list of tokens but got: {type(doc)}.")
+            if not all(isinstance(token, str) for token in doc):
+                raise ValueError(f"Document at index {idx} contains non-string tokens.")
+
         # Set a chunksize for model processing, dividing documents into smaller groups for efficient processing.
         chunksize = max(1, int(len(batch_documents) // 5))
+
+        # Optionally, convert batch_documents to a Gensim Dictionary if needed later
+        #train_dictionary = Dictionary(list(batch_documents))
+
     except Exception as e:
-        logging.error(f"Error computing streaming_documents data: {e}")  # Log any errors during Dask computation.
-        raise  # Re-raise the exception to stop execution if data computation fails.
+        logging.error(f"Error computing streaming_documents data: {e}")  # Log any errors during
+
 
     # Check for extra nesting in batch_documents and flatten if necessary
     if len(batch_documents) == 1 and isinstance(batch_documents[0], list):
@@ -78,7 +109,7 @@ def train_model_v2(n_topics: int, alpha_str: Union[str, float], beta_str: Union[
 
     # Create a Gensim dictionary from the batch documents, mapping words to unique IDs for the corpus.
     try:
-        train_dictionary_batch = train_dictionary
+        train_dictionary_batch = Dictionary(list(batch_documents))
     except TypeError as e:
         print("Error: The data structure is not correct to create the Dictionary object.")  # Print an error if data format is incompatible.
         print(f"Details: {e}")
@@ -158,8 +189,8 @@ def train_model_v2(n_topics: int, alpha_str: Union[str, float], beta_str: Union[
     with np.errstate(divide='ignore', invalid='ignore'):
         try:
             # Create a delayed task for coherence score calculation without computing it immediately
-            coherence_task = dask.delayed(compute_full_coherence_score)(
-                ldamodel, train_dictionary_batch, batch_documents, cores
+            coherence_task = dask.delayed(calculate_torch_coherence)(
+                ldamodel, batch_documents, train_dictionary_batch
             )
         except Exception as e:
             logging.warning("Coherence score calculation failed. Using default score.")
@@ -412,15 +443,15 @@ def train_model_v2(n_topics: int, alpha_str: Union[str, float], beta_str: Union[
 
     current_increment_data = {
     # Metadata and Identifiers
-    'primary_key': unique_primary_key,  # Unique identifier for this batch, based on concatenated hash.
-    'type': phase,  # Indicates whether this batch is for 'train', 'validation', or 'test'.
-    'start_time': time_of_method_call,  # Start time of this batch's processing.
-    'end_time': pd.to_datetime('now'),  # End time of this batch's processing.
-    'num_workers': float('nan'),  # Placeholder for adaptive core count used for this batch.
-    
+    'primary_key': unique_primary_key,
+    'type': phase,
+    'start_time': time_of_method_call,
+    'end_time': pd.Timestamp.now(),  # More direct way to get current time
+    'num_workers': None,  # Use None instead of float('nan') for better compatibility
+
     # Document and Batch Details
-    'batch_size': batch_size,  # Number of documents in the current training batch
-    'num_documents': len(train_dictionary_batch) if phase == "train" else float('nan'),
+    'batch_size': batch_size,
+    'num_documents': len(train_dictionary_batch) if phase == "train" else None,
     'text': pickle.dumps(text_data),
     'text_json': pickle.dumps(validation_test_data if phase == "train" else batch_documents),
     'show_topics': show_topics_jsonb,
@@ -431,41 +462,42 @@ def train_model_v2(n_topics: int, alpha_str: Union[str, float], beta_str: Union[
     'text_path': texts_zip,
     'pca_path': pca_image,
     'pylda_path': pyLDAvis_image,
-    
+
     # Model and Training Parameters
-    'topics': n_topics,  # Number of topics generated in the model.
-    'alpha_str': [str(alpha_str)],  # Alpha parameter as a string, before conversion.
-    'n_alpha': n_alpha,  # Numeric value of the alpha parameter.
-    'beta_str': [str(beta_str)],  # Beta parameter as a string, before conversion.
-    'n_beta': n_beta,  # Numeric value of the beta parameter.
-    'passes': passes,  # Number of passes through the corpus.
-    'iterations': iterations,  # Number of iterations within each pass.
-    'update_every': update_every,  # Number of documents before each model update.
-    'eval_every': eval_every,  # Frequency of model evaluation.
-    'chunksize': chunksize,  # Number of documents processed in each chunk.
-    'random_state': random_state,  # Random seed for reproducibility.
-    'per_word_topics': per_word_topics,  # Boolean flag for per-word topics.
-    
+    'topics': n_topics,
+    'alpha_str': str(alpha_str),  # Single string instead of a list
+    'n_alpha': n_alpha,
+    'beta_str': str(beta_str),  # Single string instead of a list
+    'n_beta': n_beta,
+    'passes': passes,
+    'iterations': iterations,
+    'update_every': update_every,
+    'eval_every': eval_every,
+    'chunksize': str(chunksize),  # Convert chunksize to string after use
+    'random_state': random_state,
+    'per_word_topics': per_word_topics,
+
     # Evaluation Metrics
-    'convergence': convergence_score,  # Convergence score for evaluating model stability.
-    'nll': negative_log_likelihood,  # negative log likelihood
-    'perplexity': perplexity_score, # Perplexity score to assess model fit.
-    'coherence': coherence_score,  # Coherence score to measure topic interpretability.
+    'convergence': convergence_score,
+    'nll': negative_log_likelihood,
+    'perplexity': perplexity_score,
+    'coherence': coherence_score,
     'mean_coherence': mean_coherence,
     'median_coherence': median_coherence,
     'mode_coherence': mode_coherence,
     'std_coherence': std_coherence,
     'threshold': threshold,
-    
+
     # Serialized Data
-    'lda_model': ldamodel_bytes,  # Serialized LDA model, if trained in this batch.
-    'corpus': pickle.dumps(corpus_to_pickle),  # Serialized corpus used for training.
-    'dictionary': pickle.dumps(train_dictionary_batch),  # Serialized dictionary for topic modeling.
-    
+    'lda_model': ldamodel_bytes,
+    'corpus': pickle.dumps(corpus_to_pickle),
+    'dictionary': pickle.dumps(train_dictionary_batch),
+
     # Visualization Creation Verification Placeholders
-    'create_pylda': None,  # Placeholder for pyLDA verification of visualization creation.
-    'create_pcoa': None  # Placeholder for PCoA verification of visualization creation.
+    'create_pylda': None,
+    'create_pcoa': None
     }
+
 
   # Use `replace_nan_with_high_precision` to handle any NaN values with calculated replacements
     metrics_data = replace_nan_with_high_precision(default_score=DEFAULT_SCORE, data=current_increment_data)  # Replace `default_score=nan` with your desired default if needed
