@@ -643,11 +643,19 @@ if __name__=="__main__":
                     )
                     train_futures.append(future)
                     progress_bar.update()
-                
+            except Exception as e:
+                logging.error("Train phase error in SpectraSync.py with train_model_v2")
+            try:
                 # Wait for all training futures and then process results
                 done_train, _ = wait(train_futures, timeout=None)
                 completed_train_futures = [done.result() for done in done_train]
-                
+                if len(completed_train_futures) == 0:
+                    logging.error("No results were output from '_v2' for writing to SSD. Number of completed train futures: {len(completed_train_futures)}")
+            except Exception as e:
+                logging.error(f"Train phase error with WAIT: {e}")
+                print(f"Train phase error with WAIT: {e}")
+                sys.exit()
+            try:
                 # Gather model results and visualize
                 for train_result in completed_train_futures:
                     model_key = (train_result['topics'], str(train_result['alpha_str'][0]), str(train_result['beta_str'][0]))
@@ -672,7 +680,9 @@ if __name__=="__main__":
                     completed_pylda_vis.append(train_pylda_vis.compute())
                     completed_pcoa_vis.append(train_pcoa_vis.compute())
             except Exception as e:
-                logging.error(f"Error in train phase: {e}")
+                logging.error(f"Error in visualization train phase: {e}")
+                print(f"Error in visualization train phase: {e}")
+                sys.exit()
                 continue
 
             # After processing all train phases in the sorted combinations
@@ -686,6 +696,8 @@ if __name__=="__main__":
                     )
             except Exception as e:
                 logging.error(f"Error processing TRAIN completed futures: {e}")
+                print(f"Error processing TRAIN completed futures: {e}")
+                sys.exit()
 
         # Validation Phase
         try:
