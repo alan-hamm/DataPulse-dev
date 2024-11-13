@@ -21,6 +21,7 @@
 # Developed with AI assistance to power SpectraSync’s scalable, data-driven analysis engine.
 
 
+import pprint as pp
 import os
 import pandas as pd  # Used to handle timestamps and date formatting for logging and metadata.
 import dask
@@ -443,7 +444,7 @@ def train_model_v2(n_topics: int, alpha_str: Union[str, float], beta_str: Union[
 
     current_increment_data = {
     # Metadata and Identifiers
-    'primary_key': unique_primary_key,
+    'time_key': unique_primary_key,
     'type': phase,
     'start_time': time_of_method_call,
     'end_time': pd.Timestamp.now(),  # More direct way to get current time
@@ -500,5 +501,9 @@ def train_model_v2(n_topics: int, alpha_str: Union[str, float], beta_str: Union[
 
 
   # Use `replace_nan_with_high_precision` to handle any NaN values with calculated replacements
-    metrics_data = replace_nan_with_high_precision(default_score=DEFAULT_SCORE, data=current_increment_data)  # Replace `default_score=nan` with your desired default if needed
+    #metrics_data = replace_nan_with_high_precision(default_score=DEFAULT_SCORE, data=current_increment_data)  # Replace `default_score=nan` with your desired default if needed
+    metrics_data = dask.delayed(replace_nan_with_high_precision)( DEFAULT_SCORE, current_increment_data )
+    #print("\nHere is the dictionary:")
+    metrics_data = metrics_data.compute()
+    #pp.pprint(metrics_data)
     return metrics_data
