@@ -330,6 +330,7 @@ warnings.simplefilter('ignore', ComplexWarning)
 distributed_logger = logging.getLogger('distributed')
 
 # Disable Bokeh deprecation warnings
+logging.getLogger("bokeh").setLevel(logging.WARNING)
 warnings.filterwarnings("ignore", category=BokehDeprecationWarning)
 # Set the logging level for distributed.utils_perf to suppress warnings
 logging.getLogger('distributed.utils_perf').setLevel(logging.ERROR)
