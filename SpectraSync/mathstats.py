@@ -17,13 +17,24 @@
 #
 # Developed with AI assistance to enhance SpectraSync’s statistical and coherence analysis capabilities.
 
+import os
 
 import cupy as cp
+
 # Set up memory pooling for CuPy
-cp.cuda.set_allocator(cp.cuda.MemoryPool().malloc)
-cp.cuda.set_pinned_memory_allocator(cp.cuda.PinnedMemoryPool().malloc)
+#cp.cuda.set_allocator(cp.cuda.MemoryPool().malloc)
+#cp.cuda.set_pinned_memory_allocator(cp.cuda.PinnedMemoryPool().malloc)
 
+# Disable CuPy's file caching to prevent PermissionErrors on Windows
+#cp.cuda.set_cub_cache_enabled(False)
 
+# Set a unique cache directory for each worker or process (optional if caching is re-enabled)
+#cache_dir = os.path.join(os.getenv('LOCALAPPDATA'), 'cupy_cache', 'worker_{}'.format(os.getpid()))
+#cp.cuda.set_cub_cache_dir(cache_dir)
+
+import torch
+
+import re
 from dask import delayed
 from dask.distributed import get_client
 import logging
@@ -35,6 +46,20 @@ import math
 from decimal import Decimal, InvalidOperation
 from scipy.stats import gaussian_kde
 import random
+
+
+# Define function to remove punctuation from tokens
+def remove_punctuation(token):
+    return re.sub(r'[^\w\s]', '', token)  # Removes all non-word characters except whitespace
+
+
+# Calculate mean, median, and mode using CuPy for GPU acceleration
+def calculate_statistics(coherence_scores):
+    coherence_array = cp.array(coherence_scores)
+    mean_coherence = cp.mean(coherence_array).item()
+    median_coherence = cp.median(coherence_array).item()
+    mode_coherence = cp.argmax(cp.bincount(coherence_array.astype(int))).item()
+    return mean_coherence, median_coherence, mode_coherence
 
 
 def calculate_value(cv1, cv2):
@@ -107,21 +132,89 @@ def kde_mode_estimation(coherence_scores):
     return float(mode_value)
 
 
-# Calculate mean, median, and mode using CuPy for GPU acceleration
-def calculate_statistics(coherence_scores):
-    coherence_array = cp.array(coherence_scores)
-    mean_coherence = cp.mean(coherence_array).item()
-    median_coherence = cp.median(coherence_array).item()
-    mode_coherence = cp.argmax(cp.bincount(coherence_array.astype(int))).item()
-    return mean_coherence, median_coherence, mode_coherence
+def calculate_torch_coherence(ldamodel, sample_docs, dictionary):
+    # Ensure sample_docs is a list of tokenized documents
+    if isinstance(sample_docs, tuple):
+        sample_docs = list(sample_docs)
+    
+    # Validate and sanitize the sample_docs
+    for idx, doc in enumerate(sample_docs):
+        # Ensure each document is a list of tokens
+        if isinstance(doc, list):
+            # Validate that every element is a string
+            if not all(isinstance(token, str) for token in doc):
+                logging.error(f"Document at index {idx} contains non-string tokens: {doc}")
+                raise ValueError(f"Document at index {idx} contains non-string tokens.")
+        elif isinstance(doc, str):
+            # If the document is a string, split by whitespace to get a list of tokens
+            doc = doc.split()
+            sample_docs[idx] = doc
+        else:
+            logging.error(f"Expected a list of tokens or a string, but got: {type(doc)} with value {doc} at index {idx}.")
+            raise ValueError(f"Expected a list of tokens or a string, but got: {type(doc)} at index {idx}.")
+
+        # Check that the document is not empty
+        if len(doc) == 0:
+            logging.error(f"Document at index {idx} is empty after processing.")
+            raise ValueError(f"Document at index {idx} is empty after processing.")
+
+
+        # Validate that every token in the document is a string
+        sample_docs[idx] = [str(token) for token in doc]  # Convert all tokens to strings if not already
+
+    # At this point, sample_docs should be a list of lists of strings
+    # Convert documents to topic vectors using the LDA model
+    try:
+        topic_vectors = [
+            ldamodel.get_document_topics(dictionary.doc2bow(doc), minimum_probability=0.01)
+            for doc in sample_docs
+        ]
+    except AttributeError as e:
+        raise AttributeError(
+            f"An error occurred while processing the documents. Please ensure that sample_docs is a list of lists "
+            f"where each inner list is a tokenized document. Details: {str(e)}"
+        )
+
+    # Convert to dense vectors suitable for tensor operations
+    num_topics = ldamodel.num_topics
+    dense_topic_vectors = torch.zeros((len(topic_vectors), num_topics), dtype=torch.float32, device='cuda')
+    
+    for i, doc_topics in enumerate(topic_vectors):
+        for topic_id, prob in doc_topics:
+            dense_topic_vectors[i, topic_id] = torch.tensor(prob, dtype=torch.float32, device='cuda')
+    
+    # Calculate cosine similarity on the GPU
+    similarities = torch.nn.functional.cosine_similarity(
+        dense_topic_vectors.unsqueeze(1), dense_topic_vectors.unsqueeze(0), dim=-1
+    )
+
+    # Calculate coherence score by averaging the cosine similarities
+    coherence_score = torch.mean(similarities).item()
+    return coherence_score
+
+
 
 # Sample initial documents for coherence calculation
 def sample_coherence(ldamodel, documents, dictionary, sample_ratio=0.2):
+    # Debugging statement: Print or log the type of documents before sampling
+    if not all(isinstance(doc, list) for doc in documents):
+        raise ValueError(f"Expected all documents to be lists of tokens, but found non-list entries in documents: {documents}")
+
     sample_size = int(len(documents) * sample_ratio)
     sample_indices = np.random.choice(len(documents), sample_size, replace=False)
     sample_docs = [documents[i] for i in sample_indices]
-    coherence_model = CoherenceModel(model=ldamodel, texts=sample_docs, dictionary=dictionary, coherence='c_v')
-    return coherence_model.get_coherence_per_topic()
+
+    # Debugging statement: Print or log the type of sample_docs after sampling
+    for idx, doc in enumerate(sample_docs):
+        if not isinstance(doc, list):
+            raise ValueError(f"Expected sampled document at index {idx} to be a list of tokens, but got: {type(doc)}")
+
+    # Use the new PyTorch-based coherence calculation function
+    coherence_score = calculate_torch_coherence(ldamodel, sample_docs, dictionary)
+    
+    return coherence_score
+
+
 
 @delayed
 def sample_coherence_for_phase(ldamodel, documents, dictionary, sample_ratio=0.1):
