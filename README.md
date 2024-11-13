@@ -10,7 +10,7 @@
 - [Turbocharged GPU Performance](#turbocharged-gpu-performance-boosted-compute-power)
 - [Synced Network Grid](#synced-network-grid)
 - [Parallel Loadout](#parallel-loadout-batch-processing-specs)
-- [Datafeed Processing](#datafeed-processing-translating-cdcs-morbidity-and-mortality-reports)
+- [Datafeed Processing](#datafeed-processing-translating-time-worn-chronicles)
 
 ---
 
