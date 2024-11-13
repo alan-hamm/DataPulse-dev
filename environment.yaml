@@ -1,4 +1,4 @@
-name: lda
+name: SpectraSync
 channels:
   - conda-forge
   - defaults
@@ -107,9 +107,11 @@ dependencies:
       - matplotlib==3.9.2
       - mdurl==0.1.2
       - mpld3==0.5.10
+      - mpmath==1.3.0
       - msgpack==1.0.8
       - multipledispatch==1.0.0
       - murmurhash==1.0.10
+      - networkx==3.4.2
       - nltk==3.9.1
       - numba==0.60.0
       - numexpr==2.10.1
@@ -146,10 +148,14 @@ dependencies:
       - sparse==0.15.4
       - sqlalchemy==2.0.36
       - srsly==2.4.8
+      - sympy==1.13.1
       - tblib==3.0.0
       - thinc==8.2.5
       - threadpoolctl==3.5.0
       - toolz==0.12.1
+      - torch==2.5.1+cu124
+      - torchaudio==2.5.1+cu124
+      - torchvision==0.20.1+cu124
       - tqdm==4.66.5
       - typer==0.12.5
       - tzdata==2024.1
@@ -162,4 +168,4 @@ dependencies:
       - wrapt==1.16.0
       - xyzservices==2024.6.0
       - zict==3.0.0
-prefix: C:\.conda\envs\spectrasync
+prefix: /path/to/.conda/envs/SpectraSync
