@@ -65,7 +65,7 @@ By using GPU-accelerated libraries like PyTorch and CuPy, this project achieves 
 
    **_By default, the settings in `distributed.yaml` are optimized for high-performance processing with Dask on systems with significant CPU and memory resources. Adjust as needed to suit your environment._**
 
-This project includes a custom `distributed.yaml` file for configuring Dask. The `distributed.yaml` file is located in the [`config/`](https://github.com/alan-hamm/Unified-Topic-Modeling-and-Analysis/tree/main/config) directory and contains recommended settings for Dask performance and resource management tailored for UTMA's processing requirements.
+This project includes a custom `distributed.yaml` file for configuring Dask. The `distributed.yaml` file is located in the [`config/`](https://github.com/alan-hamm/SpectraSync/tree/main/config) directory and contains recommended settings for Dask performance and resource management tailored for SpectraSync's processing requirements.
 
 To ensure your Dask environment is correctly configured, follow these steps:
 
@@ -80,7 +80,7 @@ To ensure your Dask environment is correctly configured, follow these steps:
 
 ### Batch Configuration
 
-   Configuring `futures_batches`, `base_batch_size`, and `max_batch_size` is critical to balancing resource utilization and achieving efficient processing times, especially on high-performance systems. The script `batch_estimation.py` is provided for adaptive batch size estimation based on document complexity, memory, and CPU limits. This script is recommended for anyone running UTMA on datasets with varying document sizes or on systems with constrained resources.
+   Configuring `futures_batches`, `base_batch_size`, and `max_batch_size` is critical to balancing resource utilization and achieving efficient processing times, especially on high-performance systems. The script `batch_estimation.py` is provided for adaptive batch size estimation based on document complexity, memory, and CPU limits. This script is recommended for anyone running SpectraSync on datasets with varying document sizes or on systems with constrained resources.
 
 
    ### Guidlines for Setting Key Batch Size Parameter
@@ -89,7 +89,7 @@ To ensure your Dask environment is correctly configured, follow these steps:
 
       -  **Base Batch Size**: Setting an appropriate base batch size is crucial. A batch size too small will increase scheduling overhead, while a batch size too large can exhaust memory resources, leading to performance degradation. For large documents or complex tasks, use larger batch sizes to optimize resource use and reduce scheduling overhead. For smaller tasks, use smaller batch sizes to increase task concurrency and CPU utilization.
    
-      -  **Max Batch Size**: Defines the upper limit for document processing per batch. Adaptive batching helps to manage tasks dynamically based on resource availability. Setting this value appropriately helps UTMA adapt to different document types without exhausting memory.
+      -  **Max Batch Size**: Defines the upper limit for document processing per batch. Adaptive batching helps to manage tasks dynamically based on resource availability. Setting this value appropriately helps SpectraSync adapt to different document types without exhausting memory.
 
    2. **Batch Calculation and System Resource Balance**
 
@@ -107,7 +107,7 @@ To ensure your Dask environment is correctly configured, follow these steps:
 
    4. **Benefits of Adaptive Batch Sizes**
 
-      Adaptive batch sizes calculated by 'batch_estimation.py' allow the UTMA framework to better handle document variability and optimize resource usage. This approach reduces memory-related issues, as batch sizes are optimized for current system capacity and workload, ensuring smooth execution without overwhelming resources.
+      Adaptive batch sizes calculated by 'batch_estimation.py' allow the SpectraSync framework to better handle document variability and optimize resource usage. This approach reduces memory-related issues, as batch sizes are optimized for current system capacity and workload, ensuring smooth execution without overwhelming resources.
 
    5. **Monitoring and Iterative Adjustment**
 
@@ -115,7 +115,7 @@ To ensure your Dask environment is correctly configured, follow these steps:
 
    6. **RAM Allocation and Management**
 
-      UTMA is memory-intensive, especially when handling large datasets or high batch sizes. Setting a high memory_limit in the Dask LocalCluster configuration is recommended if system RAM allows. For optimal memory usage:
+      SpectraSync is memory-intensive, especially when handling large datasets or high batch sizes. Setting a high memory_limit in the Dask LocalCluster configuration is recommended if system RAM allows. For optimal memory usage:
 
       -  Adjust memory_limit based on available system RAM and the expected load. As a rule of thumb, ensure that memory_limit per worker is balanced with the total number of workers to avoid exceeding system memory.
       -  Monitor RAM usage in the Dask dashboard. If you notice frequent memory spills or high memory consumption, consider reducing base_batch_size or max_batch_size.
@@ -140,9 +140,9 @@ To ensure your Dask environment is correctly configured, follow these steps:
 
 
 ### Example Preprocessing: CDC's Morbidity and Mortality Weekly Report Journals
-A real-world application of UTMA’s data preprocessing capabilities can be seen in analyzing the [MMWR Journals](https://www.cdc.gov/mmwr/), extracted from the [CDC text corpora for learners](https://github.com/cmheilig/harvest-cdc-journals/). Each report in these journals is treated as a standalone document and requires specific preprocessing steps to align with UTMA's standards, including tokenization and formatting as a bag-of-words model.
+A real-world application of SpectraSync’s data preprocessing capabilities can be seen in analyzing the [MMWR Journals](https://www.cdc.gov/mmwr/), extracted from the [CDC text corpora for learners](https://github.com/cmheilig/harvest-cdc-journals/). Each report in these journals is treated as a standalone document and requires specific preprocessing steps to align with SpectraSync's standards, including tokenization and formatting as a bag-of-words model.
 
-By organizing and structuring the text data in this format, UTMA can identify recurring themes and track the evolution of key public health topics, such as "infection control," "vaccine efficacy," and "disease prevention." This structured approach allows UTMA to perform diachronic analyses of topic shifts over time, revealing insights into public health trends and topic persistence. Preprocessing each document in this way prepares it for the advanced topic modeling and analysis that UTMA provides.
+By organizing and structuring the text data in this format, SpectraSync can identify recurring themes and track the evolution of key public health topics, such as "infection control," "vaccine efficacy," and "disease prevention." This structured approach allows SpectraSync to perform diachronic analyses of topic shifts over time, revealing insights into public health trends and topic persistence. Preprocessing each document in this way prepares it for the advanced topic modeling and analysis that SpectraSync provides.
 
 **Excerpt:**
    ```json
@@ -154,7 +154,7 @@ By organizing and structuring the text data in this format, UTMA can identify re
       ["collaboration", "agencies", "overseas", "vaccination", "intended", "reduce", "disease", "outbreaks", "ensuring", "refugees", "arrive", "protected"]
    ]
    ```
-   This format aligns with the project’s requirements, enabling UTMA to analyze the thematic structure and evolution of health topics in CDC reports.
+   This format aligns with the project’s requirements, enabling SpectraSync to analyze the thematic structure and evolution of health topics in CDC reports.
 
    The project supports preprocessing for a range of CDC’s journal content, including _Emerging Infectious Diseases_([EID](https://wwwnc.cdc.gov/eid)) and _Preventing Chronic Disease_([PCD](https://www.cdc.gov/pcd)). Available resources include CDC documents, spanning 42 years: [HTML Mirrors of MMWR, EID, and PCD](https://data.cdc.gov/National-Center-for-State-Tribal-Local-and-Territo/CDC-Text-Corpora-for-Learners-HTML-Mirrors-of-MMWR/ut5n-bmc3/about_data) and associated [Corpus Metadata](https://data.cdc.gov/National-Center-for-State-Tribal-Local-and-Territo/CDC-Text-Corpora-for-Learners-MMWR-EID-and-PCD-Art/7rih-tqi5/about_data).
 
@@ -163,7 +163,7 @@ By organizing and structuring the text data in this format, UTMA can identify re
     python spectrasync.py \
        --username "postgres" \
        --password "admin" \
-       --database "UTMA" \
+       --database "SpectraSync" \
        --corpus_label "mmwr" \
        --data_source "/path/to/your/data/preprocessed-documents/data.json" \
        --start_topics 20 \
