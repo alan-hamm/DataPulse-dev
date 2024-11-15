@@ -113,20 +113,23 @@ def futures_create_lda_datasets(filename, train_ratio, validation_ratio, batch_s
 def process_completed_futures(phase, connection_string, corpus_label, \
                             completed_train_futures, completed_validation_futures, completed_test_futures, \
                             num_documents, workers, \
-                            batchsize, texts_zip_dir, vis_pylda=None, vis_pcoa=None):
+                            batchsize, texts_zip_dir, vis_pylda=None, vis_pcoa=None, vis_pca=None):
 
     # Create a mapping from model_data_id to visualization results
     #his is the vis_pyldaprint(f"This is the vis_pylda: {vis_pylda}")
     pylda_results_map = {vis_result[0]: vis_result[1:] for vis_result in vis_pylda if vis_result}
     pcoa_results_map = {vis_result[0]: vis_result[1:] for vis_result in vis_pcoa if vis_result}
+    pca_results_map = {vis_result[0]: vis_result[1:] for vis_result in vis_pcoa if vis_result}
     # do union of items
     # Combine both maps into a unified vis_results_map
     vis_results_map = {}
     for key in set(pylda_results_map) | set(pcoa_results_map):
         create_pylda = pylda_results_map.get(key)
         create_pcoa = pcoa_results_map.get(key)
+        create_pca_gpu = pca_results_map.get(key)
         vis_result = (create_pylda if create_pylda is not None else (None, None),
-                      create_pcoa if create_pcoa is not None else (None, None))
+                      create_pcoa if create_pcoa is not None else (None, None),
+                      create_pca_gpu if create_pca_gpu is not None else (None, None))
         vis_results_map[key] = vis_result
 
 
@@ -170,10 +173,11 @@ def process_completed_futures(phase, connection_string, corpus_label, \
                             #    logging.info(f"No match found for unique_id: {unique_id}")
 
                             if unique_id and unique_id in vis_results_map:
-                                create_pylda, create_pcoa = vis_results_map[unique_id]
-                                logging.info(f"Found results for unique_id {unique_id}: create_pylda={create_pylda}, create_pcoa={create_pcoa}")
+                                create_pylda, create_pcoa, create_pca_gpu = vis_results_map[unique_id]
+                                logging.info(f"Train: Found results for unique_id {unique_id}: create_pylda={create_pylda}, create_pcoa={create_pcoa}, create_pca_gpu={create_pca_gpu}")
                                 model_data['create_pylda'] = create_pylda[0]
                                 model_data['create_pcoa'] = create_pcoa[0]
+                                model_data['create_pca_gpu'] = create_pca_gpu[0]
                                 model_data['num_documents'] = num_documents
                                 model_data['batch_size'] = batchsize
                                 model_data['num_workers'] = workers
@@ -211,9 +215,11 @@ def process_completed_futures(phase, connection_string, corpus_label, \
 
                             unique_id = model_data.get('time_key')
                             if unique_id and unique_id in vis_results_map:
-                                create_pylda, create_pcoa = vis_results_map[unique_id]
+                                create_pylda, create_pcoa, create_pca_gpu = vis_results_map[unique_id]
+                                logging.info(f"Validation: Found results for unique_id {unique_id}: create_pylda={create_pylda}, create_pcoa={create_pcoa}, create_pca_gpu={create_pca_gpu}")
                                 model_data['create_pylda'] = create_pylda[0]
                                 model_data['create_pcoa'] = create_pcoa[0]
+                                model_data['create_pca_gpu'] = create_pca_gpu[0]
                                 model_data['num_documents'] = num_documents
                                 model_data['batch_size'] = batchsize
                                 model_data['num_workers'] = workers
@@ -246,13 +252,14 @@ def process_completed_futures(phase, connection_string, corpus_label, \
 
                     unique_id = model_data.get('time_key')
                     if unique_id and unique_id in vis_results_map:
-                        create_pylda, create_pcoa = vis_results_map[unique_id]
+                        create_pylda, create_pcoa, create_pca_gpu = vis_results_map[unique_id]
+                        logging.info(f"Test: Found results for unique_id {unique_id}: create_pylda={create_pylda}, create_pcoa={create_pcoa}, create_pca_gpu={create_pca_gpu}")
                         model_data['create_pylda'] = create_pylda[0]
                         model_data['create_pcoa'] = create_pcoa[0]
+                        model_data['create_pca_gpu'] = create_pca_gpu[0]
                         model_data['num_documents'] = num_documents
                         model_data['batch_size'] = batchsize
                         model_data['num_workers'] = workers
-
             except Exception as e:
                 logging.error(f"Error occurred during process_completed_futures() EVAL: {e}")
             try:
