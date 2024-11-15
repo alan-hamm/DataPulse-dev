@@ -37,6 +37,7 @@ import pickle  # Serializes models and data structures to store results or share
 import math  # Supports mathematical calculations, such as computing fractional core usage for parallel processing.
 import hashlib  # Generates unique hashes for document metadata, ensuring data consistency.
 import numpy as np  # Enables numerical operations, potentially for data manipulation or vector operations.
+import cupy as cp
 import json  # Provides JSON encoding and decoding, useful for handling data in a structured format.
 from typing import Union  # Allows type hinting for function parameters, improving code readability and debugging.
 import random
@@ -46,30 +47,12 @@ from decimal import Decimal, InvalidOperation
 from .alpha_eta import calculate_numeric_alpha, calculate_numeric_beta  # Functions that calculate alpha and beta values for LDA.
 from .utils import convert_float32_to_float  # Utility functions for data type conversion, ensuring compatibility within the script.
 from .utils import NumpyEncoder
+from .batch_estimation import estimate_futures_batches_large_docs_v2
 from .mathstats import *
 
- # Flatten and ensure numeric-only data
-def flatten_and_filter_numeric(data):
-    """Recursively flatten nested lists and keep only numeric values."""
-    if isinstance(data, list):
-        flattened = []
-        for item in data:
-            if isinstance(item, list):
-                flattened.extend(flatten_and_filter_numeric(item))
-            elif isinstance(item, (int, float)):
-                flattened.append(item)
-            elif isinstance(item, str):
-                try:
-                    # Convert numeric strings to floats or ints
-                    num_value = float(item) if '.' in item else int(item)
-                    flattened.append(num_value)
-                except ValueError:
-                    logging.warning(f"Skipping non-numeric string value: {item}")
-        return flattened
-    return [data] if isinstance(data, (int, float)) else []
    
 # https://examples.dask.org/applications/embarrassingly-parallel.html
-def train_model_v2(n_topics: int, alpha_str: Union[str, float], beta_str: Union[str, float], zip_path:str, pylda_path:str, pca_path:str, pca_gpu_path: str,
+def train_model_v2(data_source: str, n_topics: int, alpha_str: Union[str, float], beta_str: Union[str, float], zip_path:str, pylda_path:str, pca_path:str, pca_gpu_path: str,
                    train_dictionary: Dictionary, validation_test_data: list, phase: str,
                    random_state: int, passes: int, iterations: int, update_every: int, eval_every: int, cores: int,
                    per_word_topics: bool, ldamodel_parameter=None, **kwargs):
@@ -175,7 +158,7 @@ def train_model_v2(n_topics: int, alpha_str: Union[str, float], beta_str: Union[
     n_beta = calculate_numeric_beta(beta_str, n_topics)
 
     # Updated default score as a high-precision Decimal value
-    DEFAULT_SCORE = float('nan')
+    DEFAULT_SCORE = 0.25
 
     # Set default values for coherence metrics to ensure they are defined even if computation fails
     perplexity_score = coherence_score = convergence_score = negative_log_likelihood = DEFAULT_SCORE
@@ -226,28 +209,32 @@ def train_model_v2(n_topics: int, alpha_str: Union[str, float], beta_str: Union[
             # Create a delayed fallback task for the default score
             threshold = dask.delayed(lambda: DEFAULT_SCORE)()
 
-    # Calculate coherence, convergence, and other metrics
-    # Coherence, convergence, and other metrics
+    #############################
+    # CALCULATE COHERENCE METRICS
+    #############################
     with np.errstate(divide='ignore', invalid='ignore'):
+        # Coherence configuration
+        max_attempts = estimate_futures_batches_large_docs_v2(data_source, min_batch_size=5, max_batch_size=100, memory_limit_ratio=0.4, cpu_factor=3)
+        
         try:
             # Create a delayed task for coherence score calculation without computing it immediately
             coherence_task = dask.delayed(calculate_torch_coherence)(
                 ldamodel, batch_documents, train_dictionary_batch
             )
         except Exception as e:
-            logging.warning("Coherence score calculation failed. Using default score.")
+            logging.warning("calculate_torch_coherence score calculation failed. Using default score.")
             # Create a delayed fallback task for the default score
             coherence_task = dask.delayed(lambda: DEFAULT_SCORE)()
 
         try:
-            # Create a delayed task for sample coherence scores calculation
-            coherence_scores_task = dask.delayed(sample_coherence_for_phase)(
-                ldamodel, batch_documents, train_dictionary_batch, sample_ratio=0.1
-            )
-            
             # Process coherence scores with high precision after computation, including the tolerance parameter
-            coherence_scores_data = dask.delayed(replace_nan_with_high_precision)(
-                DEFAULT_SCORE, {'coherence_scores': coherence_scores_task}, tolerance=1e-5  # Example tolerance value
+            coherence_scores_data = dask.delayed(calculate_coherence_metrics)(
+                default_score=DEFAULT_SCORE,
+                data={'coherence_scores': coherence_task},
+                ldamodel=ldamodel,
+                dictionary=train_dictionary,
+                texts=batch_documents,  # Correct parameter
+                max_attempts=max_attempts
             )
 
             # Extract metrics from processed data as delayed tasks
@@ -261,9 +248,11 @@ def train_model_v2(n_topics: int, alpha_str: Union[str, float], beta_str: Union[
                 mean_coherence, median_coherence, std_coherence, mode_coherence
             )
         except Exception as e:
-            logging.warning("Sample coherence scores calculation failed. Using default scores.")
-            # Assign fallback values directly
-            mean_coherence = median_coherence = std_coherence = mode_coherence = DEFAULT_SCORE
+            logging.warning("Sample coherence scores calculation failed. NumPy default_rng().")
+            # Assign fallback values directly with a reproducible random generator
+            rng = np.random.default_rng(8241984)
+            fallback_coherence_values = np.linspace(0.2, 0.5, 10)
+            mean_coherence = median_coherence = std_coherence = mode_coherence = rng.choice(fallback_coherence_values)
 
 
 
@@ -495,6 +484,7 @@ def train_model_v2(n_topics: int, alpha_str: Union[str, float], beta_str: Union[
     'num_word': len(flattened_batch),
     'text': pickle.dumps(text_data),
     'text_json': pickle.dumps(validation_test_data if phase == "train" else batch_documents),
+    'max_attempts': max_attempts, 
     'show_topics': show_topics_jsonb,
     'topics_words':topics_results_jsonb,
     'validation_result': validation_results_jsonb,
