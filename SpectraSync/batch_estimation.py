@@ -100,7 +100,7 @@ def estimate_futures_batches_large_docs(document, min_batch_size=5, max_batch_si
     return batch_count
 
 
-def estimate_futures_batches_large_docs_v2(document_path, min_batch_size=5, max_batch_size=50, memory_limit_ratio=0.4, cpu_factor=3):
+def estimate_futures_batches_large_docs_v2(document_path, min_batch_size=5, max_batch_size=20, memory_limit_ratio=0.4, cpu_factor=3):
     """
     Estimates `futures_batch` size with additional adjustments for very large documents.
 
@@ -125,8 +125,8 @@ def estimate_futures_batches_large_docs_v2(document_path, min_batch_size=5, max_
     avg_tokens_per_element = total_tokens / max(1, num_elements)
     estimated_doc_size = sum(sys.getsizeof(element) for element in document)
     
-    print(f"Total tokens: {total_tokens}, Average tokens per element: {avg_tokens_per_element:.2f}")
-    print(f"Estimated document size in memory: {estimated_doc_size / (1024 ** 2):.2f} MB")
+    #print(f"Total tokens: {total_tokens}, Average tokens per element: {avg_tokens_per_element:.2f}")
+    #print(f"Estimated document size in memory: {estimated_doc_size / (1024 ** 2):.2f} MB")
 
     # Step 3: System Constraints
     available_memory = psutil.virtual_memory().available * memory_limit_ratio
@@ -137,5 +137,5 @@ def estimate_futures_batches_large_docs_v2(document_path, min_batch_size=5, max_
     else:
         batch_count = max(int(available_memory / estimated_doc_size), min_batch_size)
 
-    print(f"Optimized futures_batches size for large document: {batch_count}")
+    #print(f"Optimized futures_batches size for large document: {batch_count}")
     return batch_count
