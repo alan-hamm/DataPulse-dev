@@ -175,7 +175,7 @@ def train_model_v2(n_topics: int, alpha_str: Union[str, float], beta_str: Union[
     n_beta = calculate_numeric_beta(beta_str, n_topics)
 
     # Updated default score as a high-precision Decimal value
-    DEFAULT_SCORE = Decimal('0')
+    DEFAULT_SCORE = float('nan')
 
     # Set default values for coherence metrics to ensure they are defined even if computation fails
     perplexity_score = coherence_score = convergence_score = negative_log_likelihood = DEFAULT_SCORE
@@ -438,7 +438,7 @@ def train_model_v2(n_topics: int, alpha_str: Union[str, float], beta_str: Union[
 
         # Ensure all numerical values are in a JSON-compatible format for downstream compatibility.
         topics_to_store = convert_float32_to_float(topic_words)
-        topic_words_jsonb = json.dumps(topic_words)  # Serializes to JSON format
+        topic_words_jsonb = json.dumps(topics_to_store)  # Serializes to JSON format
 
 
     # Calculate batch size based on training data batch
@@ -531,7 +531,7 @@ def train_model_v2(n_topics: int, alpha_str: Union[str, float], beta_str: Union[
     'threshold': threshold,
 
     # Serialized Data
-    'lda_model': ldamodel_bytes,
+    'lda_model': ldamodel_bytes.compute(), # C:\Users\pqn7\OneDrive - CDC\git-projects\unified-topic-modeling-analysis\gpt\why-lda-is-delayed.md
     'corpus': corpus_to_pickle,
     'dictionary': pickle.dumps(train_dictionary_batch),
 
@@ -541,11 +541,4 @@ def train_model_v2(n_topics: int, alpha_str: Union[str, float], beta_str: Union[
     'create_pca_gpu': None
     }
 
-
-  # Use `replace_nan_with_high_precision` to handle any NaN values with calculated replacements
-    #metrics_data = replace_nan_with_high_precision(default_score=DEFAULT_SCORE, data=current_increment_data)  # Replace `default_score=nan` with your desired default if needed
-    metrics_data = dask.delayed(replace_nan_with_high_precision)( DEFAULT_SCORE, current_increment_data )
-    #print("\nHere is the dictionary:")
-    metrics_data = metrics_data.compute()
-    #pp.pprint(metrics_data)
-    return metrics_data
+    return current_increment_data
