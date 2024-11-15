@@ -185,8 +185,6 @@ def train_model_v2(data_source: str, n_topics: int, alpha_str: Union[str, float]
                 chunksize=chunksize,
                 per_word_topics=True
             )
-            # Calculate negative_log_likelihood threshold using the BoW corpus
-            threshold = delayed(calculate_perplexity_threshold)(ldamodel, corpus_data["train"], DEFAULT_SCORE)
             # Serialize the model as a delayed task
             ldamodel_bytes = delayed(pickle.dumps)(ldamodel)
         except Exception as e:
@@ -195,26 +193,21 @@ def train_model_v2(data_source: str, n_topics: int, alpha_str: Union[str, float]
 
     else:
         # For validation and test phases, use the already-trained model
-        #ldamodel_bytes = pickle.dumps(ldamodel)
-
         try:
-            if phase == "validation":
-                # Create the delayed task for the threshold without computing it immediately
-                threshold = dask.delayed(calculate_perplexity_threshold)(ldamodel, corpus_data["validation"], DEFAULT_SCORE)
-            elif phase == "test":
-                # Create the delayed task for the threshold without computing it immediately
-                threshold = dask.delayed(calculate_perplexity_threshold)(ldamodel, corpus_data["test"], DEFAULT_SCORE)
+            # Create the delayed task for the threshold without computing it immediately
+            threshold = dask.delayed(calculate_perplexity_threshold)(ldamodel, corpus_data[phase], DEFAULT_SCORE)
         except Exception as e:
-            logging.warning(f"Perplexity threshold calculation failed. Using default score: {DEFAULT_SCORE}")
+            logging.warning(f"Perplexity threshold calculation failed for phase {phase}. Using default score: {DEFAULT_SCORE}")
             # Create a delayed fallback task for the default score
             threshold = dask.delayed(lambda: DEFAULT_SCORE)()
+
 
     #############################
     # CALCULATE COHERENCE METRICS
     #############################
     with np.errstate(divide='ignore', invalid='ignore'):
         # Coherence configuration
-        max_attempts = estimate_futures_batches_large_docs_v2(data_source, min_batch_size=5, max_batch_size=100, memory_limit_ratio=0.4, cpu_factor=3)
+        max_attempts = estimate_futures_batches_large_docs_v2(data_source, min_batch_size=5, max_batch_size=20, memory_limit_ratio=0.4, cpu_factor=3)
         
         try:
             # Create a delayed task for coherence score calculation without computing it immediately
@@ -337,7 +330,7 @@ def train_model_v2(data_source: str, n_topics: int, alpha_str: Union[str, float]
     try:
         # Create a delayed task for document topic extraction with error handling
         validation_results_task_delayed = dask.delayed(lambda: [
-            ldamodel.get_document_topics(bow_doc, minimum_probability=0.01) or [{"topic_id": None, "probability": 0}]
+            ldamodel.get_document_topics(bow_doc, minimum_probability=0) or [{"topic_id": None, "probability": 0}]
             for bow_doc in corpus_data[phase]
         ])()
         
@@ -518,7 +511,7 @@ def train_model_v2(data_source: str, n_topics: int, alpha_str: Union[str, float]
     'median_coherence': median_coherence,
     'mode_coherence': mode_coherence,
     'std_coherence': std_coherence,
-    'threshold': threshold,
+    'perplexity_threshold': threshold,
 
     # Serialized Data
     'lda_model': ldamodel_bytes.compute(), # C:\Users\pqn7\OneDrive - CDC\git-projects\unified-topic-modeling-analysis\gpt\why-lda-is-delayed.md
