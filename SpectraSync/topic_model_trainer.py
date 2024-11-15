@@ -20,7 +20,7 @@
 #
 # Developed with AI assistance to power SpectraSync’s scalable, data-driven analysis engine.
 
-
+import sys
 import pprint as pp
 import os
 import pandas as pd  # Used to handle timestamps and date formatting for logging and metadata.
@@ -48,9 +48,29 @@ from .utils import convert_float32_to_float  # Utility functions for data type c
 from .utils import NumpyEncoder
 from .mathstats import *
 
-    
+ # Flatten and ensure numeric-only data
+def flatten_and_filter_numeric(data):
+    """Recursively flatten nested lists and keep only numeric values."""
+    if isinstance(data, list):
+        flattened = []
+        for item in data:
+            if isinstance(item, list):
+                flattened.extend(flatten_and_filter_numeric(item))
+            elif isinstance(item, (int, float)):
+                flattened.append(item)
+            elif isinstance(item, str):
+                try:
+                    # Convert numeric strings to floats or ints
+                    num_value = float(item) if '.' in item else int(item)
+                    flattened.append(num_value)
+                except ValueError:
+                    logging.warning(f"Skipping non-numeric string value: {item}")
+        return flattened
+    return [data] if isinstance(data, (int, float)) else []
+   
 # https://examples.dask.org/applications/embarrassingly-parallel.html
-def train_model_v2(n_topics: int, alpha_str: Union[str, float], beta_str: Union[str, float], zip_path:str, pylda_path:str, pca_path:str, train_dictionary: Dictionary, validation_test_data: list, phase: str,
+def train_model_v2(n_topics: int, alpha_str: Union[str, float], beta_str: Union[str, float], zip_path:str, pylda_path:str, pca_path:str, pca_gpu_path: str,
+                   train_dictionary: Dictionary, validation_test_data: list, phase: str,
                    random_state: int, passes: int, iterations: int, update_every: int, eval_every: int, cores: int,
                    per_word_topics: bool, ldamodel_parameter=None, **kwargs):
     client = get_client()
@@ -76,29 +96,35 @@ def train_model_v2(n_topics: int, alpha_str: Union[str, float], beta_str: Union[
 
         # Ensure each element in batch_documents is a list of tokens, even if it contains only one word
         for idx, doc in enumerate(batch_documents):
-            # Convert to a list if it's not already
+            if not doc:  # Check for empty or None documents and skip them
+                logging.warning(f"Skipping empty document at index {idx}.")
+                continue
+            
+            # Convert to a list if it's a single string
             if isinstance(doc, str):
-                # If it's a single string, wrap it in a list to make it a list of tokens
-                batch_documents[idx] = [doc]
+                batch_documents[idx] = [doc]  # Wrap single strings in a list to make them token lists
+            
             elif isinstance(doc, list):
-                # If it's already a list, convert all elements to strings if needed
-                batch_documents[idx] = [str(token) for token in doc]
+                # Ensure all elements within the list are strings (tokens)
+                batch_documents[idx] = [str(token) for token in doc if token]  # Avoid empty tokens
+
             else:
-                # Raise an error if it's not a string or list
-                raise ValueError(f"Unexpected type at index {idx}. Expected a list or string, got: {type(doc)}")
+                # Raise an error if it's neither a string nor a list, and log details
+                logging.error(f"Unexpected type at index {idx}. Expected a list of tokens or string, got: {type(doc)}")
+                raise ValueError(f"Unexpected type at index {idx}. Expected list or string, got: {type(doc)}")
 
-        # Additional validation to ensure that each document is a properly formatted list of strings
+        # Additional validation to check the final structure after processing
         for idx, doc in enumerate(batch_documents):
-            if not isinstance(doc, list):
-                raise ValueError(f"Document at index {idx} is not properly formatted. Expected a list of tokens but got: {type(doc)}.")
-            if not all(isinstance(token, str) for token in doc):
-                raise ValueError(f"Document at index {idx} contains non-string tokens.")
+            if not isinstance(doc, list) or not all(isinstance(token, str) for token in doc):
+                logging.error(f"Document at index {idx} has an unexpected structure: {doc}")
+                raise ValueError(f"Document at index {idx} contains invalid structure.")
 
-        # Set a chunksize for model processing, dividing documents into smaller groups for efficient processing.
-        chunksize = max(1, int(len(batch_documents) // 5))
 
-        # Optionally, convert batch_documents to a Gensim Dictionary if needed later
-        #train_dictionary = Dictionary(list(batch_documents))
+            # Set a chunksize for model processing, dividing documents into smaller groups for efficient processing.
+            chunksize = max(1, int(len(batch_documents) // 5))
+
+            # Optionally, convert batch_documents to a Gensim Dictionary if needed later
+            #train_dictionary = Dictionary(list(batch_documents))
 
     except Exception as e:
         logging.error(f"Error computing streaming_documents data: {e}")  # Log any errors during
@@ -110,24 +136,39 @@ def train_model_v2(n_topics: int, alpha_str: Union[str, float], beta_str: Union[
 
     # Create a Gensim dictionary from the batch documents, mapping words to unique IDs for the corpus.
     try:
-        train_dictionary_batch = Dictionary(list(batch_documents))
+        train_dictionary_batch = Dictionary(batch_documents)
     except TypeError as e:
-        print("Error: The data structure is not correct to create the Dictionary object.")  # Print an error if data format is incompatible.
-        print(f"Details: {e}")
+        logging.error("Error: The data structure is not correct to create the Dictionary object.")  # Print an error if data format is incompatible.
+        logging.error(f"Details: {e}")
+        sys.exit()
 
     # Corrected code inside train_model_v2
     number_of_documents = 0  # Counter for tracking the number of documents processed.
 
     flattened_batch = []
-    # Flatten the list of documents, converting each sublist of tokens into a single list for metadata.
-    flattened_batch = [item for sublist in batch_documents for item in sublist]
-    for doc_tokens in batch_documents:
-        bow_out = train_dictionary_batch.doc2bow(doc_tokens)  # Convert tokens to BoW format using training dictionary
-        corpus_data[phase].append(bow_out)  # Append the bag-of-words representation to the appropriate phase corpus
-        number_of_documents += 1  # Increment the document counter
-    corpus_to_pickle = corpus_data[phase]
+    try:
+        # Flatten and log structure
+        flattened_batch = [item for sublist in batch_documents for item in sublist]
+        logging.debug(f"Flattened batch structure: {flattened_batch[:10]}")  # Log a sample of the flattened batch
+    except Exception as e:
+        logging.error(f"Error while flattening batch_documents: {e}")
 
-    logging.info(f"There was a total of {number_of_documents} documents added to the corpus_data.")  # Log document count.
+    corpus_to_pickle = ''
+    try:
+        # Convert tokens to BoW format
+        for doc_tokens in batch_documents:
+            if not isinstance(doc_tokens, list):
+                logging.warning(f"Unexpected structure for doc_tokens: {type(doc_tokens)}, content: {doc_tokens}")
+            bow_out = train_dictionary_batch.doc2bow(doc_tokens)
+            corpus_data[phase].append(bow_out)
+            number_of_documents += 1
+        corpus_to_pickle = pickle.dumps(corpus_data[phase])
+    except Exception as e:
+        logging.error(f"Error in creating or appending BoW representation: {e}")
+
+    #print(f"Final corpus_data[phase]: {corpus_data[phase][:5]}")  # Log a sample of corpus_data[phase]
+
+    #print(f"There was a total of {number_of_documents} documents added to the corpus_data.")  # Log document count.
 
     # Calculate numeric values for alpha and beta, using custom functions based on input strings or values.
     n_alpha = calculate_numeric_alpha(alpha_str, n_topics)
@@ -251,7 +292,7 @@ def train_model_v2(n_topics: int, alpha_str: Union[str, float], beta_str: Union[
 
 
     # Set the number of words to display for each topic, allowing deeper insight into topic composition.
-    num_words = 30  # Adjust based on the level of detail required for topic terms.
+    num_words = math.floor(len(batch_documents) * .80)  # Adjust based on the level of detail required for topic terms.
     
     # Retrieve the top words for each topic with their probabilities. This provides the most relevant words defining each topic.
     try:
@@ -286,87 +327,84 @@ def train_model_v2(n_topics: int, alpha_str: Union[str, float], beta_str: Union[
             }
         ])()
 
-    # Retrieve results later by calling .compute()
-    topics_to_store = topics_to_store_task.compute()
+    topics_results_to_store = topics_to_store_task.compute()
+    # Ensure all numerical values are in a JSON-compatible format for downstream compatibility 
+    topics_results_to_store = convert_float32_to_float(topics_results_to_store)
+    # Serialize the topics data to JSON format for structured storage
+    try:
+        # attempt with custom fallback handler using the 'default' parameter
+        topics_results_jsonb = json.dumps(topics_results_to_store, default=lambda obj: float(obj) if isinstance(obj, (int, float, np.float32, np.float64)) else float('nan'))
+
+    except TypeError as e:
+        logging.warning(f"JSON serialization failed on first attempt due to non-compatible types: {e}")
+
 
     with np.errstate(divide='ignore', invalid='ignore'):
-        # Ensure all numerical values are in a JSON-compatible format for downstream compatibility.
-        topics_to_store = convert_float32_to_float(topics_to_store)
-        # Serialize the topic data to JSON format for structured storage, such as in a database.
-        show_topics_jsonb = json.dumps(topics_to_store)
+        # Ensure all numerical values are in a JSON-compatible format for downstream compatibility
+        topics_results_to_store = convert_float32_to_float(topics_results_to_store)
+        # Serialize topic data to JSON format for structured storage
+        show_topics_jsonb = pickle.dumps(json.dumps(topics_results_to_store))
 
+    try:
+        # Create a delayed task for document topic extraction with error handling
+        validation_results_task_delayed = dask.delayed(lambda: [
+            ldamodel.get_document_topics(bow_doc, minimum_probability=0.01) or [{"topic_id": None, "probability": 0}]
+            for bow_doc in corpus_data[phase]
+        ])()
+        
+        # Retrieve the results by calling .compute()
+        validation_results_to_store = validation_results_task_delayed.compute()
+        
+        # Log the computed structure before further processing
+        logging.debug(f"Computed validation results: {validation_results_to_store}")
+        
+    except Exception as e:
+        logging.error(f"Error in computing validation_results_task_delayed: {e}")
+        validation_results_to_store = [{"error": "Validation data generation failed", "phase": phase}]
+
+    try:
+        validation_results_jsonb = json.dumps(
+            validation_results_to_store,
+            default=lambda obj: (
+                float(obj) if isinstance(obj, (np.float32, np.float64, float, Decimal))
+                else int(obj) if isinstance(obj, (np.integer, int))
+                else list(obj) if isinstance(obj, np.ndarray)  # Convert arrays to lists
+                else str(obj)  # Fallback to string for anything else
+            )
+        )
+        #print("Serialized validation results (JSONB):", validation_results_jsonb)
+    except TypeError as e:
+        logging.error(f"JSON serialization failed with TypeError: {e}")
         try:
-            # Create a delayed task for document topic extraction
-            validation_results_task_delayed = dask.delayed(lambda: [
-                ldamodel.get_document_topics(bow_doc, minimum_probability=0.01) for bow_doc in corpus_data[phase]
-            ])()
-        except Exception as e:
-            # Create a delayed error handling task
-            validation_results_task_delayed = dask.delayed(lambda: {
-                "error": "Validation data generation failed",
-                "phase": phase
-            })()
-
-
-        # Create a delayed task without computing it immediately
-        validation_results_task = dask.delayed(validation_results_task_delayed)
-
-        # Later in the code, retrieve the results by calling .compute()
-        validation_results_to_store = validation_results_task.compute()
-
-        # Log the computed structure before conversion for debugging purposes
-        logging.debug(f"Validation results before type conversion: {validation_results_to_store}")
-
-
-        # Ensure all numerical values are in a JSON-compatible format for downstream compatibility 
-        validation_results_to_store = convert_float32_to_float(validation_results_to_store)
-
-        # Serialize the validation data to JSON format for structured storage
-        try:
-            # First attempt at JSON serialization
-            validation_results_jsonb = json.dumps(validation_results_to_store)
+            validation_results_jsonb = json.dumps(validation_results_to_store, cls=NumpyEncoder)
 
         except TypeError as e:
-            logging.warning(f"JSON serialization failed on first attempt due to non-compatible types: {e}")
-            
+            logging.warning(f"Second serialization attempt failed: {e}")
             try:
-                # Second attempt with custom fallback handler using the 'default' parameter
-                validation_results_jsonb = json.dumps(validation_results_to_store, default=lambda obj: float(obj) if isinstance(obj, (np.float32, np.float64)) else str(obj))
-            
+                # Third attempt with specific handling for arrays/dataframes
+                if isinstance(validation_results_to_store, np.ndarray):
+                    data = validation_results_to_store.astype(float).tolist()
+                    validation_results_jsonb = json.dumps(data)
+
+                elif isinstance(validation_results_to_store, pd.DataFrame):
+                    data = validation_results_to_store.applymap(lambda x: float(x) if isinstance(x, (np.float32, np.float64)) else x)
+                    validation_results_jsonb = json.dumps(data)
+
+                else:
+                    validation_results_jsonb = json.dumps(validation_results_to_store)
+
             except TypeError as e:
-                logging.warning(f"JSON serialization failed on second attempt due to non-compatible types: {e}")
-                
-                try:
-                    # Third attempt with custom JSON encoder class for NumPy types
-                    validation_results_jsonb = json.dumps(validation_results_to_store, cls=NumpyEncoder)
+                logging.error("All JSON serialization attempts failed.")
+                validation_results_jsonb = json.dumps({"error": "Validation data generation failed", "phase": phase})
 
-                except TypeError as e:
-                    logging.error(f"JSON serialization failed on third attempt due to non-compatible types: {e}")
-                    
-                    # Attempt a conversion to handle numpy arrays or pandas DataFrame if present
-                    if isinstance(validation_results_to_store, np.ndarray):
-                        logging.info("Attempting to convert NumPy array to list for serialization.")
-                        data = validation_results_to_store.astype(float).tolist()
-                        validation_results_jsonb = json.dumps(data)
+    # Log any problematic types if serialization fails completely
+    if not validation_results_jsonb:
+        logging.error("Final serialization failed. Checking data types.")
+        for item in validation_results_to_store:
+            if isinstance(item, dict):
+                for key, value in item.items():
+                    logging.error(f"Type of {key}: {type(value)}")
 
-                    elif isinstance(validation_results_to_store, pd.DataFrame):
-                        logging.info("Attempting to convert pandas DataFrame to JSON-compatible format.")
-                        data = validation_results_to_store.applymap(lambda x: float(x) if isinstance(x, (np.float32, np.float64)) else x)
-                        validation_results_jsonb = json.dumps(data)
-
-                    else:
-                        # If all attempts fail, serialize an error message
-                        logging.error("JSON serialization failed after all attempts.")
-                        validation_results_jsonb = json.dumps({"error": "Validation data generation failed", "phase": phase})
-
-        # Log the problematic types for debugging if the final attempt still fails
-        if not validation_results_jsonb:
-            logging.error("Final JSON serialization failed. Logging problematic types.")
-            for item in validation_results_to_store:
-                if isinstance(item, dict):
-                    for key, value in item.items():
-                        logging.error(f"Type of {key}: {type(value)}")
-             
 
         try:
             if phase == "train":
@@ -427,6 +465,7 @@ def train_model_v2(n_topics: int, alpha_str: Union[str, float], beta_str: Union[
     number_of_topics = f"number_of_topics-{n_topics}"
     texts_zip = os.path.join(zip_path, phase, number_of_topics)
     pca_image = os.path.join(pca_path, phase, number_of_topics)
+    pca_gpu_image = os.path.join(pca_gpu_path, phase, number_of_topics)
     pyLDAvis_image = os.path.join(pylda_path, phase, number_of_topics)
 
     # Ensure flattened_batch has content before concatenating and pickling
@@ -452,16 +491,18 @@ def train_model_v2(n_topics: int, alpha_str: Union[str, float], beta_str: Union[
 
     # Document and Batch Details
     'batch_size': batch_size,
-    'num_documents': len(train_dictionary_batch) if phase == "train" else None,
+    'num_documents': len(train_dictionary_batch),
+    'num_word': len(flattened_batch),
     'text': pickle.dumps(text_data),
     'text_json': pickle.dumps(validation_test_data if phase == "train" else batch_documents),
     'show_topics': show_topics_jsonb,
-    'top_words': topic_words_jsonb,
+    'topics_words':topics_results_jsonb,
     'validation_result': validation_results_jsonb,
     'text_sha256': hashlib.sha256(text_data.encode()).hexdigest(),
     'text_md5': hashlib.md5(text_data.encode()).hexdigest(),
     'text_path': texts_zip,
     'pca_path': pca_image,
+    'pca_gpu_path': pca_gpu_image,
     'pylda_path': pyLDAvis_image,
 
     # Model and Training Parameters
@@ -491,12 +532,13 @@ def train_model_v2(n_topics: int, alpha_str: Union[str, float], beta_str: Union[
 
     # Serialized Data
     'lda_model': ldamodel_bytes,
-    'corpus': pickle.dumps(corpus_to_pickle),
+    'corpus': corpus_to_pickle,
     'dictionary': pickle.dumps(train_dictionary_batch),
 
     # Visualization Creation Verification Placeholders
     'create_pylda': None,
-    'create_pcoa': None
+    'create_pcoa': None,
+    'create_pca_gpu': None
     }
 
 
