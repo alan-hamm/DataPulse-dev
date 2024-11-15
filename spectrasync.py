@@ -253,8 +253,9 @@ os.makedirs(LOG_DIRECTORY, exist_ok=True)
 LOG_DIR = os.path.join(ROOT_DIR, "log")
 IMAGE_DIR = os.path.join(ROOT_DIR, "visuals")
 PYLDA_DIR = os.path.join(IMAGE_DIR, 'pyLDAvis')
+PCA_GPU_DIR = os.path.join(IMAGE_DIR, 'PCA_GPU')
 PCOA_DIR = os.path.join(IMAGE_DIR, 'PCoA')
-METADATA_DIR = os.path.join(ROOT_DIR, "metadata")
+#METADATA_DIR = os.path.join(ROOT_DIR, "metadata")
 TEXTS_ZIP_DIR = os.path.join(ROOT_DIR, "texts_zip")
 
 # Ensure that all necessary directories exist
@@ -262,7 +263,8 @@ os.makedirs(LOG_DIR, exist_ok=True)
 os.makedirs(IMAGE_DIR, exist_ok=True)
 os.makedirs(PYLDA_DIR, exist_ok=True)
 os.makedirs(PCOA_DIR, exist_ok=True)
-os.makedirs(METADATA_DIR, exist_ok=True)
+os.makedirs(PCA_GPU_DIR, exist_ok=True)
+#os.makedirs(METADATA_DIR, exist_ok=True)
 os.makedirs(TEXTS_ZIP_DIR, exist_ok=True)
 
 # Format the date and time as per your requirement
@@ -305,7 +307,7 @@ postgres_handler.addFilter(custom_filter)
 
 # Configure logging
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.DEBUG,
     handlers=[postgres_handler],
     format='%(custom_field)s - %(asctime)s - %(levelname)s - %(message)s',
     datefmt='%Y-%m-%d %H:%M:%S'
@@ -597,7 +599,7 @@ if __name__=="__main__":
         key=lambda x: phase_order[x[3]]
     )
     # Initialize combined visualization lists outside the loop
-    completed_pylda_vis, completed_pcoa_vis = [], []
+    completed_pylda_vis, completed_pcoa_vis, completed_pca_gpu_vis = [], [], []
     train_models_dict, validation_models_dict, test_models_dict = {}, {}, {}
     completed_train_futures, completed_validation_futures, completed_test_futures = [], [], []
 
@@ -638,7 +640,7 @@ if __name__=="__main__":
                 for scattered_data in scattered_train_data_futures:
                     model_key = (n_topics, alpha_value, beta_value)
                     future = client.submit(
-                        train_model_v2, n_topics, alpha_value, beta_value, TEXTS_ZIP_DIR, PYLDA_DIR, PCOA_DIR, unified_dictionary, scattered_data, "train",
+                        train_model_v2, n_topics, alpha_value, beta_value, TEXTS_ZIP_DIR, PYLDA_DIR, PCOA_DIR, PCA_GPU_DIR, unified_dictionary, scattered_data, "train",
                         RANDOM_STATE, PASSES, ITERATIONS, UPDATE_EVERY, EVAL_EVERY, num_workers, PER_WORD_TOPICS
                     )
                     train_futures.append(future)
@@ -661,27 +663,48 @@ if __name__=="__main__":
                     model_key = (train_result['topics'], str(train_result['alpha_str'][0]), str(train_result['beta_str'][0]))
                     train_models_dict[model_key] = train_result['lda_model']
 
-                    # Visualization tasks
-                    train_pcoa_vis = create_vis_pca(
-                        pickle.loads(train_result['lda_model']),
-                        pickle.loads(train_result['corpus']),
-                        n_topics, "TRAIN", train_result['text_md5'],
-                        train_result['time_key'], PCOA_DIR
-                    )
-                    train_pylda_vis = create_vis_pylda(
-                        pickle.loads(train_result['lda_model']),
-                        pickle.loads(train_result['corpus']),
-                        pickle.loads(train_result['dictionary']),
-                        n_topics, "TRAIN", train_result['text_md5'], CORES,
-                        train_result['time_key'], PYLDA_DIR
-                    )
+                    try:
+                        # Visualization tasks
+                        train_pcoa_vis = create_vis_pca(
+                            pickle.loads(train_result['lda_model']),
+                            pickle.loads(train_result['corpus']),
+                            n_topics, "TRAIN", train_result['text_md5'],
+                            train_result['time_key'], PCOA_DIR
+                        )
+                    except Exception as e:
+                        logging.error(f"Visualization/SpectaSync/Train Phase/create_vis_pca: {e}")
+                    
+                    try:
+                        train_pca_gpu_vis = create_pca_plot_gpu(
+                            train_result['validation_result'], 
+                            train_result['topics_words'],
+                                        "TRAIN",
+                                        train_result['num_word'], 
+                                        n_topics, train_result['text_md5'],
+                                        train_result['time_key'], PCA_GPU_DIR
+                        )
+                    except Exception as e:
+                        logging.error(f"Visualization/SpectaSync/Train Phase/create_pca_plot_gpu: {e}")
+
+                    try:
+                        train_pylda_vis = create_vis_pylda(
+                            pickle.loads(train_result['lda_model']),
+                            pickle.loads(train_result['corpus']),
+                            pickle.loads(train_result['dictionary']),
+                            n_topics, "TRAIN", train_result['text_md5'], CORES,
+                            train_result['time_key'], PYLDA_DIR
+                        )
+                    except Exception as e:
+                        logging.error(f"Visualization/SpectaSync/Train Phase/create_vis_pylda: {e}")
 
                     # Compute visualization results
-                    completed_pylda_vis.append(train_pylda_vis.compute())
-                    completed_pcoa_vis.append(train_pcoa_vis.compute())
+                    #completed_pylda_vis.append(train_pylda_vis.compute())
+                    #completed_pcoa_vis.append(train_pcoa_vis.compute())
+                    completed_pylda_vis.append(train_pylda_vis)
+                    completed_pcoa_vis.append(train_pcoa_vis)
+                    completed_pca_gpu_vis.append(train_pca_gpu_vis)
             except Exception as e:
                 logging.error(f"Error in visualization train phase: {e}")
-                print(f"Error in visualization train phase: {e}")
                 sys.exit()
                 continue
 
@@ -692,7 +715,8 @@ if __name__=="__main__":
                         CONNECTION_STRING, CORPUS_LABEL,
                         completed_train_futures, completed_validation_futures, completed_test_futures,
                         len(completed_train_futures),
-                        num_workers, BATCH_SIZE, TEXTS_ZIP_DIR, vis_pylda=completed_pylda_vis, vis_pcoa=completed_pcoa_vis
+                        num_workers, BATCH_SIZE, TEXTS_ZIP_DIR, 
+                        vis_pylda=completed_pylda_vis, vis_pcoa=completed_pcoa_vis, vis_pca_gpu=completed_pca_gpu_vis
                     )
             except Exception as e:
                 logging.error(f"Error processing TRAIN completed futures: {e}")
@@ -705,7 +729,7 @@ if __name__=="__main__":
                 model_key = (n_topics, alpha_value, beta_value)
                 ldamodel = pickle.loads(train_models_dict[model_key])
                 future = client.submit(
-                    train_model_v2, n_topics, alpha_value, beta_value, TEXTS_ZIP_DIR, PYLDA_DIR, PCOA_DIR, unified_dictionary, scattered_data, "validation",
+                    train_model_v2, n_topics, alpha_value, beta_value, TEXTS_ZIP_DIR, PYLDA_DIR, PCOA_DIR, PCA_GPU_DIR, unified_dictionary, scattered_data, "validation",
                     RANDOM_STATE, PASSES, ITERATIONS, UPDATE_EVERY, EVAL_EVERY, num_workers, PER_WORD_TOPICS, ldamodel=ldamodel
                 )
                 validation_futures.append(future)
@@ -727,6 +751,15 @@ if __name__=="__main__":
                         n_topics, "TRAIN", validation_result['text_md5'],
                         validation_result['time_key'], PCOA_DIR
                     )
+                    validation_pca_gpu_vis = create_pca_plot_gpu(
+                        pickle.loads(validation_result['validation_result']), 
+                        pickle.loads(validation_result['topic_labels']),
+                                     "VALIDATION",
+                                     validation_result['num_words'], 
+                                     n_topics, validation_result['text_md5'],
+                                     validation_result['time_key'], PCA_GPU_DIR,
+                                     title="PCA GPU Topic Distribution"
+                    )
                     validation_pylda_vis = create_vis_pylda(
                         pickle.loads(validation_result['lda_model']),
                         pickle.loads(validation_result['corpus']),
@@ -738,6 +771,7 @@ if __name__=="__main__":
                     # Compute visualization results
                     completed_pylda_vis.append(validation_pylda_vis.compute())
                     completed_pcoa_vis.append(validation_pcoa_vis.compute())
+                    completed_pca_gpu_vis.append(validation_pca_gpu_vis.compute())
         except Exception as e:
             logging.error(f"Error in validation phase: {e}")
             continue
@@ -760,7 +794,7 @@ if __name__=="__main__":
                 model_key = (n_topics, alpha_value, beta_value)
                 ldamodel = pickle.loads(test_models_dict[model_key])
                 future = client.submit(
-                    train_model_v2, n_topics, alpha_value, beta_value, TEXTS_ZIP_DIR, PYLDA_DIR, PCOA_DIR, unified_dictionary, scattered_data, "test",
+                    train_model_v2, n_topics, alpha_value, beta_value, TEXTS_ZIP_DIR, PYLDA_DIR, PCOA_DIR, PCA_GPU_DIR, unified_dictionary, scattered_data, "test",
                     RANDOM_STATE, PASSES, ITERATIONS, UPDATE_EVERY, EVAL_EVERY, num_workers, PER_WORD_TOPICS, ldamodel=ldamodel
                 )
                 test_futures.append(future)
@@ -782,6 +816,15 @@ if __name__=="__main__":
                     n_topics, "TRAIN", test_resut['text_md5'],
                     test_resut['time_key'], PCOA_DIR
                 )
+                test_pca_gpu_vis = create_pca_plot_gpu(
+                    pickle.loads(test_resut['validation_result']), 
+                    pickle.loads(test_resut['topic_labels']),
+                    "VALIDATION",
+                    test_resut['num_words'], 
+                    n_topics, test_resut['text_md5'],
+                    test_resut['time_key'], PCA_GPU_DIR,
+                    title="PCA GPU Topic Distribution"
+                )
                 test_pylda_vis = create_vis_pylda(
                     pickle.loads(test_resut['lda_model']),
                     pickle.loads(test_resut['corpus']),
@@ -793,6 +836,7 @@ if __name__=="__main__":
                 # Compute visualization results
                 completed_pylda_vis.append(test_pylda_vis.compute())
                 completed_pcoa_vis.append(test_pcoa_vis.compute())
+                completed_pcoa_vis.append(test_pca_gpu_vis.compute())
         except Exception as e:
             logging.error(f"Error in test phase: {e}")
             continue
