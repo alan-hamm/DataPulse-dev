@@ -22,14 +22,13 @@ from .batch_estimation import estimate_futures_batches, estimate_futures_batches
 # Define __all__ to control what is imported with "from SpectraSync import *"
 __all__ = [
     # mathstats
-    'sample_coherence',
+    'init_sample_coherence',
     'calculate_statistics',
     'sample_coherence_for_phase',
     'get_statistics',
     'calculate_perplexity_threshold',
     'coherence_score_decision',
-    'replace_nan_with_interpolated',
-    'replace_nan_with_high_precision',
+    'calculate_coherence_metrics',
     'calculate_perplexity',
     'compute_full_coherence_score',
     'calculate_convergence',
