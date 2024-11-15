@@ -95,7 +95,7 @@ def create_dynamic_table_class(table_name):
     'type' : Column(String, nullable=False),
     'start_time' : Column(DateTime, nullable=False),
     'end_time' : Column(DateTime, nullable=False),
-    'num_workers' : Column(Integer, nullable=TrFalseue),
+    'num_workers' : Column(Integer, nullable=False),
     
     # Document and Batch Details
     'batch_size' : Column(Integer, nullable=False),
@@ -103,6 +103,7 @@ def create_dynamic_table_class(table_name):
     'num_words' : Column(Integer, nullable=False),
     'text' : Column(LargeBinary, nullable=False),
     'text_json' : Column(LargeBinary, nullable=False),
+    'max_attemps': Column(Integer, nullable=False),
     'show_topics': Column(JSONB, nullable=False),
     'topics_words': Column(JSONB, nullable=False),
     'validation_result': Column(JSONB, nullable=False),
@@ -137,7 +138,7 @@ def create_dynamic_table_class(table_name):
     'median_coherence': Column(Numeric(precision=20, scale=15), nullable=False),
     'mode_coherence': Column(Numeric(precision=20, scale=15), nullable=False),
     'std_coherence': Column(Numeric(precision=20, scale=15), nullable=False),
-    'threshold': Column(Numeric(precision=20, scale=15), nullable=False),
+    'perplexity_threshold': Column(Numeric(precision=20, scale=15), nullable=False),
     
     # Visualization Placeholders
     'create_pylda' : Column(Boolean, nullable=False),
