@@ -19,7 +19,7 @@
 #
 # Developed with AI assistance to deliver SpectraSync’s visually engaging, data-driven experiences.
 
-
+import torch
 import os
 import pickle
 import logging
@@ -28,17 +28,37 @@ import matplotlib.pyplot as plt
 import pyLDAvis
 import pyLDAvis.gensim  # Library for interactive topic model visualization
 import pyLDAvis.gensim_models as gensimvis
+import plotly.express as px
+import pandas as pd
 from sklearn.decomposition import PCA
+from sklearn.manifold import TSNE
 from dask import delayed
 from dask.distributed import performance_report, wait, get_client
 import matplotlib
+import json
+import pprint as pp
+import re
+from decimal import Decimal
+import math
+from collections.abc import Iterable
+import numbers
 from .utils import garbage_collection
+import os
+import logging
+import torch
+import pandas as pd
+import plotly.express as px
+from sklearn.manifold import TSNE
+import dask
+import dask.array as da
+from dask import delayed, compute
 
 matplotlib.use('Agg')
 
 
 # Set max_open_warning to 0 to suppress the warning
 plt.rcParams['figure.max_open_warning'] = 0 # suppress memory warning msgs re too many plots being open simultaneously
+
 
 def fill_distribution_matrix(ldaModel, corpus, num_topics):
     """
@@ -109,12 +129,12 @@ def create_vis_pcoa(ldaModel, corpus, topics, phase_name, filename, time_key, PC
     # try Jensen-Shannon Divergence & Principal Coordinate Analysis (aka Classical Multidimensional Scaling)
     topic_labels = [] # list to store topic labels
 
-    ldaModel = pickle.loads(ldaModel)
-    topic_distributions = [ldaModel.get_document_topics(doc, minimum_probability=0) for doc in pickle.loads(corpus)]
+    ldaModel = ldaModel
+    topic_distributions = [ldaModel.get_document_topics(doc, minimum_probability=0) for doc in corpus]
 
     # Ensure all topics are represented even if their probability is 0
     num_topics = ldaModel.num_topics
-    distributions_matrix = np.zeros((len(pickle.loads(corpus)), num_topics))
+    distributions_matrix = np.zeros((len(corpus), num_topics))
 
     # apply topic labels and extract distribution matrix
     for i, doc_topics in enumerate(topic_distributions):
@@ -171,7 +191,8 @@ def create_vis_pcoa(ldaModel, corpus, topics, phase_name, filename, time_key, PC
     #garbage_collection(False,"create_vis(...)")
     return (time_key, create_pcoa)
 
-@delayed
+
+#@delayed
 def create_vis_pca(ldaModel, corpus, topics, phase_name, filename, time_key, PCOA_DIR):
     """
     Generates a 2D Principal Component Analysis (PCA) visualization for topic distributions.
@@ -246,7 +267,96 @@ def create_vis_pca(ldaModel, corpus, topics, phase_name, filename, time_key, PCO
     return (time_key, create_pcoa)
 
 
-@delayed
+
+def create_pca_plot_gpu(document_topic_distributions, topics_to_store_task, phase_name, num_words, topics, filename, time_key, pca_dir, title="PCA Topic Distribution"):
+    create_pca = None
+    PCoAfilename = filename
+
+    # Set up directory and output file paths
+    try:
+        pca_dir = os.path.join(pca_dir, phase_name, f"number_of_topics-{topics}")
+        os.makedirs(pca_dir, exist_ok=True)
+        PCoAIMAGEFILE = os.path.join(pca_dir, PCoAfilename)
+    except Exception as e:
+        logging.error(f"Couldn't create PCoA file: {e}")
+        return time_key, False
+
+    # Use the provided number of topics
+    num_topics = topics
+
+    # Initialize GPU tensor directly and prepare labels (optimized for efficiency)
+    try:
+        # Use Dask delayed for parallel processing
+        @delayed
+        def process_row(row):
+            if isinstance(row, list) and row:
+                processed_row = [float(item) for item in row if isinstance(item, (int, float))]
+                if len(processed_row) < num_topics:
+                    processed_row.extend([0.0] * (num_topics - len(processed_row)))
+                if sum(processed_row) > 0:
+                    processed_row = [value / sum(processed_row) for value in processed_row]
+                dominant_topic_label = f"Topic {processed_row.index(max(processed_row))}"
+            else:
+                processed_row = [0.0] * num_topics
+                dominant_topic_label = "No Topic"
+            return processed_row, dominant_topic_label
+
+        delayed_results = [process_row(row) for row in document_topic_distributions]
+        results = compute(*delayed_results)
+        processed_distributions, dominant_topics_labels = zip(*results)
+
+        # Filter out rows with insufficient variance
+        valid_distributions = [row for row in processed_distributions if sum(row) > 0]
+        if not valid_distributions:
+            logging.error("All rows have insufficient variance; PCA will not produce meaningful results.")
+            return time_key, False
+
+        # Convert processed distributions to a GPU tensor
+        distributions_tensor = torch.tensor(valid_distributions, device='cuda', dtype=torch.float32)
+        logging.debug("Successfully created GPU tensor for document distributions.")
+    except Exception as e:
+        logging.error(f"Failed to create GPU tensor: {e}")
+        return time_key, False
+
+    # Check variance to ensure PCA can proceed
+    variance = distributions_tensor.var(dim=0)
+    high_variance_columns = variance > variance.mean() * 0.5
+    if high_variance_columns.sum() == 0:
+        logging.error("No variance in topic distributions; PCA will not produce meaningful results.")
+        return time_key, False
+
+    distributions_tensor = distributions_tensor[:, high_variance_columns]
+
+    # Perform PCA and visualization
+    try:
+        # Use GPU-accelerated TSNE for dimensionality reduction
+        tsne_result = TSNE(n_components=2, perplexity=30, n_iter=300, random_state=42).fit_transform(distributions_tensor)
+        df = pd.DataFrame({
+            'PCA1': tsne_result[:, 0],
+            'PCA2': tsne_result[:, 1],
+            'Dominant_Topic': dominant_topics_labels[:len(tsne_result)]
+        })
+
+        # Create and save interactive plot
+        fig = px.scatter(df, x='PCA1', y='PCA2', color='Dominant_Topic', hover_data={'PCA1': False, 'PCA2': False}, title=title)
+        fig.update_traces(marker=dict(size=8, opacity=0.7))
+        fig.write_html(f'{PCoAIMAGEFILE}.html')
+        logging.info(f"Figure saved successfully to {PCoAIMAGEFILE}.html")
+        create_pca = True
+    except Exception as e:
+        logging.error(f"Failed during PCA or visualization: {e}")
+        return time_key, False
+
+    return time_key, create_pca
+
+
+
+
+
+
+
+
+#@delayed
 def create_vis_pylda(ldaModel, corpus, dictionary, topics, phase_name, filename, CORES, time_key, PYLDA_DIR):
     """
     Generates an interactive HTML visualization of LDA topic distributions using pyLDAvis.
@@ -264,9 +374,9 @@ def create_vis_pylda(ldaModel, corpus, dictionary, topics, phase_name, filename,
 
     # Ensure data is deserialized (remove pickle.loads if data is already deserialized)
     try:
-        ldaModel = pickle.loads(ldaModel) if isinstance(ldaModel, bytes) else ldaModel
-        corpus = pickle.loads(corpus) if isinstance(corpus, bytes) else corpus
-        dictionary = pickle.loads(dictionary) if isinstance(dictionary, bytes) else dictionary
+        ldaModel =ldaModel if isinstance(ldaModel, str) else ldaModel
+        corpus = corpus if isinstance(corpus, str) else corpus
+        dictionary =dictionary if isinstance(dictionary, str) else dictionary
     except Exception as e:
         logging.error(f"Deserialization error: {e}")
         return time_key, False
@@ -292,7 +402,7 @@ def create_vis_pylda(ldaModel, corpus, dictionary, topics, phase_name, filename,
 
     return (time_key, create_pylda)
 
-def process_visualizations(client, phase_results, phase_name, performance_log, cores, pylda_dir, pcoa_dir):
+def process_visualizations(client, phase_results, phase_name, performance_log, cores, pylda_dir, pcoa_dir, pca_gpu_dir):
     """
     Submits and processes visualization tasks for LDA model outputs using Dask, generating 
     interactive pyLDAvis and PCoA visualizations in parallel.
@@ -326,6 +436,7 @@ def process_visualizations(client, phase_results, phase_name, performance_log, c
 
         visualization_futures_pylda = []
         visualization_futures_pcoa = []
+        visualization_futures_pca_gpu = []
 
         processed_results = set()  # Track processed result hashes
 
@@ -355,6 +466,22 @@ def process_visualizations(client, phase_results, phase_name, performance_log, c
                     logging.error(f"TYPE: pyLDA -- MD5: {result_dict['text_md5']}")
                 
                 try:
+                    vis_future_pca_gpu = client.submit(create_pca_plot_gpu,
+                        result_dict['validation_result'], 
+                        result_dict['topic_labels'],
+                        phase_name,
+                        result_dict['num_words'], 
+                        result_dict['topics'], 
+                        result_dict['text_md5'],
+                        result_dict['time_key'], 
+                        pca_gpu_dir,
+                        title="PCA Topic Distribution"
+                    )
+                    visualization_futures_pca_gpu.append(vis_future_pca_gpu)
+                except Exception as e:
+                    logging.error(f"Error in create_vis_pca_gpu() Dask operation: {e}")
+                    logging.error(f"TYPE: PCA_GPU -- MD5: {result_dict['text_md5']}")                 
+                try:
                     vis_future_pcoa = client.submit(
                         create_vis_pca,
                         result_dict['lda_model'],
@@ -377,16 +504,22 @@ def process_visualizations(client, phase_results, phase_name, performance_log, c
         logging.info(f"Executing WAIT on {phase_name} PCoA visualizations: {len(visualization_futures_pcoa)} futures.")
         done_viz_futures_pcoa, not_done_viz_futures_pcoa = wait(visualization_futures_pcoa)
 
+        logging.info(f"Executing WAIT on {phase_name} PCoA visualizations: {len(visualization_futures_pca_gpu)} futures.")
+        done_viz_futures_pca_gpu, not_done_viz_futures_pca_gpu = wait(visualization_futures_pca_gpu)
+
         if len(not_done_viz_futures_pylda) > 0:
             logging.error(f"Some {phase_name} pyLDA visualizations were not created: {len(not_done_viz_futures_pylda)}.")
         if len(not_done_viz_futures_pcoa) > 0:
             logging.error(f"Some {phase_name} PCoA visualizations were not created: {len(not_done_viz_futures_pcoa)}.")
+        if len(not_done_viz_futures_pcoa) > 0:
+            logging.error(f"Some {phase_name} PCA GPU visualizations were not created: {len(not_done_viz_futures_pca_gpu)}.")
 
         # Gather results from completed visualization tasks
         completed_pylda_vis = [future.result() for future in done_viz_futures_pylda]
         completed_pcoa_vis = [future.result() for future in done_viz_futures_pcoa]
+        completed_pca_gpu_vis = [future.result() for future in done_viz_futures_pca_gpu]
 
-        logging.info(f"Completed gathering {len(completed_pylda_vis) + len(completed_pcoa_vis)} {phase_name} visualization results.")
+        logging.info(f"Completed gathering {len(completed_pylda_vis) + len(completed_pcoa_vis) +len(completed_pca_gpu_vis)} {phase_name} visualization results.")
 
-    return completed_pylda_vis, completed_pcoa_vis
+    return completed_pylda_vis, completed_pcoa_vis, completed_pca_gpu_vis
 
