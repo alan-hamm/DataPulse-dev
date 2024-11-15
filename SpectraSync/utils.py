@@ -42,7 +42,7 @@ class NumpyEncoder(json.JSONEncoder):
         # Add other conversions as needed
         return super().default(obj)
             
-# Helper function to ensure JSON compatibility by converting float32 and float values to native Python floats
+# Helper function to ensure JSON compatibility by converting float32, float64, Decimal, and integer values to native Python types
 def convert_float32_to_float(data):
     if isinstance(data, list):
         return [convert_float32_to_float(item) for item in data]
@@ -50,7 +50,9 @@ def convert_float32_to_float(data):
         return {key: convert_float32_to_float(value) for key, value in data.items()}
     elif isinstance(data, (np.float32, np.float64, float, Decimal)):
         return float(data)  # Convert numpy floats, Decimal, and regular floats to JSON-compatible floats
-    elif isinstance(data, (np.ndarray,)):
+    elif isinstance(data, (np.integer, int)):
+        return int(data)  # Convert numpy integers and regular integers to Python int
+    elif isinstance(data, np.ndarray):
         return [convert_float32_to_float(item) for item in data.tolist()]  # Convert numpy arrays to lists and handle recursively
     else:
         return data
