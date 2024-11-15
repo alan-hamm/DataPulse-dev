@@ -9,15 +9,15 @@
 
 # Import essential functions and classes from submodules
 from .utils import *
-from .process_futures import process_completed_futures, futures_create_lda_datasets
+from .process_futures import process_completed_futures, futures_create_lda_datasets, futures_create_lda_datasets_v2
 from .topic_model_trainer import train_model_v2
 from .alpha_eta import calculate_numeric_alpha, calculate_numeric_beta, validate_alpha_beta, calculate_alpha_beta
-from .visualization import create_vis_pylda, create_vis_pcoa, process_visualizations, create_vis_pca
+from .visualization import create_vis_pylda, create_vis_pcoa, process_visualizations, create_vis_pca, create_pca_plot_gpu
 from .write_to_postgres import save_to_zip, create_dynamic_table_class, create_table_if_not_exists, add_model_data_to_database
 from .yaml_loader import join, getenv, get_current_time
 from .postgres_logging  import  PostgresLoggingHandler
 from .mathstats import *
-from .batch_estimation import estimate_futures_batches, estimate_futures_batches_large_docs
+from .batch_estimation import estimate_futures_batches, estimate_futures_batches_large_docs, estimate_futures_batches_large_docs_v2
 
 # Define __all__ to control what is imported with "from SpectraSync import *"
 __all__ = [
@@ -39,6 +39,7 @@ __all__ = [
     # batch estimation
     'estimate_futures_batches_large_docs',
     'estimate_futures_batches',
+    'estimate_futures_batches_large_docs_v2',
 
     # utils
     'garbage_collection',
@@ -70,11 +71,13 @@ __all__ = [
     'create_vis_pylda',
     'create_vis_pcoa',
     'create_vis_pca',
+    'create_pca_plot_gpu',
     'process_visualizations',
 
     # process_futures
     'process_completed_futures',
     'futures_create_lda_datasets',
+    'futures_create_lda_datasets_v2',
 
     # writeToPostgres
     'save_to_zip', 
