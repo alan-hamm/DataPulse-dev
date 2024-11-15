@@ -140,6 +140,11 @@ def futures_create_lda_datasets_v2(documents_path, train_ratio=0.7, validation_r
     validation_size = int(validation_ratio * total_documents)
     test_size = total_documents - train_size - validation_size
 
+    # Print the total number of documents assigned to each split
+    print(f"Total documents assigned to training set: {train_size}")
+    print(f"Total documents assigned to validation set: {validation_size}")
+    print(f"Total documents assigned to test set: {test_size}")
+
     # Weighted sampling for train, validation, and test indices
     all_indices = list(range(total_documents))
     train_indices = np.random.choice(all_indices, size=train_size, replace=False, p=probabilities)
