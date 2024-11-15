@@ -35,6 +35,7 @@ import cupy as cp
 import torch
 
 import re
+import dask
 from dask import delayed
 from dask.distributed import get_client
 import logging
@@ -42,15 +43,11 @@ from gensim.models.coherencemodel import CoherenceModel
 from gensim.corpora.dictionary import Dictionary
 from gensim.models import LdaModel
 import numpy as np
+import cupy as cp
 import math
 from decimal import Decimal, InvalidOperation
 from scipy.stats import gaussian_kde
 import random
-
-
-# Define function to remove punctuation from tokens
-def remove_punctuation(token):
-    return re.sub(r'[^\w\s]', '', token)  # Removes all non-word characters except whitespace
 
 
 # Calculate mean, median, and mode using CuPy for GPU acceleration
@@ -132,37 +129,227 @@ def kde_mode_estimation(coherence_scores):
     return float(mode_value)
 
 
+@delayed
+def calculate_coherence_metrics(default_score=None, data=None, ldamodel=None, dictionary=None, texts=None, tolerance=1e-5, max_attempts=5, return_torch_tensor=False):
+    """
+    Dynamically adjust sample ratios to handle NaN values by recalculating coherence scores until they normalize.
+    """
+    # Retrieve coherence scores list for calculations
+    if isinstance(data, dict):
+        coherence_scores = data.get('coherence_scores', cp.linspace(-1.0, 0.01, 10))
+    elif isinstance(data, list):
+        coherence_scores = data[0] if len(data) > 0 else cp.linspace(-1.0, 0.01, 10)
+    elif data is None:
+        coherence_scores = cp.linspace(-1.0, 0.01, 10)
+    else:
+        raise TypeError("Expected `data` to be either a dictionary or list.")
+    
+    coherence_scores = cp.array(coherence_scores, dtype=cp.float32)
+
+    # Retry logic if coherence scores are empty
+    attempts = 0
+    sample_ratio = 0.1  # Start with an initial sample ratio
+    while coherence_scores.size == 0 and attempts < max_attempts:
+        attempts += 1
+        logging.warning(f"Coherence scores list is empty. Retrying coherence calculation, attempt {attempts}.")
+
+        # If ldamodel, dictionary, and texts are provided, retry coherence calculation with an increased sample ratio
+        if ldamodel and dictionary and texts:
+            try:
+                sample_ratio = min(1.0, sample_ratio + 0.1 * attempts)  # Gradually increase the sample ratio
+                coherence_scores = []
+                for _ in range(5):  # Generate multiple coherence scores for averaging
+                    score = sample_coherence(ldamodel, texts, dictionary, sample_ratio=sample_ratio)
+                    if score is not None:
+                        coherence_scores.append(score)
+                coherence_scores = cp.array(coherence_scores, dtype=cp.float32)
+            except Exception as e:
+                logging.error(f"Retry coherence calculation failed on attempt {attempts}: {e}")
+
+    # If coherence scores are still empty, log an error and set metrics to default
+    if coherence_scores.size == 0:
+        logging.error("Coherence scores list is still empty after all retries.")
+        data['mean_coherence'] = data['median_coherence'] = data['std_coherence'] = data['mode_coherence'] = default_score
+        return data  # Return early if no coherence scores to process
+
+    # Calculate and replace NaNs with high-precision values
+    data['mean_coherence'] = cp.mean(coherence_scores)
+    data['median_coherence'] = cp.median(coherence_scores)
+    data['std_coherence'] = cp.std(coherence_scores)
+
+    # Calculate mode, with fallback if bincount fails
+    try:
+        if coherence_scores.size > 1:
+            mode_value = cp.argmax(cp.bincount(coherence_scores.astype(int)))
+        else:
+            raise ValueError("Not enough elements for mode calculation.")
+    except ValueError:
+        logging.warning("Mode calculation using bincount failed or insufficient data. Falling back to a simple average.")
+        mode_value = float(cp.mean(coherence_scores))
+
+    data['mode_coherence'] = mode_value
+
+    # Convert to PyTorch tensor if needed
+    if return_torch_tensor:
+        import torch
+        data['mean_coherence'] = torch.tensor(float(data['mean_coherence'].get()), device='cuda')
+        data['median_coherence'] = torch.tensor(float(data['median_coherence'].get()), device='cuda')
+        data['std_coherence'] = torch.tensor(float(data['std_coherence'].get()), device='cuda')
+        data['mode_coherence'] = torch.tensor(float(data['mode_coherence'].get()), device='cuda')
+
+    return data
+
+    
+@delayed
+def sample_coherence_for_phase(ldamodel, documents, dictionary, sample_ratio=0.1, num_samples=5, distribution="uniform"):
+    """
+    Calculate coherence scores for multiple samples of the documents.
+
+    Parameters:
+    - num_samples (int): The number of different samples to calculate coherence scores for.
+    - distribution (str): Type of distribution to use for sampling ('uniform', 'normal', 'beta').
+    """
+    coherence_scores = []
+    available_indices = list(range(len(documents)))
+
+    for _ in range(num_samples):
+        if distribution == "normal":
+            # Use a normal distribution to generate indices
+            mean = len(documents) / 2
+            std_dev = len(documents) / 6  # Adjust standard deviation as needed
+            sample_indices = [int(cp.random.normal(mean, std_dev)) % len(documents) for _ in range(int(len(documents) * sample_ratio))]
+            sample_indices = [i for i in sample_indices if 0 <= i < len(documents)]
+        elif distribution == "beta":
+            # Use a beta distribution to generate indices
+            alpha, beta = 2, 5  # Adjust parameters for desired distribution
+            sample_indices = [int(len(documents) * cp.random.beta(alpha, beta)) for _ in range(int(len(documents) * sample_ratio))]
+        else:  # Default to uniform distribution
+            sample_size = int(len(documents) * sample_ratio)
+            sample_indices = cp.random.choice(available_indices, sample_size, replace=False)
+
+        # Ensure sample size is valid
+        if len(sample_indices) == 0:
+            logging.warning("Sample size is zero. Skipping sampling.")
+            continue
+
+        sample_docs = [documents[i] for i in sample_indices]
+        coherence_score = init_sample_coherence(ldamodel, sample_docs, dictionary, sample_ratio)
+        if coherence_score is not None:
+            coherence_scores.append(coherence_score)
+
+    return coherence_scores
+
+# Sample initial documents for coherence calculation
+@delayed
+def init_sample_coherence(ldamodel, documents, dictionary, sample_ratio=0.2):
+    # Debugging statement: Print or log the type of documents before sampling
+    if not all(isinstance(doc, list) for doc in documents):
+        raise ValueError(f"Expected all documents to be lists of tokens, but found non-list entries in documents: {documents}")
+
+    sample_size = int(len(documents) * sample_ratio)
+    sample_indices = cp.random.choice(len(documents), sample_size, replace=False)
+    sample_docs = [documents[i] for i in sample_indices]
+
+    # Debugging statement: Print or log the type of sample_docs after sampling
+    for idx, doc in enumerate(sample_docs):
+        if not isinstance(doc, list):
+            raise ValueError(f"Expected sampled document at index {idx} to be a list of tokens, but got: {type(doc)}")
+
+    # Use the new PyTorch-based coherence calculation function
+    coherence_score = calculate_torch_coherence(ldamodel, sample_docs, dictionary)
+
+    return coherence_score
+
+def calculate_dynamic_coherence(ldamodel, batch_documents, train_dictionary_batch, default_score, max_attempts=5, convergence_tolerance=0.01):
+    """
+    Calculate coherence scores dynamically, adjusting sample ratios until they normalize.
+    """
+    try:
+        sample_ratio = 0.1
+        num_samples = 5
+        previous_mean = None
+        current_mean = None
+        iterations = 0
+
+        while iterations < max_attempts:
+            # Create a delayed task for sample coherence scores calculation
+            coherence_scores_task = sample_coherence_for_phase(
+                ldamodel, batch_documents, train_dictionary_batch, sample_ratio=sample_ratio, num_samples=num_samples, distribution="normal"
+            )
+
+            # Process coherence scores with high precision after computation
+            coherence_scores_data = calculate_coherence_metrics(
+                default_score, {'coherence_scores': coherence_scores_task}, ldamodel=ldamodel,
+                dictionary=train_dictionary_batch, texts=batch_documents, tolerance=1e-5, max_attempts=max_attempts
+            )
+
+            # Extract metrics from processed data as delayed tasks
+            current_mean = delayed(lambda data: data['mean_coherence'])(coherence_scores_data)
+
+            # Run compute to evaluate the current mean coherence score
+            current_mean = dask.compute(current_mean)[0]
+
+            # Check for convergence using the Law of Large Numbers
+            if previous_mean is not None:
+                change = abs(current_mean - previous_mean)
+                if change < convergence_tolerance:
+                    logging.info(f"Convergence achieved after {iterations} iterations with a change of {change:.5f}")
+                    break
+
+            # Update for the next iteration
+            previous_mean = current_mean
+            sample_ratio = min(1.0, sample_ratio + 0.1)  # Gradually increase the sample ratio
+            iterations += 1
+
+        # Extract final coherence metrics
+        coherence_scores_data = calculate_coherence_metrics(
+            default_score, {'coherence_scores': coherence_scores_task}, ldamodel=ldamodel,
+            dictionary=train_dictionary_batch, texts=batch_documents, tolerance=1e-5, max_attempts=max_attempts
+        )
+        mean_coherence = delayed(lambda data: data['mean_coherence'])(coherence_scores_data)
+        median_coherence = delayed(lambda data: data['median_coherence'])(coherence_scores_data)
+        std_coherence = delayed(lambda data: data['std_coherence'])(coherence_scores_data)
+        mode_coherence = delayed(lambda data: data['mode_coherence'])(coherence_scores_data)
+
+        # Run compute here if everything is successful
+        mean_coherence, median_coherence, std_coherence, mode_coherence = dask.compute(
+            mean_coherence, median_coherence, std_coherence, mode_coherence
+        )
+
+        return mean_coherence, median_coherence, std_coherence, mode_coherence
+
+    except Exception as e:
+        logging.error(f"Error calculating coherence: {e}")
+        return default_score, default_score, default_score, default_score
+    
+
+# PyTorch-based coherence calculation function
+@delayed
 def calculate_torch_coherence(ldamodel, sample_docs, dictionary):
     # Ensure sample_docs is a list of tokenized documents
     if isinstance(sample_docs, tuple):
         sample_docs = list(sample_docs)
-    
+
     # Validate and sanitize the sample_docs
     for idx, doc in enumerate(sample_docs):
-        # Ensure each document is a list of tokens
         if isinstance(doc, list):
-            # Validate that every element is a string
             if not all(isinstance(token, str) for token in doc):
                 logging.error(f"Document at index {idx} contains non-string tokens: {doc}")
                 raise ValueError(f"Document at index {idx} contains non-string tokens.")
         elif isinstance(doc, str):
-            # If the document is a string, split by whitespace to get a list of tokens
             doc = doc.split()
             sample_docs[idx] = doc
         else:
             logging.error(f"Expected a list of tokens or a string, but got: {type(doc)} with value {doc} at index {idx}.")
             raise ValueError(f"Expected a list of tokens or a string, but got: {type(doc)} at index {idx}.")
 
-        # Check that the document is not empty
         if len(doc) == 0:
             logging.error(f"Document at index {idx} is empty after processing.")
             raise ValueError(f"Document at index {idx} is empty after processing.")
 
+        # Ensure all tokens are strings
+        sample_docs[idx] = [str(token) for token in doc]
 
-        # Validate that every token in the document is a string
-        sample_docs[idx] = [str(token) for token in doc]  # Convert all tokens to strings if not already
-
-    # At this point, sample_docs should be a list of lists of strings
     # Convert documents to topic vectors using the LDA model
     try:
         topic_vectors = [
@@ -178,11 +365,11 @@ def calculate_torch_coherence(ldamodel, sample_docs, dictionary):
     # Convert to dense vectors suitable for tensor operations
     num_topics = ldamodel.num_topics
     dense_topic_vectors = torch.zeros((len(topic_vectors), num_topics), dtype=torch.float32, device='cuda')
-    
+
     for i, doc_topics in enumerate(topic_vectors):
         for topic_id, prob in doc_topics:
             dense_topic_vectors[i, topic_id] = torch.tensor(prob, dtype=torch.float32, device='cuda')
-    
+
     # Calculate cosine similarity on the GPU
     similarities = torch.nn.functional.cosine_similarity(
         dense_topic_vectors.unsqueeze(1), dense_topic_vectors.unsqueeze(0), dim=-1
@@ -193,32 +380,6 @@ def calculate_torch_coherence(ldamodel, sample_docs, dictionary):
     return coherence_score
 
 
-
-# Sample initial documents for coherence calculation
-def sample_coherence(ldamodel, documents, dictionary, sample_ratio=0.2):
-    # Debugging statement: Print or log the type of documents before sampling
-    if not all(isinstance(doc, list) for doc in documents):
-        raise ValueError(f"Expected all documents to be lists of tokens, but found non-list entries in documents: {documents}")
-
-    sample_size = int(len(documents) * sample_ratio)
-    sample_indices = np.random.choice(len(documents), sample_size, replace=False)
-    sample_docs = [documents[i] for i in sample_indices]
-
-    # Debugging statement: Print or log the type of sample_docs after sampling
-    for idx, doc in enumerate(sample_docs):
-        if not isinstance(doc, list):
-            raise ValueError(f"Expected sampled document at index {idx} to be a list of tokens, but got: {type(doc)}")
-
-    # Use the new PyTorch-based coherence calculation function
-    coherence_score = calculate_torch_coherence(ldamodel, sample_docs, dictionary)
-    
-    return coherence_score
-
-
-
-@delayed
-def sample_coherence_for_phase(ldamodel, documents, dictionary, sample_ratio=0.1):
-    return sample_coherence(ldamodel, documents, dictionary, sample_ratio)
 
 @delayed
 def get_statistics(coherence_scores):
@@ -284,95 +445,6 @@ def coherence_score_decision(ldamodel, documents, dictionary, initial_sample_rat
     
     # Ensure all values are returned
     return (coherence_score, mean_coherence, median_coherence, mode_coherence, std_coherence, threshold)
-
-# Function to replace NaN with interpolated values
-def replace_nan_with_interpolated(data):
-    # Calculate mean values for replacement where possible
-    if math.isnan(data.get('mean_coherence', float('nan'))):
-        data['mean_coherence'] = sum(data.get('coherence_scores', [])) / max(len(data.get('coherence_scores', [])), 1)
-        
-    if math.isnan(data.get('median_coherence', float('nan'))):
-        coherence_scores = sorted(data.get('coherence_scores', []))
-        mid = len(coherence_scores) // 2
-        data['median_coherence'] = (coherence_scores[mid] + coherence_scores[~mid]) / 2 if coherence_scores else data['mean_coherence']
-        
-    if math.isnan(data.get('std_coherence', float('nan'))):
-        if len(data.get('coherence_scores', [])) > 1:
-            mean = data['mean_coherence']
-            std_dev = (sum((x - mean) ** 2 for x in data['coherence_scores']) / (len(data['coherence_scores']) - 1)) ** 0.5
-            data['std_coherence'] = std_dev
-        else:
-            data['std_coherence'] = 0  # Standard deviation of a single value is 0
-        
-    return data
-
-
-# Function to handle NaN replacement with high precision and calculate coherence metrics
-@delayed
-def replace_nan_with_high_precision(default_score, data, ldamodel=None, dictionary=None, texts=None, tolerance=1e-5, retry_attempts=2):
-    """
-    Handle NaN values by recalculating coherence scores with different sample sizes if empty.
-    Uses CuPy to ensure high-precision calculations and retries coherence calculation if needed.
-
-    Parameters:
-    - default_score (Decimal): Default value to use if calculation fails.
-    - data (dict): Dictionary containing coherence scores and other metrics.
-    - ldamodel (LdaModel): The LDA model for recalculating coherence if needed.
-    - dictionary (Dictionary): The Gensim dictionary used for topic modeling.
-    - texts (list): Tokenized documents for recalculating coherence if needed.
-    - tolerance (float): Tolerance to filter near-zero or near-one coherence scores.
-    - retry_attempts (int): Number of attempts to retry coherence calculation if scores are empty.
-
-    Returns:
-    - dict: Updated data dictionary with high-precision coherence metrics.
-    """
-    # Retrieve coherence scores list for calculations and convert it to a CuPy array
-    coherence_scores = cp.array(data.get('coherence_scores', []), dtype=cp.float32)
-    
-    # Filter out values near zero or one based on tolerance
-    coherence_scores = coherence_scores[~cp.isclose(coherence_scores, 0, atol=tolerance)]
-    coherence_scores = coherence_scores[~cp.isclose(coherence_scores, 1, atol=tolerance)]
-    
-    # Retry logic if coherence scores are empty after filtering
-    attempts = 0
-    while coherence_scores.size == 0 and attempts < retry_attempts:
-        attempts += 1
-        logging.warning(f"Coherence scores list is empty after filtering. Retrying coherence calculation, attempt {attempts}.")
-        
-        # If ldamodel, dictionary, and texts are provided, retry coherence calculation with a larger sample ratio
-        if ldamodel and dictionary and texts:
-            try:
-                new_sample_ratio = min(1.0, 0.2 + random.uniform(0.1, 0.3) * attempts)  # Increase the sample ratio
-                coherence_scores = cp.array(sample_coherence(ldamodel, texts, dictionary, sample_ratio=new_sample_ratio), dtype=cp.float32)
-                
-                # Filter again after recalculating coherence scores
-                coherence_scores = coherence_scores[~cp.isclose(coherence_scores, 0, atol=tolerance)]
-                coherence_scores = coherence_scores[~cp.isclose(coherence_scores, 1, atol=tolerance)]
-            except Exception as e:
-                logging.error(f"Retry coherence calculation failed on attempt {attempts}: {e}")
-
-    # If coherence scores are still empty, log an error and set metrics to default
-    if coherence_scores.size == 0:
-        logging.error("Coherence scores list is still empty after all retries.")
-        data['mean_coherence'] = data['median_coherence'] = data['std_coherence'] = data['mode_coherence'] = default_score
-        return data  # Return early if no coherence scores to process
-
-    # Calculate and replace NaNs with high-precision values
-    data['mean_coherence'] = float(cp.mean(coherence_scores).get())
-    data['median_coherence'] = float(cp.median(coherence_scores).get())
-    data['std_coherence'] = float(cp.std(coherence_scores).get())
-    
-    # Calculate mode, with fallback if bincount fails
-    try:
-        mode_value = float(cp.argmax(cp.bincount(coherence_scores.astype(int))).get())
-    except ValueError:
-        logging.warning("Mode calculation using bincount failed. Falling back to KDE-based mode estimation.")
-        # Use KDE-based mode estimation if bincount fails
-        mode_value = kde_mode_estimation(coherence_scores)
-
-    data['mode_coherence'] = mode_value
-
-    return data
 
 
 @delayed
