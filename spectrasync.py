@@ -461,9 +461,13 @@ if __name__=="__main__":
     all_futures = []
     
     # Process each batch as it is generated
-    for batch_info in futures_create_lda_datasets(DATA_SOURCE, TRAIN_RATIO, VALIDATION_RATIO, FUTURES_BATCH_SIZE):
-        #print(f"Received batch: {batch_info['type']}")  # Debugging output
-        if batch_info['type'] == "train":
+    #for batch_info in futures_create_lda_datasets(DATA_SOURCE, TRAIN_RATIO, VALIDATION_RATIO, FUTURES_BATCH_SIZE):
+    for batch_info in futures_create_lda_datasets_v2(DATA_SOURCE):
+        if batch_info['type'] == "dictionary":
+            # Retrieve the dictionary
+            unified_dictionary = batch_info['data']
+
+        elif batch_info['type'] == "train":
             # Handle training data
             #print("We are inside the IF/ELSE block for producing TRAIN scatter.")
             try:
@@ -604,9 +608,9 @@ if __name__=="__main__":
     completed_train_futures, completed_validation_futures, completed_test_futures = [], [], []
 
     # Create a unified dictionary for each (n_topics, alpha_value, beta_value) combination
-    computed_train_data  = client.gather(scattered_train_data_futures)
-    unified_train_data = [doc for scattered_data in computed_train_data for doc in scattered_data]
-    unified_dictionary = Dictionary(unified_train_data)  # Using the complete training dataset
+    #computed_train_data  = client.gather(scattered_train_data_futures)
+    #unified_train_data = [doc for scattered_data in computed_train_data for doc in scattered_data]
+    #unified_dictionary = Dictionary(unified_train_data)  # Using the complete training dataset
     
     # Process sorted combinations by train, validation, and test phases
     for i, (n_topics, alpha_value, beta_value, train_eval_type) in enumerate(sorted_combinations):
@@ -640,7 +644,7 @@ if __name__=="__main__":
                 for scattered_data in scattered_train_data_futures:
                     model_key = (n_topics, alpha_value, beta_value)
                     future = client.submit(
-                        train_model_v2, n_topics, alpha_value, beta_value, TEXTS_ZIP_DIR, PYLDA_DIR, PCOA_DIR, PCA_GPU_DIR, unified_dictionary, scattered_data, "train",
+                        train_model_v2, DATA_SOURCE, n_topics, alpha_value, beta_value, TEXTS_ZIP_DIR, PYLDA_DIR, PCOA_DIR, PCA_GPU_DIR, unified_dictionary, scattered_data, "train",
                         RANDOM_STATE, PASSES, ITERATIONS, UPDATE_EVERY, EVAL_EVERY, num_workers, PER_WORD_TOPICS
                     )
                     train_futures.append(future)
@@ -663,6 +667,17 @@ if __name__=="__main__":
                     model_key = (train_result['topics'], str(train_result['alpha_str'][0]), str(train_result['beta_str'][0]))
                     train_models_dict[model_key] = train_result['lda_model']
 
+                    # Compute delayed objects before using them
+                    #for key, value in train_result.items():
+                    #    if isinstance(value, dask.delayed.Delayed):
+                    #        logging.debug(f"train_result['{key}'] is a Delayed object and needs to be computed.")
+                    #sys.exit()
+
+                    # Compute delayed objects before using them
+                    #lda_model = pickle.loads(train_result['lda_model']).compute() if isinstance(train_result['lda_model'], dask.delayed.Delayed) else train_result['lda_model']
+                    #corpus = pickle.loads(train_result['corpus']).compute() if isinstance(train_result['corpus'], dask.delayed.Delayed) else train_result['corpus']
+                    #dictionary = pickle.loads(train_result['dictionary']).compute() if isinstance(train_result['dictionary'], dask.delayed.Delayed) else train_result['dictionary']
+                    
                     try:
                         # Visualization tasks
                         train_pcoa_vis = create_vis_pca(
@@ -678,6 +693,7 @@ if __name__=="__main__":
                         train_pca_gpu_vis = create_pca_plot_gpu(
                             train_result['validation_result'], 
                             train_result['topics_words'],
+                            train_result['perplexity_threshold'],
                                         "TRAIN",
                                         train_result['num_word'], 
                                         n_topics, train_result['text_md5'],
@@ -716,7 +732,7 @@ if __name__=="__main__":
                         completed_train_futures, completed_validation_futures, completed_test_futures,
                         len(completed_train_futures),
                         num_workers, BATCH_SIZE, TEXTS_ZIP_DIR, 
-                        vis_pylda=completed_pylda_vis, vis_pcoa=completed_pcoa_vis, vis_pca_gpu=completed_pca_gpu_vis
+                        vis_pylda=completed_pylda_vis, vis_pcoa=completed_pcoa_vis, vis_pca=completed_pca_gpu_vis
                     )
             except Exception as e:
                 logging.error(f"Error processing TRAIN completed futures: {e}")
@@ -729,7 +745,7 @@ if __name__=="__main__":
                 model_key = (n_topics, alpha_value, beta_value)
                 ldamodel = pickle.loads(train_models_dict[model_key])
                 future = client.submit(
-                    train_model_v2, n_topics, alpha_value, beta_value, TEXTS_ZIP_DIR, PYLDA_DIR, PCOA_DIR, PCA_GPU_DIR, unified_dictionary, scattered_data, "validation",
+                    train_model_v2, DATA_SOURCE, n_topics, alpha_value, beta_value, TEXTS_ZIP_DIR, PYLDA_DIR, PCOA_DIR, PCA_GPU_DIR, unified_dictionary, scattered_data, "validation",
                     RANDOM_STATE, PASSES, ITERATIONS, UPDATE_EVERY, EVAL_EVERY, num_workers, PER_WORD_TOPICS, ldamodel=ldamodel
                 )
                 validation_futures.append(future)
@@ -794,7 +810,7 @@ if __name__=="__main__":
                 model_key = (n_topics, alpha_value, beta_value)
                 ldamodel = pickle.loads(test_models_dict[model_key])
                 future = client.submit(
-                    train_model_v2, n_topics, alpha_value, beta_value, TEXTS_ZIP_DIR, PYLDA_DIR, PCOA_DIR, PCA_GPU_DIR, unified_dictionary, scattered_data, "test",
+                    train_model_v2, DATA_SOURCE, n_topics, alpha_value, beta_value, TEXTS_ZIP_DIR, PYLDA_DIR, PCOA_DIR, PCA_GPU_DIR, unified_dictionary, scattered_data, "test",
                     RANDOM_STATE, PASSES, ITERATIONS, UPDATE_EVERY, EVAL_EVERY, num_workers, PER_WORD_TOPICS, ldamodel=ldamodel
                 )
                 test_futures.append(future)
