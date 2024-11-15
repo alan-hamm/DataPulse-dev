@@ -28,9 +28,12 @@ from dask.distributed import wait
 import os
 from json import load
 from random import shuffle
+import random
 import pandas as pd 
+import numpy as np
 from .utils import garbage_collection
-
+from gensim.corpora import Dictionary
+from .batch_estimation import estimate_futures_batches_large_docs_v2
 
 def futures_create_lda_datasets(filename, train_ratio, validation_ratio, batch_size):
     with open(filename, 'r', encoding='utf-8') as jsonfile:
@@ -110,6 +113,74 @@ def futures_create_lda_datasets(filename, train_ratio, validation_ratio, batch_s
     print(f"Final cumulative count after all batches: {cumulative_count}")
 
 
+
+def futures_create_lda_datasets_v2(documents_path, train_ratio=0.7, validation_ratio=0.15, test_ratio=0.15):
+    # Load the document data from JSON file
+    with open(documents_path, 'r', encoding='utf-8') as jsonfile:
+        documents = load(jsonfile)
+
+    # Create a unified dictionary using the entire corpus (list of lists of tokens)
+    dictionary = Dictionary(documents)
+
+    # Estimate batch size based on the documents using the estimator
+    batch_size = estimate_futures_batches_large_docs_v2(documents_path)
+
+    # Calculate diversity-based sampling probabilities
+    weights = [len(set(doc)) for doc in documents]  # Number of unique words in each document
+    total_weight = sum(weights)
+    probabilities = [weight / total_weight for weight in weights]
+
+    # Ensure probabilities sum to 1 due to floating point imprecision
+    probabilities = np.array(probabilities)
+    probabilities /= probabilities.sum()
+
+    # Determine the number of documents for each split
+    total_documents = len(documents)
+    train_size = int(train_ratio * total_documents)
+    validation_size = int(validation_ratio * total_documents)
+    test_size = total_documents - train_size - validation_size
+
+    # Weighted sampling for train, validation, and test indices
+    all_indices = list(range(total_documents))
+    train_indices = np.random.choice(all_indices, size=train_size, replace=False, p=probabilities)
+    remaining_indices = list(set(all_indices) - set(train_indices))
+
+    # Normalize probabilities for the remaining indices
+    remaining_probabilities = [probabilities[i] for i in remaining_indices]
+    remaining_total_weight = sum(remaining_probabilities)
+    normalized_remaining_probabilities = [p / remaining_total_weight for p in remaining_probabilities]
+
+    # Ensure normalized probabilities sum to 1
+    normalized_remaining_probabilities = np.array(normalized_remaining_probabilities)
+    normalized_remaining_probabilities /= normalized_remaining_probabilities.sum()
+
+    # Validation sampling
+    validation_indices = np.random.choice(remaining_indices, size=validation_size, replace=False, p=normalized_remaining_probabilities)
+    test_indices = list(set(remaining_indices) - set(validation_indices))
+
+    # Use sampled indices to create datasets
+    train_documents = [documents[i] for i in train_indices]
+    validation_documents = [documents[i] for i in validation_indices]
+    test_documents = [documents[i] for i in test_indices]
+
+    # Yield the dictionary as the first item
+    yield {"type": "dictionary", "data": dictionary}
+
+    # Yield batches for each phase as a generator, including type information
+    def create_batches(dataset, phase_type):
+        num_batches = len(dataset) // batch_size + (1 if len(dataset) % batch_size != 0 else 0)
+        for i in range(num_batches):
+            yield {
+                "type": phase_type,
+                "data": dataset[i * batch_size: (i + 1) * batch_size]
+            }
+
+    yield from create_batches(train_documents, "train")
+    yield from create_batches(validation_documents, "validation")
+    yield from create_batches(test_documents, "test")
+
+
+
 def process_completed_futures(phase, connection_string, corpus_label, \
                             completed_train_futures, completed_validation_futures, completed_test_futures, \
                             num_documents, workers, \
@@ -119,7 +190,7 @@ def process_completed_futures(phase, connection_string, corpus_label, \
     #his is the vis_pyldaprint(f"This is the vis_pylda: {vis_pylda}")
     pylda_results_map = {vis_result[0]: vis_result[1:] for vis_result in vis_pylda if vis_result}
     pcoa_results_map = {vis_result[0]: vis_result[1:] for vis_result in vis_pcoa if vis_result}
-    pca_results_map = {vis_result[0]: vis_result[1:] for vis_result in vis_pcoa if vis_result}
+    pca_results_map = {vis_result[0]: vis_result[1:] for vis_result in vis_pca if vis_result}
     # do union of items
     # Combine both maps into a unified vis_results_map
     vis_results_map = {}
