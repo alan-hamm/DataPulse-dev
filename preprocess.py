@@ -398,10 +398,10 @@ def main():
         re.compile(r'wrap.*')
     ]
 
-    CLEANED = os.path.join("C:\\", "SpectraSync", "raw_material", "mmwr", "2010_2014", "cleaned")
-    STATS_DIR = os.path.join("C:\\", "SpectraSync", "raw_material", "mmwr", "2010_2014", "statistics")
+    CLEANED = os.path.join("C:\\", "SpectraSync", "raw_material", "mmwr", "2015_2019", "cleaned")
+    STATS_DIR = os.path.join("C:\\", "SpectraSync", "raw_material", "mmwr", "2015_2019", "statistics")
 
-    TITLE_LIST = parse_directory_for_files("C:/SpectraSync/raw_material/mmwr/2010_2014/pre-processed", ".json")
+    TITLE_LIST = parse_directory_for_files("C:/SpectraSync/raw_material/mmwr/2015_2019/pre-processed", ".json")
     pp.pprint(TITLE_LIST)
 
     delayed_tasks = []
@@ -489,7 +489,7 @@ if __name__ == "__main__":
         sys.exit()
 
     try:
-        with performance_report(filename=r"C:\SpectraSync\raw_material\statistics\dask_report.html"):
+        with performance_report(filename=r"C:\SpectraSync\raw_material\statistics\2015_2019_dask_report.html"):
             main()
     except Exception as e:
         print(f"There was an error in the main method: {e}")
