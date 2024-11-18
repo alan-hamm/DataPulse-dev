@@ -330,7 +330,7 @@ def train_model_v2(data_source: str, n_topics: int, alpha_str: Union[str, float]
     try:
         # Create a delayed task for document topic extraction with error handling
         validation_results_task_delayed = dask.delayed(lambda: [
-            ldamodel.get_document_topics(bow_doc, minimum_probability=0) or [{"topic_id": None, "probability": 0}]
+            ldamodel.get_document_topics(bow_doc, minimum_probability=0.01) or [{"topic_id": None, "probability": 0}]
             for bow_doc in corpus_data[phase]
         ])()
         
