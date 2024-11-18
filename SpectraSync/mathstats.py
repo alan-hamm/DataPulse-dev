@@ -48,7 +48,7 @@ import math
 from decimal import Decimal, InvalidOperation
 from scipy.stats import gaussian_kde
 import random
-
+from scipy import stats
 
 # Calculate mean, median, and mode using CuPy for GPU acceleration
 def calculate_statistics(coherence_scores):
@@ -159,7 +159,7 @@ def calculate_coherence_metrics(default_score=None, data=None, ldamodel=None, di
                 sample_ratio = min(1.0, sample_ratio + 0.1 * attempts)  # Gradually increase the sample ratio
                 coherence_scores = []
                 for _ in range(5):  # Generate multiple coherence scores for averaging
-                    score = sample_coherence(ldamodel, texts, dictionary, sample_ratio=sample_ratio)
+                    score = init_sample_coherence(ldamodel, texts, dictionary, sample_ratio=sample_ratio)
                     if score is not None:
                         coherence_scores.append(score)
                 coherence_scores = cp.array(coherence_scores, dtype=cp.float32)
@@ -184,14 +184,19 @@ def calculate_coherence_metrics(default_score=None, data=None, ldamodel=None, di
         else:
             raise ValueError("Not enough elements for mode calculation.")
     except ValueError:
-        logging.warning("Mode calculation using bincount failed or insufficient data. Falling back to a simple average.")
-        mode_value = float(cp.mean(coherence_scores))
+        logging.warning("Mode calculation using bincount failed or insufficient data. Attempting KDE.")
+        #mode_value = float(cp.mean(coherence_scores))
+        try:
+            kde = stats.gaussian_kde(cp.asnumpy(coherence_scores))
+            mode_value = coherence_scores[cp.argmax(kde.evaluate(coherence_scores))]
+        except Exception as e:
+            logging.warning(f"Mode calculation using KDE failed. Falling back to simple average: {e}")
+            mode_value = float(cp.mean(coherence_scores))
 
     data['mode_coherence'] = mode_value
 
     # Convert to PyTorch tensor if needed
     if return_torch_tensor:
-        import torch
         data['mean_coherence'] = torch.tensor(float(data['mean_coherence'].get()), device='cuda')
         data['median_coherence'] = torch.tensor(float(data['median_coherence'].get()), device='cuda')
         data['std_coherence'] = torch.tensor(float(data['std_coherence'].get()), device='cuda')
@@ -421,9 +426,16 @@ def calculate_perplexity_threshold(ldamodel, documents, default_score):
     if not documents:  # Check if documents list is empty
         return default_score  # Return a default score if there are no documents
     
-    perplexity = ldamodel.log_perplexity(documents)
-    threshold = 0.8 * perplexity  # Adjust this multiplier based on observed correlation
+    negative_log_likelihood = ldamodel.log_perplexity(documents)
+    threshold = min(0.3 * abs(negative_log_likelihood), 10)  # Set a hard upper limit for threshold
+
+    # Check if the calculated threshold is reasonable
+    if threshold < 0.1 or threshold > 1000:  # Example of an unreasonable range
+        logging.error(f"Calculated threshold ({threshold}) is outside the reasonable range. Halting the pipeline.")
+        return None  # Indicate failure to proceed
+
     return threshold
+
 
 # Main decision logic based on coherence statistics and threshold
 def coherence_score_decision(ldamodel, documents, dictionary, initial_sample_ratio=0.1):
