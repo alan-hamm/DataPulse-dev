@@ -160,39 +160,16 @@ from dask import delayed
 ################################
 
 DOC_ID = r'.*[\d\w\-.]+\.(html|json)$'  # Regular expression pattern to identify document filenames ending in .html or .json.
+#DOC_ID = r'^.*/cleaned/[^/]+\.(html|json)$'
 
-DOC_TYPE = 'html'
-DOC_FOLDER = '1910s'
+DOC_TYPE = 'json'
+DOC_FOLDER = '2010_2014'
 
-TAGS = ['p']  # List of HTML tags to extract content from; 'p' is commonly used to denote paragraphs in HTML.
+TAGS = ['p', 'i']  # List of HTML tags to extract content from; 'p' is commonly used to denote paragraphs in HTML.
 
-regex_attr_to_remove = [
-    re.complile(r'^accept.*'), re.compile(r'accept.*'), re.compile(r'access.*'), re.compile(r'action.*'), 
-    re.compile(r'align.*'), re.compile(r'alt.*'), re.compile(r'async.*'), re.compile(r'auto.*'),
-    re.compile(r'bg.*'), re.compile(r'border.*'),
-    re.compile(r'charset.*'), re.compile(r'cite.*'), re.compile(r'class.*'), re.compile(r'color.*'), re.compile(r'col.*'), 
-    re.compile(r'content.*'), re.compile(r'control.*'), re.compile(r'coords.*'),
-    re.compile(r'data.*'), re.compile(r'date.*'), re.compile(r'disabled.*'), re.compile(r'download.*'), re.compile(r'draggable.*'),
-    re.compile(r'enctype.*'), re.compile(r'enter.*'),
-    re.compile(r'for.*'),
-    re.compile(r'height.*'), re.compile(r'hidden.*'), re.compile(r'high.*'), re.compile(r'href.*'), re.compile(r'https.*'),
-    re.comopile(r'id.*'), re.compile(r'inert.*'), re.compile(r'input.*'), re.compile(r'ismap.*'),
-    re.compile(r'kind.*'),
-    re.compile(r'label.*'), re.compile(r'lang.*'), re.compile(r'list.*'), re.compile(r'loop.*'), re.compile(r'low.*'),
-    re.compile(r'max.*'), re.compile(r'media.*'), re.compile(r'method.*'), re.compile(r'min.*'), re.compile(r'multiple.*'), re.compile(r'muted.*'),
-    re.compile(r'name.*'), re.compile(r'novalidate.*'),
-    re.compile(r'on.*'), re.compile(r'open.*'), re.compile(r'optimum.*'),
-    re.compile(r'pattern.*'), re.compile(r'place.*'), re.compile(r'pop.*'), re.compile(r'poster.*'), re.compile(r'pre.*'),
-    re.compile(r'read.*'), re.compile(r'rel.*'), re.compile(r'required.*'), re.compile(r'reverse.*'), re.compile(r'row.*'),
-    re.compile(r'sand.*'), re.compile(r'scope.*'), re.compile(r'select.*'), re.compile(r'shape.*'), re.compile(r'size.*'), re.compile(r'span.*'),
-    re.compile(r'spell.*'), re.compile(r'src.*'), re.compile(r'start.*'), re.compile(r'step.*'), re.compile(r'style.*'),
-    re.compile(r'tab.*'), re.compile(r'target.*'), re.compile(r'translate.*'), re.compile(r'type.*'), 
-    re.compile(r'usemap.*'),
-    re.compile(r'value.*'),
-    re.compile(r'width'),
-    re.compile(r'wrap.*') ]
+
 ##################################
-class DocumentParser(CorpusReader):
+class UnifiedParser(CorpusReader):
        
     def __init__(self, root, tags=TAGS, fileids=DOC_ID, **kwargs):
         CorpusReader.__init__(self, root, fileids)
@@ -228,7 +205,7 @@ class DocumentParser(CorpusReader):
             # Track HTML tag counts
             for tag in soup.find_all():
                 self.html_tag_counts[tag.name] += 1
-            for tag in any(pattern.match(key) 
+
             for p in paragraphs:
                 text = p.get_text()
                 tokenized_paragraph = re.findall(r'\b\w+\b', text)
@@ -593,12 +570,12 @@ class DocumentParser(CorpusReader):
 
         Returns:
             tuple: A tuple containing:
-                - doc_dict (list): List of valid paragraphs.
+                - documents (list): List of valid paragraphs.
                 - error_dict (list): List of invalid paragraphs.
                 - count (int): Number of valid paragraphs added after cleaning.
                 - all_paragraph_count (int): Total number of valid paragraphs.
         """
-        doc_dict = []
+        documents = []
         error_dict = []
         count = 0
         all_paragraph_count = 0 
@@ -615,7 +592,7 @@ class DocumentParser(CorpusReader):
                 if isinstance(validation_result, bool) and validation_result:  
                     # Valid paragraph
                     all_paragraph_count += 1
-                    doc_dict.append(html_content)
+                    documents.append(html_content)
                 else:
                     # Invalid paragraph; log to the invalid paragraphs file
                     if not isinstance(validation_result, bool):
@@ -624,11 +601,11 @@ class DocumentParser(CorpusReader):
 
                         if isinstance(self.validate_paragraph(cleaned_html_content), bool):
                             count += 1
-                            doc_dict.append(cleaned_html_content)
+                            documents.append(cleaned_html_content)
                         else:
                             error_dict.append(cleaned_html_content)
 
-        return doc_dict, self.get_error_statistics()
+        return documents, self.get_error_statistics()
 
 
 
@@ -778,18 +755,19 @@ if __name__ == "__main__":
 
 
     #corpus_path = os.path.join("topic-modeling", "data", "docs-to-process", "PROJECT_FOLDER")
-    corpus_path = f"C:/SpectraSync/raw_material/{DOC_FOLDER}"
+    corpus_path = f"C:/SpectraSync/raw_material/mmwr/{DOC_FOLDER}/cleaned"
 
-    _corpus = DocumentParser(corpus_path)
+    _corpus = UnifiedParser(corpus_path)
     # print filenames
-    print("The file being processed:",_corpus.fileids())
+    print("The file being processed:")
+    pp.pprint(_corpus.fileids())
 
 
     # In[ ]:
 
 
     # Define generic paths for log files
-    base_path = f"C:/SpectraSync/raw_material/{DOC_FOLDER}/log"
+    base_path = f"C:/SpectraSync/raw_material/mmwr/{DOC_FOLDER}/log"
     os.makedirs(base_path, exist_ok=True)
 
     log_file_path = os.path.join(base_path, f"log_error.log")
@@ -806,14 +784,14 @@ if __name__ == "__main__":
 
 
     # Define generic paths for log files
-    base_path = f"C:/SpectraSync/raw_material/statistics/"
+    base_path = f"C:/SpectraSync/raw_material/mmwr/{DOC_FOLDER}/statistics/"
     os.makedirs(base_path, exist_ok=True)
 
 
     #####################
     # ERROR CSV
     #####################
-    output_csv_path = f"C:/SpectraSync/raw_material/statistics/{DOC_FOLDER}_stats.csv"
+    output_csv_path = f"C:/SpectraSync/raw_material/mmwr/{DOC_FOLDER}/statistics/{DOC_FOLDER}_stats.csv"
 
     # Convert nested dictionaries to JSON strings
     data_for_csv = {key: (json.dumps(value) if isinstance(value, dict) else value)
@@ -838,7 +816,7 @@ if __name__ == "__main__":
     # Flatten nested dictionary
     ###########################
     # Write to CSV in RFC 4180 format
-    output_csv_path = f"C:/SpectraSync/raw_material/statistics/{DOC_FOLDER}_rfc4180_stats.csv"
+    output_csv_path = f"C:/SpectraSync/raw_material/mmwr/{DOC_FOLDER}/statistics/{DOC_FOLDER}_rfc4180_stats.csv"
 
     def flatten_dict(d, parent_key='', sep='.'):
         items = []
@@ -868,7 +846,7 @@ if __name__ == "__main__":
     # WRITE TO JSON
     ####################
     # Output JSON file path
-    output_json_path = f"C:/SpectraSync/raw_material/statistics/{DOC_FOLDER}_stats.json"
+    output_json_path = f"C:/SpectraSync/raw_material/mmwr/{DOC_FOLDER}/statistics/{DOC_FOLDER}_stats.json"
 
     # Write to JSON file
     with open(output_json_path, mode="w", encoding="utf-8") as file:
@@ -921,7 +899,7 @@ if __name__ == "__main__":
     
     print("writing texts_out_not_lemmatized_without_stopwords.json")
     # Define the file path for saving processed text in JSON format
-    filename2 = f"C:/SpectraSync/processed_material/{DOC_FOLDER}/texts_out_lemmatized_with_stopwords.json"
+    filename2 = f"C:/SpectraSync/processed_material/mmwr/{DOC_FOLDER}/texts_out_lemmatized_with_stopwords.json"
     # Open the specified file in write mode
     with open(filename2, 'w', encoding='utf-8') as jsonfile:
         # Write the processed text data to the JSON file with formatting and UTF-8 encoding
@@ -929,7 +907,7 @@ if __name__ == "__main__":
 
     print("writing texts_out_lemmatized_without_stopwords.json")
     # Define the file path for saving processed text in JSON format
-    filename2 = f"C:/SpectraSync/processed_material/{DOC_FOLDER}/texts_out_lemmatized_without_stopwords.json"
+    filename2 = f"C:/SpectraSync/processed_material/mmwr/{DOC_FOLDER}/texts_out_lemmatized_without_stopwords.json"
     # Open the specified file in write mode
     with open(filename2, 'w', encoding='utf-8') as jsonfile:
         # Write the processed text data to the JSON file with formatting and UTF-8 encoding
@@ -937,7 +915,7 @@ if __name__ == "__main__":
 
     print("writing texts_out_not_lemmatized_with_stopwords.json ")
     # Define the file path for saving processed text in JSON format
-    filename2 = f"C:/SpectraSync/processed_material/{DOC_FOLDER}/texts_out_not_lemmatized_with_stopwords.json"
+    filename2 = f"C:/SpectraSync/processed_material/mmwr/{DOC_FOLDER}/texts_out_not_lemmatized_with_stopwords.json"
     # Open the specified file in write mode
     with open(filename2, 'w', encoding='utf-8') as jsonfile:
         # Write the processed text data to the JSON file with formatting and UTF-8 encoding
@@ -945,7 +923,7 @@ if __name__ == "__main__":
 
     print("writing texts_out_not_lemmatized_without_stopwords.json")
     # Define the file path for saving processed text in JSON format
-    filename2 = f"C:/SpectraSync/processed_material/{DOC_FOLDER}/texts_out_not_lemmatized_without_stopwords.json"
+    filename2 = f"C:/SpectraSync/processed_material/mmwr/{DOC_FOLDER}/texts_out_not_lemmatized_without_stopwords.json"
     # Open the specified file in write mode
     with open(filename2, 'w', encoding='utf-8') as jsonfile:
         # Write the processed text data to the JSON file with formatting and UTF-8 encoding
