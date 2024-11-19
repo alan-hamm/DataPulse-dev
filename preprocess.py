@@ -173,8 +173,7 @@ def parse_with_simulated_progress(file_path):
     return soup
 
 # Function to scrape and extract paragraphs with tags
-@delayed
-def scrape_paragraphs_with_tags(file_path, regex_patterns):
+def scrape_paragraphs_with_tags(file_path, html_data, regex_patterns):
     """
     Extracts and processes HTML paragraphs from a file with parallelization support.
 
@@ -210,10 +209,16 @@ def scrape_paragraphs_with_tags(file_path, regex_patterns):
     stats = HTMLParserStatistics()
     cleaned_paragraphs = []
     try:
-        with open(file_path, "r", encoding="utf-8") as file:
-            html_content = file.read()
+        #with open(file_path, "r", encoding="utf-8") as file:
+        #    html_content = file.read()
+        html_content = dask.compute(html_data)
+        if not isinstance(html_content, tuple):
+            raise ValueError("The scattered HTML was not unpacked.")
+        
+        #print("This is the first part of HTML JSON...")
+        #print(html_content[0][:100])
 
-        soup = BeautifulSoup(html_content, "html.parser")
+        soup = BeautifulSoup(html_content[0], "html.parser")
         paragraphs = soup.find_all("p")
 
         print("Parsing BeautifulSoup Paragraph Object")
@@ -346,7 +351,7 @@ def scrape_paragraphs_with_tags(file_path, regex_patterns):
     if len(cleaned_paragraphs) == 0:
          raise ValueError("The cleaned paragraphs contained no content.")
     
-    return stats, cleaned_paragraphs
+    return stats, cleaned_paragraphs, file_path
 
 
 
@@ -398,35 +403,39 @@ def main():
         re.compile(r'wrap.*')
     ]
 
-    CLEANED = os.path.join("C:\\", "SpectraSync", "raw_material", "mmwr", "2015_2019", "cleaned")
-    STATS_DIR = os.path.join("C:\\", "SpectraSync", "raw_material", "mmwr", "2015_2019", "statistics")
+    CLEANED = os.path.join("C:\\", "SpectraSync", "raw_material", "mmwr", "2020_2024", "cleaned")
+    STATS_DIR = os.path.join("C:\\", "SpectraSync", "raw_material", "mmwr", "2020_2024", "statistics")
 
-    TITLE_LIST = parse_directory_for_files("C:/SpectraSync/raw_material/mmwr/2015_2019/pre-processed", ".json")
+    TITLE_LIST = parse_directory_for_files("C:/SpectraSync/raw_material/mmwr/2020_2024/pre-processed", ".json")
     pp.pprint(TITLE_LIST)
 
-    delayed_tasks = []
+    futures = []
     for file_path in TITLE_LIST:
+        with open(file_path, "r", encoding="utf-8") as file:
+            html_content = file.read()
+        scattered = client.scatter(html_content)
         try:
-            task = scrape_paragraphs_with_tags(file_path, regex_attr_to_remove)
-            delayed_tasks.append(task)
+            future = client.submit( scrape_paragraphs_with_tags, file_path, scattered, regex_attr_to_remove)
+            futures.append(future)
         except Exception as e:
             print(f"Error scheduling task for {file_path}: {e}")
             continue
 
-    print("Computing delayed objects...")
-    computed_results = compute(*delayed_tasks)
+    print("Computing futures objects...")
+    completed_futures, not_done = wait(futures)
+
+    results = [done.result() for done in completed_futures]
     
-    invalid_results = [result for result in computed_results if not (isinstance(result, tuple) and len(result) == 2)]
+    invalid_results = [result for result in results if not (isinstance(result, tuple) and len(result) == 3)]
     if invalid_results:
         print(f"Skipping {len(invalid_results)} invalid results: {invalid_results}")
 
-    
-    computed_results = [result for result in computed_results if isinstance(result, tuple) and len(result) == 2]
-    
-    computed_stats, cleaned_paragraphs_list = zip(*computed_results)  # Split results into separate lists
 
-    for stats, paragraphs, file_path in zip(computed_stats, cleaned_paragraphs_list, TITLE_LIST):
+    #for stats, paragraphs, file_path in zip(computed_stats, cleaned_paragraphs_list, TITLE_LIST):
+    for result in results:
         try:
+            stats, paragraphs, file_path = result  # Unpack the tuple directly from each resolved future result
+
             if not isinstance(paragraphs, list):
                 raise ValueError(f"Paragraphs are not a list for file {file_path}. Value: {paragraphs}")
 
@@ -443,6 +452,10 @@ def main():
             # Save statistics
             stats_file = os.path.join(STATS_DIR, f"{base_name}_statistics.json")
             save_statistics(stats, stats_file)
+            client.cancel(result)
+
+            print("Rebalancing tasks across workers...")
+            client.rebalance()
         except Exception as e:
             print(f"There was an error in writing the paragraph to file: {e}")
 
@@ -450,10 +463,10 @@ def main():
 if __name__ == "__main__":
     start_time = pd.Timestamp.now()
     cluster = LocalCluster(
-            n_workers=12,
-            threads_per_worker=1,
+            n_workers=8,
+            threads_per_worker=2,
             processes=True,
-            memory_limit="8GB",
+            memory_limit="18GB",
             local_directory=r"C:\Temp\dask",
             dashboard_address=":8787",
             protocol="tcp",
@@ -465,7 +478,7 @@ if __name__ == "__main__":
     client = Client(cluster, timeout='1000s')
 
     # set for adaptive scaling
-    client.cluster.adapt(minimum=12, maximum=14)
+    client.cluster.adapt(minimum=9, maximum=11)
     
     # Check if the Dask client is connected to a scheduler:
     if client.status == "running":
@@ -489,7 +502,7 @@ if __name__ == "__main__":
         sys.exit()
 
     try:
-        with performance_report(filename=r"C:\SpectraSync\raw_material\statistics\2015_2019_dask_report.html"):
+        with performance_report(filename=r"C:\SpectraSync\raw_material\statistics\2020_2024_dask_report.html"):
             main()
     except Exception as e:
         print(f"There was an error in the main method: {e}")
