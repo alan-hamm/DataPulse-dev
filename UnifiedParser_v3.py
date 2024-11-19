@@ -1,71 +1,38 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# # **ETL for SpectraSync**
-# 
-# ### **Author**: [Your Name]  
-# ### **Date**: [Date of Notebook Creation]
-# 
-# ---
-# 
-# ## **Notebook Overview**
-# 
-# This notebook is part of the **Unified Topic Modeling Analysis (UTMA)** project, focusing on the **Extract, Transform, Load (ETL)** process for preparing textual data from various sources—including medical journals, novels, and general public health documents—for topic modeling and diachronic analysis.
-# 
-# ### **1. Objectives of the ETL Process**
-# The primary purpose of this ETL notebook is to preprocess textual data from multiple time periods and sources in a manner that ensures high variability in the resulting corpora, which is crucial for effective topic modeling and subsequent diachronic analysis. Specifically, this notebook will:
-# - **Combine Data from Multiple Time Periods**: Expand the temporal scope by merging different corpora (e.g., CDC MMWR publications from 2010-2014, 2014-2019, and 2020-2024) into a unified text to increase diversity.
-# - **Balanced Sampling and Temporal Tagging**: Ensure that each document is tagged with its respective time period, enabling balanced representation across temporal spans during training.
-# - **Diversity-Oriented Batch Preparation**: Implement strategies to diversify the data, such as weighted sampling and clustering, to mitigate the limited variance that impacts model quality.
-# 
-# ### **2. Data Sources**
-# - **CDC MMWR Journals** (2010-2024): Split into three segments (2010-2014, 2014-2019, 2020-2024) to allow for **temporal analysis** and facilitate the understanding of changes in public health discourse.
-# - **Additional Texts (Future Expansion)**: General-purpose pipeline to support documents such as novels, newspaper articles, and other public health records.
-# 
-# ### **3. Key Preprocessing Steps**
-# This notebook will perform the following steps to ensure that the final output is prepared for topic modeling in a robust and variance-rich manner:
-# - **Text Extraction**:
-#   - Extract raw paragraphs from input documents and corpora, ensuring all parts of the data are captured.
-#   
-# - **Content Transformation**:
-#   - **Tokenization**: Utilize spaCy’s NLP pipeline to tokenize the paragraphs.
-#   - **Stop Word Handling**: Evaluate and experiment with retaining or removing stop words, considering their role in providing context and facilitating diachronic analysis.
-#   - **POS Filtering and Character Length Adjustment**: Initially process only content-rich words (nouns, adjectives, verbs, adverbs) with 5+ characters, but allow flexibility to include other parts of speech or adjust the threshold based on analysis needs.
-#   - **Temporal Tagging**: Tag paragraphs with their respective time period to retain temporal information for balanced sampling and diachronic analysis.
-# 
-# ### **4. Strategies for Variability Enhancement**
-# Given the challenges of **limited variance** within homogenous corpora (e.g., CDC MMWR journals), this notebook employs multiple strategies to ensure variability:
-# - **Balanced Sampling Across Time Periods**: Incorporate a balanced mix of paragraphs from all three time segments in each training batch.
-# - **Diversity-Based Batch Formation and Weighted Sampling**: Use techniques like **TF-IDF-based clustering** and **weighted sampling** to diversify the batches, ensuring maximum differentiation between topics.
-#   
-# ### **5. Data Outputs**
-# - **Unified Corpus**: A unified text, comprising paragraphs from all three temporal segments, tagged accordingly.
-# - **Segmented Corpora**: Individual segments for each time period, maintaining temporal integrity for diachronic analysis.
-# - **Batch Preparation for Training**: Diverse and balanced batches of paragraphs ready for input into the **Gensim LDA model**, ensuring that variability is maximized to improve coherence, perplexity, and topic differentiation.
-# 
-# ### **6. Challenges Addressed in ETL**
-# - **Limited Corpus Variance**: By expanding the data scope and employing balanced sampling and batch diversification, the goal is to address and mitigate the uniformity issues that limit the richness of LDA topics.
-# - **Preparation for Future Analysis**: This notebook not only sets the foundation for robust LDA modeling but also prepares the data for **dynamic topic modeling (DTM)** and **hierarchical LDA (hLDA)**, to be implemented in subsequent stages for a richer understanding of topic evolution over time.
-# 
-# ### **7. Future Considerations**
-# - **Data Augmentation**: Consider data augmentation techniques such as synonym replacement or back-translation to further enhance variability in future iterations.
-# - **Advanced Modeling Approaches**: This ETL process will feed into subsequent modeling efforts, including experimenting with **Non-Negative Matrix Factorization (NMF)** and **hierarchical topic modeling**, as well as exploring **adaptive thresholding** for coherence metrics.
-# 
-# ---
-# 
-# ### **Notebook Flow**
-# 1. **Setup and Initialization**: Import necessary libraries, set up paths, and initialize logging.
-# 2. **Data Extraction**: Load and preview the data from the three corpora (2010-2014, 2014-2019, 2020-2024).
-# 3. **Text Preprocessing**: Tokenize, filter, and tag data for each paragraph.
-# 4. **Batch Formation**: Implement batch formation strategies (balanced sampling, diversity-based clustering).
-# 5. **Output Generation**: Save the processed data for further use in topic modeling.
-# 
-# **Note**: This notebook is designed to be modular and adaptive, supporting different types of textual data as we continue to refine the topic modeling pipeline.
-# 
-# --- 
-# 
-# **Let’s get started by setting up the environment and extracting the data.** 
-# 
+# SpectraSync: Neural Intelligence Meets Multi-Dimensional Topic Analysis
+
+#This notebook performs document preprocessing for the SpectraSync: Neural Intelligence Meets Multi-Dimensional Topic Analysis pipeline, ensuring 
+# documents are prepared for seamless ingestion by `specrasync.py` and related scripts. The SpectraSync pipeline integrates topic modeling, 
+# diachronic analysis, and visualization, allowing for adaptable and detailed analysis across diverse textual corpora. This notebook ensures 
+# document standardization, facilitating compatibility with SpectraSync's topic modeling and evaluation stages.
+
+### Notebook Objectives
+#- **Load and Transform Documents**: Imports and structures text from HTML and JSON files, preparing them for SpectraSync's topic analysis.
+#- **Data Cleansing**: Standardizes text by removing curly quotes, non-printable characters, and other inconsistencies.
+#- **Content Structuring**: Extracts text using BeautifulSoup and regex, arranging it into paragraphs and sentences.
+#- **Output Preparation**: Produces a processed corpus in a format optimized for `SpectraSync.py` ingestion, supporting downstream analysis and 
+# visualization.
+
+### Dependencies and Related Components
+#This notebook is designed to work alongside the following scripts:
+#- **`SpectraSync.py`**: Coordinates topic modeling, diachronic analysis, and evaluation.
+#- **`alpha_eta.py`**: Supports hyperparameter tuning for model optimization.
+#- **`process_futures.py`**: Manages asynchronous processing, essential for handling large datasets efficiently.
+#- **`topic_model_trainer.py`**: Defines and trains the topic models used in SpectraSync.
+#- **`visualization.py`**: Generates visualizations for model insights and evaluation.
+#- **`write_to_postgres.py`**: Facilitates data persistence into PostgreSQL, supporting structured data retrieval.
+#- **`utils.py`**: Provides utility functions to enhance efficiency and consistency across the SpectraSync pipeline.
+
+### Workflow Overview
+# 1. **Document Loading**: Reads HTML or JSON files, detecting encoding where necessary.
+# 2. **Content Extraction**: Extracts structured content, normalizing punctuation and replacing curly quotes for text consistency.
+# 3. **Data Output**: Saves the processed content in a structured format for direct use in `spectrasync.py`.
+
+# Running this notebook prepares a clean, standardized corpus compatible with the SpectraSync pipeline, optimizing input quality 
+# for topic modeling and diachronic analysis.
+ 
 
 # In[ ]:
 # Standard Library Imports
@@ -163,7 +130,7 @@ DOC_ID = r'.*[\d\w\-.]+\.(html|json)$'  # Regular expression pattern to identify
 #DOC_ID = r'^.*/cleaned/[^/]+\.(html|json)$'
 
 DOC_TYPE = 'json'
-DOC_FOLDER = '2010_2014'
+DOC_FOLDER = '2020_2024'
 
 TAGS = ['p', 'i']  # List of HTML tags to extract content from; 'p' is commonly used to denote paragraphs in HTML.
 
@@ -433,19 +400,20 @@ class UnifiedParser(CorpusReader):
                 for sentence in nltk.sent_tokenize(paragraph): 
                     yield sentence
 
-    def words(self, fileids=None): 
-            """
-            Splits sentences into individual words.
+    def words(self, fileids=None):
+        """
+        Splits sentences into individual words, ensuring tokens are at least
+        2 characters long and consist only of alphabetic characters.
 
-            Parameters:
-                fileids (str or None): Specific file identifier(s) or None.
+        Parameters:
+            fileids (str or None): Specific file identifier(s) or None.
 
-            Yields:
-                str: Extracted word token.
-            """
-            for sentence in self.sents(fileids=fileids):
-                for token in nltk.wordpunct_tokenize(sentence):
-                    yield token
+        Yields:
+            str: Extracted word token.
+        """
+        for sentence in self.sents(fileids=fileids):
+            for token in nltk.wordpunct_tokenize(sentence):
+                yield token
                     
     def validate_paragraph(self, paragraph):
         """
@@ -605,7 +573,7 @@ class UnifiedParser(CorpusReader):
                         else:
                             error_dict.append(cleaned_html_content)
 
-        return documents, self.get_error_statistics()
+        return documents #, self.get_error_statistics()
 
 
 
@@ -663,7 +631,7 @@ def process_corpus_streaming(corpus_stream_generator, lemmatize=False, include_s
         inner_text = []
         doc = nlp(paras)
         for token in doc:
-            if len(token.text) > 1:
+            if len(token.text) >= 2 and token.text.isalpha():
                 if include_stopwords or (token.text.lower() not in stop_words and token.lemma_.lower() not in stop_words):
                     inner_text.append(token.lemma_ if lemmatize else token.text)
         if len(inner_text) > 0:
@@ -672,7 +640,29 @@ def process_corpus_streaming(corpus_stream_generator, lemmatize=False, include_s
     # Move return statement outside the loop
     return texts_out, lemmatize, include_stopwords
 
+def generate_bigrams(texts_for_processing, min_count=20):
 
+    # Create bigrams (two-word combinations) from the processed text data in `texts_for_processing`.
+    # Only word pairs that appear frequently (default threshold of 20 times or more) are considered valid bigrams.
+    bigram = Phrases(texts_for_processing, min_count)
+
+    # Initialize a frequency distribution object to count occurrences of each bigram for analysis
+    bigram_freq = nltk.FreqDist()
+
+    # Display detected bigrams for review; this allows verification of commonly identified phrases.
+    for ngrams, _ in bigram.vocab.items():
+        if '_' in ngrams:  # Identify only bigrams (contains '_')
+            bigram_freq[ngrams] += 1
+            #print(ngrams)  # Output each bigram to review its presence in the text data
+
+    # Add identified bigrams to each document in `texts_for_processing`.
+    # This step includes the bigrams in further analysis or model training as part of the document content.
+    for idx in range(len(texts_for_processing)):
+        for token in bigram[texts_for_processing[idx]]:
+            if '_' in token:  # Check if token is a bigram
+                texts_for_processing[idx].append(token)  # Append bigram to the current document
+
+    return texts_for_processing
 
 
 
@@ -697,10 +687,10 @@ if __name__ == "__main__":
                     ,'distributed.worker.memory.terminate': 0.99})
 
 
-    DASK_DIR = r"C:\Temp\max_spill"
-    CORES = 12
-    MAXIMUM_CORES = 14
-    THREADS_PER_CORE = 1
+    DASK_DIR = r"C:\Temp\dask"
+    CORES = 10
+    MAXIMUM_CORES = 12
+    THREADS_PER_CORE = 2
     RAM_MEMORY_LIMIT = "10GB"
     # Configuration for Dask Distributed
     start_time = pd.Timestamp.now()
@@ -726,12 +716,6 @@ if __name__ == "__main__":
     # set for adaptive scaling
     client.cluster.adapt(minimum=CORES, maximum=MAXIMUM_CORES)
         
-    # Get information about workers from scheduler
-    workers_info = client.scheduler_info()["workers"]
-
-    # Iterate over workers and set their memory limits
-    for worker_id, worker_info in workers_info.items():
-        worker_info["memory_limit"] = "10GB"
 
     # Check if the Dask client is connected to a scheduler:
     if client.status == "running":
@@ -767,19 +751,20 @@ if __name__ == "__main__":
 
 
     # Define generic paths for log files
-    base_path = f"C:/SpectraSync/raw_material/mmwr/{DOC_FOLDER}/log"
+    base_path = f"C:/SpectraSync/processed_material/mmwr/{DOC_FOLDER}/log"
     os.makedirs(base_path, exist_ok=True)
 
     log_file_path = os.path.join(base_path, f"log_error.log")
     non_html_log_path = os.path.join(base_path, f"non_html_content.log")
 
     # Run the generate function with generic paths
-    corpus_tuple, error_statistics = _corpus.generate(
+    #corpus_tuple, error_statistics = _corpus.generate(
+    corpus_tuple = _corpus.generate(
         log_file_path=log_file_path,
         non_html_log_path=non_html_log_path
     )
 
-
+    '''
     pp.pprint(error_statistics)
 
 
@@ -853,7 +838,7 @@ if __name__ == "__main__":
         json.dump(error_statistics, file, indent=4)  # Use indent=4 for pretty-printing
 
     print(f"Data written to {output_json_path}")
-
+    '''
 
 
     ########################
@@ -872,7 +857,7 @@ if __name__ == "__main__":
 
     # Create delayed objects for each chunk and each configuration
     delayed_futures = []
-    for chunk in tqdm(corpus_chunks, total=len(corpus_chunks), desc="Processing Delayed Objects", file=sys.stdout):
+    for chunk in tqdm(corpus_chunks, total=len(corpus_chunks), desc="Created delayed objects", file=sys.stdout):
         delayed_futures.append(delayed(process_corpus_streaming)(chunk, True, True))
         delayed_futures.append(delayed(process_corpus_streaming)(chunk, True, False))
         delayed_futures.append(delayed(process_corpus_streaming)(chunk, False, True))
@@ -882,7 +867,7 @@ if __name__ == "__main__":
     batch_size = 20  # Define an appropriate batch size based on available memory
 
     # Using tqdm to display progress for the batch computations
-    for i in tqdm(range(0, len(delayed_futures), batch_size), desc="Processing batches with Dask", file=sys.stdout):
+    for i in tqdm(range(0, len(delayed_futures), batch_size), desc="Processing delayed objects", file=sys.stdout):
         batch = delayed_futures[i:i + batch_size]
         results = dask.compute(*batch)
         for result in results:
@@ -896,38 +881,89 @@ if __name__ == "__main__":
             elif not is_lemmatized and not has_stopwords:
                 texts_out_not_lemmatized_without_stopwords.extend(sentences)
 
-    
+
+
+
+    os.makedirs(f"C:/SpectraSync/processed_material/mmwr/{DOC_FOLDER}/final", exist_ok=True)
+
+    print("writing texts_out_lemmatized_with_stopwords")
+    # Define the file path for saving processed text in JSON format
+    filename2 = f"C:/SpectraSync/processed_material/mmwr/{DOC_FOLDER}/final/texts_out_lemmatized_with_stopwords.json"
+
+    with open(filename2, 'w', encoding='utf-8') as jsonfile:
+        # Write the processed text data to the JSON file with formatting and UTF-8 encoding
+        json.dump(texts_out_lemmatized_with_stopwords, jsonfile, indent=2, ensure_ascii=False)
+
+    # texts_out_lemmatized_with_stopwords
+    texts_out_lemmatized_with_stopwords_with_bigrams = generate_bigrams(texts_out_lemmatized_with_stopwords)
+
+    bigrams = f"C:/SpectraSync/processed_material/mmwr/{DOC_FOLDER}/final/texts_out_lemmatized_with_stopwords_with_bigrams.json"
+    # Open the specified file in write mode
+    with open(bigrams, 'w', encoding='utf-8') as jsonfile:
+        # Write the processed text data to the JSON file with formatting and UTF-8 encoding
+        json.dump(texts_out_lemmatized_with_stopwords_with_bigrams, jsonfile, indent=2, ensure_ascii=False)
+
+
+
+
+    print("writing texts_out_lemmatized_without_stopwords")
+    # Define the file path for saving processed text in JSON format
+    filename2 = f"C:/SpectraSync/processed_material/mmwr/{DOC_FOLDER}/final/texts_out_lemmatized_without_stopwords.json"
+    # Open the specified file in write mode
+    with open(filename2, 'w', encoding='utf-8') as jsonfile:
+        # Write the processed text data to the JSON file with formatting and UTF-8 encoding
+        json.dump(texts_out_lemmatized_without_stopwords, jsonfile, indent=2, ensure_ascii=False)
+
+    texts_out_lemmatized_without_stopwords_with_bigrams = generate_bigrams(texts_out_lemmatized_without_stopwords)
+    bigrams = f"C:/SpectraSync/processed_material/mmwr/{DOC_FOLDER}/final/texts_out_lemmatized_without_stopwords_with_bigrams.json"
+    # Open the specified file in write mode
+    with open(bigrams, 'w', encoding='utf-8') as jsonfile:
+        # Write the processed text data to the JSON file with formatting and UTF-8 encoding
+        json.dump(texts_out_lemmatized_without_stopwords_with_bigrams, jsonfile, indent=2, ensure_ascii=False)
+
+
+
+
+    print("writing texts_out_not_lemmatized_with_stopwords ")
+    # Define the file path for saving processed text in JSON format
+    filename2 = f"C:/SpectraSync/processed_material/mmwr/{DOC_FOLDER}/final/texts_out_not_lemmatized_with_stopwords.json"
+    # Open the specified file in write mode
+    with open(filename2, 'w', encoding='utf-8') as jsonfile:
+        # Write the processed text data to the JSON file with formatting and UTF-8 encoding
+        json.dump(texts_out_not_lemmatized_with_stopwords, jsonfile, indent=2, ensure_ascii=False)
+
+    # texts_out_not_lemmatized_with_stopwords
+    texts_out_not_lemmatized_with_stopwords_with_bigrams = generate_bigrams(texts_out_not_lemmatized_with_stopwords)
+
+    # Define the file path for saving processed text in JSON format
+    bigrams = f"C:/SpectraSync/processed_material/mmwr/{DOC_FOLDER}/final/texts_out_not_lemmatized_with_stopwords_with_bigrams.json"
+    # Open the specified file in write mode
+    with open(bigrams, 'w', encoding='utf-8') as jsonfile:
+        # Write the processed text data to the JSON file with formatting and UTF-8 encoding
+        json.dump(texts_out_not_lemmatized_with_stopwords_with_bigrams, jsonfile, indent=2, ensure_ascii=False)
+
+
+
+
+
     print("writing texts_out_not_lemmatized_without_stopwords.json")
     # Define the file path for saving processed text in JSON format
-    filename2 = f"C:/SpectraSync/processed_material/mmwr/{DOC_FOLDER}/texts_out_lemmatized_with_stopwords.json"
+    filename2 = f"C:/SpectraSync/processed_material/mmwr/{DOC_FOLDER}/final/texts_out_not_lemmatized_without_stopwords.json"
     # Open the specified file in write mode
     with open(filename2, 'w', encoding='utf-8') as jsonfile:
         # Write the processed text data to the JSON file with formatting and UTF-8 encoding
-        json.dump(texts_out_lemmatized_with_stopwords, jsonfile, indent=4, ensure_ascii=False)
+        json.dump(texts_out_not_lemmatized_without_stopwords, jsonfile, indent=2, ensure_ascii=False)
 
-    print("writing texts_out_lemmatized_without_stopwords.json")
-    # Define the file path for saving processed text in JSON format
-    filename2 = f"C:/SpectraSync/processed_material/mmwr/{DOC_FOLDER}/texts_out_lemmatized_without_stopwords.json"
-    # Open the specified file in write mode
-    with open(filename2, 'w', encoding='utf-8') as jsonfile:
-        # Write the processed text data to the JSON file with formatting and UTF-8 encoding
-        json.dump(texts_out_lemmatized_without_stopwords, jsonfile, indent=4, ensure_ascii=False)
+    # texts_out_not_lemmatized_without_stopwords
+    texts_out_not_lemmatized_without_stopwords_with_bigrams = generate_bigrams(texts_out_not_lemmatized_without_stopwords)
 
-    print("writing texts_out_not_lemmatized_with_stopwords.json ")
     # Define the file path for saving processed text in JSON format
-    filename2 = f"C:/SpectraSync/processed_material/mmwr/{DOC_FOLDER}/texts_out_not_lemmatized_with_stopwords.json"
+    bigrams = f"C:/SpectraSync/processed_material/mmwr/{DOC_FOLDER}/final/texts_out_not_lemmatized_without_stopwords_with_bigrams.json"
     # Open the specified file in write mode
-    with open(filename2, 'w', encoding='utf-8') as jsonfile:
+    with open(bigrams, 'w', encoding='utf-8') as jsonfile:
         # Write the processed text data to the JSON file with formatting and UTF-8 encoding
-        json.dump(texts_out_not_lemmatized_with_stopwords, jsonfile, indent=4, ensure_ascii=False)
+        json.dump(texts_out_not_lemmatized_without_stopwords_with_bigrams, jsonfile, indent=2, ensure_ascii=False)
 
-    print("writing texts_out_not_lemmatized_without_stopwords.json")
-    # Define the file path for saving processed text in JSON format
-    filename2 = f"C:/SpectraSync/processed_material/mmwr/{DOC_FOLDER}/texts_out_not_lemmatized_without_stopwords.json"
-    # Open the specified file in write mode
-    with open(filename2, 'w', encoding='utf-8') as jsonfile:
-        # Write the processed text data to the JSON file with formatting and UTF-8 encoding
-        json.dump(texts_out_not_lemmatized_without_stopwords, jsonfile, indent=4, ensure_ascii=False)
 
 
     # Capture the end time and log it
