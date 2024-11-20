@@ -15,11 +15,11 @@
 
 ## Prerequisites
 
-This project demands specific tools and packages for optimal functionality. CuPy, CUDA, and PyTorch are foundational for SpectraSync’s processing power, while PostgreSQL is its neural core—without it, the system cannot run. PostgreSQL serves as SpectraSync’s memory and database engine, seamlessly storing, structuring, and recalling the intricate layers of topics and models generated across dimensions. Here’s how to get PostgreSQL set up as a prerequisite for SpectraSync:
+This project demands specific tools and packages for optimal functionality. CuPy, CUDA, and PyTorch are foundational for DataPulse's processing power, while PostgreSQL is its neural core—without it, the system cannot run. PostgreSQL serves as DataPulse's memory and database engine, seamlessly storing, structuring, and recalling the intricate layers of topics and models generated across dimensions. Here’s how to get PostgreSQL set up as a prerequisite for DataPulse:
 
-- **PyTorch**: Essential for efficient, GPU-accelerated tensor operations, PyTorch facilitates the rapid computation of coherence metrics and other complex numerical tasks. By harnessing GPU hardware, PyTorch accelerates processing times significantly, making it ideal for handling the demands of large-scale topic modeling within SpectraSync. Its optimized handling of tensor operations ensures that even the most intensive calculations are performed with minimal latency, which is crucial for maintaining high-speed coherence assessments and model evaluations.
+- **PyTorch**: Essential for efficient, GPU-accelerated tensor operations, PyTorch facilitates the rapid computation of coherence metrics and other complex numerical tasks. By harnessing GPU hardware, PyTorch accelerates processing times significantly, making it ideal for handling the demands of large-scale topic modeling within DataPulse. Its optimized handling of tensor operations ensures that even the most intensive calculations are performed with minimal latency, which is crucial for maintaining high-speed coherence assessments and model evaluations.
 
-- **CuPy**: CuPy supports high-performance numerical calculations, designed to leverage CUDA-enabled GPUs for accelerated processing. Acting as a GPU-powered counterpart to NumPy, CuPy excels at handling large-scale matrix operations and other tasks that benefit from parallel computation on GPU hardware. This makes it particularly effective for SpectraSync’s coherence sampling and statistical functions, where rapid, large-scale numerical processing is essential.
+- **CuPy**: CuPy supports high-performance numerical calculations, designed to leverage CUDA-enabled GPUs for accelerated processing. Acting as a GPU-powered counterpart to NumPy, CuPy excels at handling large-scale matrix operations and other tasks that benefit from parallel computation on GPU hardware. This makes it particularly effective for DataPulse's coherence sampling and statistical functions, where rapid, large-scale numerical processing is essential.
 
 **Note**: It is critical to ensure that the versions of PyTorch and CUDA match appropriately for your hardware. Refer to [PyTorch's installation guide](https://pytorch.org/get-started/locally/) for a detailed compatibility matrix.
 
@@ -58,17 +58,17 @@ To run this project efficiently, your system should meet the following requireme
 
 2. **Setup a Dedicated Database**:
 
-   -  After installation, create a database specifically for SpectraSync.
+   -  After installation, create a database specifically for DataPulse.
    -  Make note of the database name, username, and password—these credentials will be required for configuration.
 
 3. **Configure Database Access**:
 
-   -  Ensure PostgreSQL is running and accessible. You may want to adjust settings to allow remote connections if SpectraSync will be deployed in a distributed environment.  
-   -  Ensure that your PostgreSQL user has adequate privileges for creating tables, writing data, and managing resources as SpectraSync builds its multi-dimensional topic models.
+   -  Ensure PostgreSQL is running and accessible. You may want to adjust settings to allow remote connections if DataPulse will be deployed in a distributed environment.  
+   -  Ensure that your PostgreSQL user has adequate privileges for creating tables, writing data, and managing resources as DataPulse builds its multi-dimensional topic models.
 
 4. **Verify Connection**:
 
-   -  Test the connection to ensure PostgreSQL is configured correctly. This can be done within the SpectraSync setup process or by running a quick script to confirm connectivity.
+   -  Test the connection to ensure PostgreSQL is configured correctly. This can be done within the DataPulse setup process or by running a quick script to confirm connectivity.
 
 ### Create a Conda Environment (Recommended)
 
@@ -78,17 +78,17 @@ Using `conda` is highly recommended due to its robust environment management and
 
    ```bash
    git clone https://github.com/alan-hamm/SpectraSync.git
-   cd SpectraSync
+   cd DataPulse
    ```
 
 2. **Create and Activate Conda Environment**: Use the provided `environment.yaml` file to create the environment.
 
    ```bash
    conda env create -f environment.yaml
-   conda activate SpectraSync
+   conda activate DataPulse
    ```
 
-   **Why `environment.yaml` is Best**: The `environment.yaml` file captures the exact package specifications, ensuring all dependencies (including versions of PyTorch and CUDA) are installed consistently. This is crucial for avoiding compatibility issues, particularly with GPU-related libraries. Update the `prefix: /path/to/.conda/envs/SpectraSync` to point to your SpectraSync environment location.
+   **Why `environment.yaml` is Best**: The `environment.yaml` file captures the exact package specifications, ensuring all dependencies (including versions of PyTorch and CUDA) are installed consistently. This is crucial for avoiding compatibility issues, particularly with GPU-related libraries. Update the `prefix: /path/to/.conda/envs/DataPulse` to point to your DataPulse environment location.
 
 3. **Install Additional Dependencies** (if needed):
 
@@ -104,7 +104,7 @@ If you prefer to use a Python virtual environment (`venv`), follow these steps. 
 
    ```bash
    git clone https://github.com/alan-hamm/SpectraSync.git
-   cd SpectraSync
+   cd DataPulse
    ```
 
 2. **Create and Activate Python Virtual Environment**:
@@ -195,5 +195,5 @@ This command will run the unit tests included in the `tests/` directory to ensur
 
 ---
 
-You’re all set! Dive into SpectraSync and start exploring the hidden connections within your data. If you encounter issues, check our GitHub Wiki or open an issue in the repository.
+You’re all set! Dive into DataPulse and start exploring the hidden connections within your data. If you encounter issues, check our GitHub Wiki or open an issue in the repository.
 

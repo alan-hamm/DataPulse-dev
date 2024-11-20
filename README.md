@@ -1,12 +1,12 @@
 
-# SpectraSync: Neural Intelligence Meets Multi-Dimensional Topic Analysis
+# DataPulse: Navigating the Information Superhighway
 
 ### Table of Contents
-- [System Core](#system-core)
-- [Creation Matrix](#creation-matrix-human--ai-fusion)
-- [Mainframe Features](#mainframe-features)
+- [Pulse Core](#pulse-core)
+- [The Foundry](#the-foundry-forging-datapulse)
+- [Data Nexus Features](#data-nexus-features)
 - [Signal Mapping Console](#signal-mapping-console)
-- [Neural Analysis Suite](#neural-analysis-suite)
+- [Spectral Analysis Suite](#spectral-analysis-suite)
 - [Turbocharged GPU Performance](#turbocharged-gpu-performance-boosted-compute-power)
 - [Synced Network Grid](#synced-network-grid)
 - [Parallel Loadout](#parallel-loadout-batch-processing-specs)
@@ -14,50 +14,52 @@
 
 ---
 
-### System Core
-In a world where information flows like neon-lit rain over a vast, electric metropolis, SpectraSync emerges as the ultimate conduit, channeling torrents of data into discernible pulses. This isn’t merely about analyzing text; it’s about orchestrating the digital symphony of topics across dimensions, decades, and digital realms. SpectraSync stands as a sentinel of cognitive insight, bridging neural intelligence with multi-dimensional topic analysis, illuminating shifts in language, and resonating with the evolving patterns embedded in the written word.
+### Pulse Core
+In the sprawling web of interconnected data, where digital constructs form the backbone of a vast, electrified network, DataPulse emerges as the ultimate conduit for topic profiling and analysis, weaving torrents of information into structured, discernible patterns. This isn’t just about parsing text—it’s about decoding the intricate lattice of the digital realm, orchestrating a symphony of topics across dimensions, timelines, and virtual domains.
 
-Designed for those who operate on the cutting edge, SpectraSync doesn't just passively process—it's alive with the potential to capture, track, and synchronize the underlying threads woven into the corpus of data. Each session within SpectraSync reveals a dynamic spectrum, an unbroken sequence of thematic waves, morphing and re-aligning like the thoughtforms of an advanced intelligence. This platform isn’t your traditional toolkit—it’s a neural-inspired, data-driven powerhouse with a singular mission: to bring coherence to the chaos of information.
+DataPulse acts as a sentinel of insight, navigating the information superhighway to synchronize and illuminate the evolving threads of language and meaning embedded in the written word. It transforms the raw architecture of digital constructs into a dynamic grid of connections, revealing thematic shifts, persistent patterns, and emerging trends.
 
-### Creation Matrix: Human & AI Fusion
-SpectraSync emerged not from mere lines of code, but from a fusion of neural intelligence and human endurance. Yes, an AI assistant contributed to this project, acting as a synthetic partner on the assembly line of ideas. But make no mistake—its existence owes as much to the console cowboy’s own chrome, grit, and midnight oil as it does to any algorithm.
+Designed for multi-dimensional topic analysis, DataPulse doesn’t merely process data—it pulses with the rhythm of an interconnected network, alive with the capacity to capture, track, and synchronize the threads that weave the fabric of digital information. Each session maps a spectrum of ideas, profiling topics and aligning them like streams of light in a neon-etched cityscape, unveiling the order within the chaos of the data-driven world.
 
-Endless hours were spent combing through hundreds of lines of text, hunting down elusive commas, misplaced semi-colons, and rogue periods that slipped past the AI’s scrutiny. Variable names and code segments, subtly morphed by the assistant’s “creative” impulses, had to be rewritten, double-checked, and tamed back into harmony.
+### The Foundry: Forging DataPulse
+DataPulse didn’t emerge fully formed from the void—it was forged in the crucible of human ingenuity and tempered by the precision of an AI assistant. Yes, a synthetic partner contributed, acting as a co-pilot on the information superhighway, but its existence owes as much to the console cowboy’s own chrome, grit, and midnight oil as it does to any algorithm.
 
-The process demanded more than AI—there was human grit, pouring over cryptic forums, worn-out textbooks, and dusty official docs to unearth obscure, essential details. This is the real alchemy behind SpectraSync: a hybrid of mechanical precision and human resilience, bridging code and cognition to transform the raw chaos of data into multi-dimensional insight.
+Countless hours were spent weaving through the intricate threads of the digital lattice, hunting rogue commas, taming chaotic logic, and restoring harmony to variables distorted by the AI’s “creative” impulses. Every line of code carries the mark of meticulous revision, the persistence of a creator who refused to settle for anything less than precision.
 
-So, while an AI may have lent its synthetic hand, know that SpectraSync carries within it the unmistakable mark of the creator—the dedication, the long nights, and the meticulous care that no machine could replace.
+But this journey demanded more than machine assistance. The console cowboy dove deep into cryptic forums, unearthed obscure documentation, and pieced together fragments of knowledge buried in the recesses of the web. This is the lifeblood of DataPulse: a fusion of human tenacity and machine precision, navigating the vast network of data to transform raw chaos into structured, multi-dimensional insight.
 
-### Mainframe Features
-- **Adaptive Resource Management**: SpectraSync harnesses the formidable power of [Dask](https://www.dask.org/) for distributed parallelization. This ensures a seamless orchestration of resources across processors, dynamically adjusting to tackle vast data landscapes and high computational demands without skipping a beat. The system adapts, self-modulates, and optimizes, deploying cores and threads in perfect synchrony to handle even the heaviest data streams with precision.
+So while an AI may have lent its synthetic hand, know that DataPulse pulses with the unmistakable mark of its creator—the sleepless nights, the grit, and the unwavering commitment that no machine could replicate.
 
-- **Multi-Phase Topic Analysis**: Far from the confines of linear processing, SpectraSync performs a tri-phased exploration—train, validation, and test—that keeps models pristine and refined. By treating each phase as a unique dataset, it preserves the sanctity of unbiased learning, diving deep into intricate data patterns. Each model builds upon an evolving dictionary of terms, maintaining distinct corpora for each phase to deliver a thorough, multi-dimensional perspective.
+### Data Nexus Features
+- **Adaptive Resource Management**: DataPulse harnesses the formidable power of [Dask](https://www.dask.org/) for distributed parallelization. This ensures a seamless orchestration of resources across processors, dynamically adjusting to tackle vast data landscapes and high computational demands without skipping a beat. The system adapts, self-modulates, and optimizes, deploying cores and threads in perfect synchrony to handle even the heaviest data streams with precision.
 
--  **Diachronic Topic Tracking (queued in the network, awaiting greenlight)**: SpectraSync traverses time itself, tracking the shifts in language and evolving terminologies. Users can trace topics across years, even decades, capturing emergent themes and the twilight of others. By mapping how concepts morph, persist, or disappear over time, it uncovers the narrative threads running through historical and modern text alike.
+- **Multi-Phase Topic Analysis**: Far from the confines of linear processing, DataPulse performs a tri-phased exploration—train, validation, and test—that keeps models pristine and refined. By treating each phase as a unique dataset, it preserves the sanctity of unbiased learning, diving deep into intricate data patterns. Each model builds upon an evolving dictionary of terms, maintaining distinct corpora for each phase to deliver a thorough, multi-dimensional perspective.
 
-- **Precision Metrics**: With coherence, convergence, and perplexity metrics in hand, SpectraSync doesn’t leave quality to chance. Each metric is tuned with algorithmic precision, fine-tuned across myriad parameters to capture relevance, thematic clarity, and linguistic structure. A spectrum of scoring metrics ensures that every model reflects a refined, accurate portrayal of the data’s hidden dimensions.
+-  **Diachronic Topic Tracking (queued in the network, awaiting greenlight)**: DataPulse traverses time itself, tracking the shifts in language and evolving terminologies. Users can trace topics across years, even decades, capturing emergent themes and the twilight of others. By mapping how concepts morph, persist, or disappear over time, it uncovers the narrative threads running through historical and modern text alike.
+
+- **Precision Metrics**: With coherence, convergence, and perplexity metrics in hand, DataPulse doesn’t leave quality to chance. Each metric is tuned with algorithmic precision, fine-tuned across myriad parameters to capture relevance, thematic clarity, and linguistic structure. A spectrum of scoring metrics ensures that every model reflects a refined, accurate portrayal of the data’s hidden dimensions.
 
 ### Signal Mapping Console
-Visualization in SpectraSync is an immersive experience, pushing the boundaries of interaction in the digital realm. Each visualization is a portal into the unseen, rendering complex datasets into intuitively graspable maps. Bokeh and pyLDAvis power the platform’s visual dimensions, creating an environment where data doesn’t just speak—it resonates.
+Visualization in DataPulse is an immersive experience, pushing the boundaries of interaction in the digital realm. Each visualization is a portal into the unseen, rendering complex datasets into intuitively graspable maps. Bokeh and pyLDAvis power the platform’s visual dimensions, creating an environment where data doesn’t just speak—it resonates.
 
-- **2D and 3D Topic Mapping**: SpectraSync brings your data into vivid relief, visualizing topics in two or three dimensions, allowing you to explore the intricate networks of ideas that link one document to another. It’s not just about seeing data; it’s about inhabiting it.
+- **2D and 3D Topic Mapping**: DataPulse brings your data into vivid relief, visualizing topics in two or three dimensions, allowing you to explore the intricate networks of ideas that link one document to another. It’s not just about seeing data; it’s about inhabiting it.
 
-- **Temporal Topic Flow**: As topics shift and reform across timelines, SpectraSync captures this dynamic evolution, letting you witness how language trends and persists. It becomes a chronicle of change, a digital archive of thought made manifest in visual form.
+- **Temporal Topic Flow**: As topics shift and reform across timelines, DataPulse captures this dynamic evolution, letting you witness how language trends and persists. It becomes a chronicle of change, a digital archive of thought made manifest in visual form.
 
-- **Interactive Model Visualization**: With SpectraSync, you don’t just view models—you engage with them. Each visualization offers an interactive portal, inviting you to dissect topics and understand the underlying themes, creating a space where exploration leads to revelation.
+- **Interactive Model Visualization**: With DataPulse, you don’t just view models—you engage with them. Each visualization offers an interactive portal, inviting you to dissect topics and understand the underlying themes, creating a space where exploration leads to revelation.
 
-### Neural Analysis Suite
-SpectraSync is more than just a machine learning engine; it’s a digital mind, configured to dissect, explore, and evolve through data. Its machine learning core thrives on advanced algorithms that go beyond simple clustering, instead capturing the full spectrum of thematic evolution. Using Gensim’s LDA (Latent Dirichlet Allocation) model, SpectraSync delivers an analysis that is not only multi-layered but dynamically optimized.
+### Spectral Analysis Suite
+DataPulse is more than just a machine learning engine; it’s a digital mind, configured to dissect, explore, and evolve through data. Its machine learning core thrives on advanced algorithms that go beyond simple clustering, instead capturing the full spectrum of thematic evolution. Using Gensim’s LDA (Latent Dirichlet Allocation) model, DataPulse delivers an analysis that is not only multi-layered but dynamically optimized.
 
-- **Hyperparameter Tuning & Adaptive Model Selection**: SpectraSync applies a rigorous methodology to find the most resonant model configurations. Hyperparameters are fine-tuned in a ceaseless pursuit of coherence and perplexity optimization, ensuring models yield insights of the highest clarity and relevance.
+- **Hyperparameter Tuning & Adaptive Model Selection**: DataPulse applies a rigorous methodology to find the most resonant model configurations. Hyperparameters are fine-tuned in a ceaseless pursuit of coherence and perplexity optimization, ensuring models yield insights of the highest clarity and relevance.
 
-- **Dynamic Topic Allocation**: The architecture of SpectraSync allows it to shift and recalibrate in real time, making dynamic adjustments that tailor-fit each data structure. This adaptability enables SpectraSync to capture even the most nuanced patterns, providing a level of analytical depth that traditional models simply cannot achieve.
+- **Dynamic Topic Allocation**: The architecture of DataPulse allows it to shift and recalibrate in real time, making dynamic adjustments that tailor-fit each data structure. This adaptability enables DataPulse to capture even the most nuanced patterns, providing a level of analytical depth that traditional models simply cannot achieve.
 
-- **High-Speed Convergence Tracking**: Speed is of the essence. SpectraSync’s convergence tracking allows it to rapidly navigate through the topic space, minimizing computational delays while maximizing insight—a neural engine that never sleeps.
+- **High-Speed Convergence Tracking**: Speed is of the essence. DataPulse's convergence tracking allows it to rapidly navigate through the topic space, minimizing computational delays while maximizing insight—a neural engine that never sleeps.
 
 ### Turbocharged GPU Performance: Boosted Compute Power
 
-SpectraSync leverages GPU acceleration for efficient processing of large datasets, using the following tools:
+DataPulse leverages GPU acceleration for efficient processing of large datasets, using the following tools:
 
 - **CUDA**: CUDA is a parallel computing platform and application programming interface (API) model created by NVIDIA. It allows software developers to use NVIDIA GPUs for general-purpose processing (an approach known as GPGPU). CUDA is necessary for leveraging GPU hardware and enabling acceleration for both PyTorch and CuPy.
 
@@ -75,7 +77,7 @@ By using GPU-accelerated libraries like PyTorch and CuPy, this project achieves 
 
    **_By default, the settings in `distributed.yaml` are optimized for high-performance processing with Dask on systems with significant CPU and memory resources. Adjust as needed to suit your environment._**
 
-This project includes a custom `distributed.yaml` file for configuring Dask. The `distributed.yaml` file is located in the [`config/`](https://github.com/alan-hamm/SpectraSync/tree/main/config) directory and contains recommended settings for Dask performance and resource management tailored for SpectraSync's processing requirements.
+This project includes a custom `distributed.yaml` file for configuring Dask. The `distributed.yaml` file is located in the [`config/`](https://github.com/alan-hamm/SpectraSync/tree/main/config) directory and contains recommended settings for Dask performance and resource management tailored for DataPulse's processing requirements.
 
 To ensure your Dask environment is correctly configured, follow these steps:
 
@@ -90,7 +92,7 @@ To ensure your Dask environment is correctly configured, follow these steps:
 
 ### Parallel Loadout: Batch Processing Specs
 
-   Configuring `futures_batches`, `base_batch_size`, and `max_batch_size` is critical to balancing resource utilization and achieving efficient processing times, especially on high-performance systems. The script `batch_estimation.py` is provided for adaptive batch size estimation based on document complexity, memory, and CPU limits. This script is recommended for anyone running SpectraSync on datasets with varying document sizes or on systems with constrained resources.
+   Configuring `futures_batches`, `base_batch_size`, and `max_batch_size` is critical to balancing resource utilization and achieving efficient processing times, especially on high-performance systems. The script `batch_estimation.py` is provided for adaptive batch size estimation based on document complexity, memory, and CPU limits. This script is recommended for anyone running DataPulse on datasets with varying document sizes or on systems with constrained resources.
 
 
    ### Guidlines for Setting Key Batch Size Parameter
@@ -99,7 +101,7 @@ To ensure your Dask environment is correctly configured, follow these steps:
 
       -  **Base Batch Size**: Setting an appropriate base batch size is crucial. A batch size too small will increase scheduling overhead, while a batch size too large can exhaust memory resources, leading to performance degradation. For large documents or complex tasks, use larger batch sizes to optimize resource use and reduce scheduling overhead. For smaller tasks, use smaller batch sizes to increase task concurrency and CPU utilization.
    
-      -  **Max Batch Size**: Defines the upper limit for document processing per batch. Adaptive batching helps to manage tasks dynamically based on resource availability. Setting this value appropriately helps SpectraSync adapt to different document types without exhausting memory.
+      -  **Max Batch Size**: Defines the upper limit for document processing per batch. Adaptive batching helps to manage tasks dynamically based on resource availability. Setting this value appropriately helps DataPulse adapt to different document types without exhausting memory.
 
    2. **Batch Calculation and System Resource Balance**
 
@@ -117,7 +119,7 @@ To ensure your Dask environment is correctly configured, follow these steps:
 
    4. **Benefits of Adaptive Batch Sizes**
 
-      Adaptive batch sizes calculated by 'batch_estimation.py' allow the SpectraSync framework to better handle document variability and optimize resource usage. This approach reduces memory-related issues, as batch sizes are optimized for current system capacity and workload, ensuring smooth execution without overwhelming resources.
+      Adaptive batch sizes calculated by 'batch_estimation.py' allow the DataPulse framework to better handle document variability and optimize resource usage. This approach reduces memory-related issues, as batch sizes are optimized for current system capacity and workload, ensuring smooth execution without overwhelming resources.
 
    5. **Monitoring and Iterative Adjustment**
 
@@ -125,7 +127,7 @@ To ensure your Dask environment is correctly configured, follow these steps:
 
    6. **RAM Allocation and Management**
 
-      SpectraSync is memory-intensive, especially when handling large datasets or high batch sizes. Setting a high memory_limit in the Dask LocalCluster configuration is recommended if system RAM allows. For optimal memory usage:
+      DataPulse is memory-intensive, especially when handling large datasets or high batch sizes. Setting a high memory_limit in the Dask LocalCluster configuration is recommended if system RAM allows. For optimal memory usage:
 
       -  Adjust memory_limit based on available system RAM and the expected load. As a rule of thumb, ensure that memory_limit per worker is balanced with the total number of workers to avoid exceeding system memory.
       -  Monitor RAM usage in the Dask dashboard. If you notice frequent memory spills or high memory consumption, consider reducing base_batch_size or max_batch_size.
@@ -150,9 +152,9 @@ To ensure your Dask environment is correctly configured, follow these steps:
 
 
 ### Datafeed Processing: Translating Time-Worn Chronicles
-SpectraSync’s data preprocessing capabilities extend to tracking shifts in language, terminology, and themes across vast timelines. Imagine feeding in [**The Time Machine’s**](https://www.gutenberg.org/ebooks/35) chronicles—or any temporal data source—and watching SpectraSync transform each entry into a structured digital artifact ready for analysis. Each document, whether a journal entry or an archived report, is processed as an isolated data stream, meticulously tokenized and formatted into a bag-of-words model for precision mapping.
+DataPulse's data preprocessing capabilities extend to tracking shifts in language, terminology, and themes across vast timelines. Imagine feeding in [**The Time Machine’s**](https://www.gutenberg.org/ebooks/35) chronicles—or any temporal data source—and watching DataPulse transform each entry into a structured digital artifact ready for analysis. Each document, whether a journal entry or an archived report, is processed as an isolated data stream, meticulously tokenized and formatted into a bag-of-words model for precision mapping.
 
-By translating raw data into this structured form, SpectraSync unlocks the ability to detect recurring patterns and track the life cycle of key themes like "technological singularity," "societal evolution," or "survival imperatives." This process sets the stage for SpectraSync’s diachronic tracking, allowing it to unearth how ideas emerge, evolve, and fade over time. In preparing each document through this structured approach, SpectraSync primes the data for deep, multidimensional analysis, tracing concept arcs and dissecting the storylines embedded in the fabric of historical and futuristic texts alike.
+By translating raw data into this structured form, DataPulse unlocks the ability to detect recurring patterns and track the life cycle of key themes like "technological singularity," "societal evolution," or "survival imperatives." This process sets the stage for DataPulse's diachronic tracking, allowing it to unearth how ideas emerge, evolve, and fade over time. In preparing each document through this structured approach, DataPulse primes the data for deep, multidimensional analysis, tracing concept arcs and dissecting the storylines embedded in the fabric of historical and futuristic texts alike.
 
 **Excerpt:**
    ```json
@@ -174,10 +176,10 @@ By translating raw data into this structured form, SpectraSync unlocks the abili
 
 ## **Example CLI Run**:
       ```bash
-         python spectrasync.py 
+         python DataPulse.py 
          --username "postgres" 
          --password "admin" 
-         --database "SpectraSync" 
+         --database "DataPulse" 
          --corpus_label "time" 
          --data_source "/path/to/your/data/preprocessed-documents/data.json" 
          --start_topics 20 
@@ -198,7 +200,7 @@ By translating raw data into this structured form, SpectraSync unlocks the abili
 
 ---
 
-SpectraSync stands at the intersection of neural intelligence and advanced data analysis, ready to uncover the spectral layers within the fabric of language. Step into a world where insights pulse to life, patterns converge, and knowledge flows like an electric current through the digital landscape. Welcome to the future of multi-dimensional topic analysis.
+DataPulse stands at the intersection of human ingenuity and advanced data analysis, ready to illuminate the spectral layers within the fabric of language. Step into a world where insights come to life, patterns converge, and knowledge flows like an electric current through the digital network. Welcome to the future of multi-dimensional topic analysis.
 
 ---
 
