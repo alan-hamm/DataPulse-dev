@@ -52,6 +52,7 @@ from sklearn.manifold import TSNE
 import dask
 import dask.array as da
 from dask import delayed, compute
+from dask.distributed import get_client
 
 matplotlib.use('Agg')
 
@@ -426,7 +427,7 @@ def create_vis_pylda(ldaModel, corpus, dictionary, topics, phase_name, filename,
 
     return (time_key, create_pylda)
 
-def process_visualizations(client, phase_results, phase_name, performance_log, cores, pylda_dir, pcoa_dir, pca_gpu_dir):
+def process_visualizations(phase_results, phase_name, performance_log, cores, pylda_dir, pcoa_dir, pca_gpu_dir):
     """
     Submits and processes visualization tasks for LDA model outputs using Dask, generating 
     interactive pyLDAvis and PCoA visualizations in parallel.
@@ -455,6 +456,7 @@ def process_visualizations(client, phase_results, phase_name, performance_log, c
     - pyLDAvis and PCoA visualizations are handled as separate futures, allowing for 
       concurrent execution.
     """
+    client = get_client()
     with performance_report(filename=performance_log):
         logging.info(f"Processing {phase_name} visualizations.")
 
