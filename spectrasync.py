@@ -696,7 +696,7 @@ if __name__=="__main__":
                         train_pca_gpu_vis = create_pca_plot_gpu(
                             train_result['validation_result'], 
                             train_result['topics_words'],
-                            train_result['perplexity_threshold'],
+                            train_result['mode_coherence'],
                                         "TRAIN",
                                         train_result['num_word'], 
                                         n_topics, train_result['text_md5'],
@@ -771,13 +771,13 @@ if __name__=="__main__":
                         validation_result['time_key'], PCOA_DIR
                     )
                     validation_pca_gpu_vis = create_pca_plot_gpu(
-                        pickle.loads(validation_result['validation_result']), 
-                        pickle.loads(validation_result['topic_labels']),
-                                     "VALIDATION",
-                                     validation_result['num_words'], 
-                                     n_topics, validation_result['text_md5'],
-                                     validation_result['time_key'], PCA_GPU_DIR,
-                                     title="PCA GPU Topic Distribution"
+                            validation_result['validation_result'], 
+                            validation_result['topics_words'],
+                            validation_result['mode_coherence'],
+                                        "TRAIN",
+                                        validation_result['num_word'], 
+                                        n_topics, validation_result['text_md5'],
+                                        validation_result['time_key'], PCA_GPU_DIR
                     )
                     validation_pylda_vis = create_vis_pylda(
                         pickle.loads(validation_result['lda_model']),
@@ -836,13 +836,13 @@ if __name__=="__main__":
                     test_resut['time_key'], PCOA_DIR
                 )
                 test_pca_gpu_vis = create_pca_plot_gpu(
-                    pickle.loads(test_resut['validation_result']), 
-                    pickle.loads(test_resut['topic_labels']),
-                    "TEST",
-                    test_resut['num_words'], 
-                    n_topics, test_resut['text_md5'],
-                    test_resut['time_key'], PCA_GPU_DIR,
-                    title="PCA GPU Topic Distribution"
+                        test_resut['validation_result'], 
+                        test_resut['topics_words'],
+                        test_resut['mode_coherence'],
+                        "TEST",
+                        test_resut['num_word'], 
+                        n_topics, test_resut['text_md5'],
+                        test_resut['time_key'], PCA_GPU_DIR
                 )
                 test_pylda_vis = create_vis_pylda(
                     pickle.loads(test_resut['lda_model']),
