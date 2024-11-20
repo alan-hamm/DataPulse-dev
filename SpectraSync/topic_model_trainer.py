@@ -49,6 +49,7 @@ from .utils import convert_float32_to_float  # Utility functions for data type c
 from .utils import NumpyEncoder
 from .batch_estimation import estimate_futures_batches_large_docs_v2
 from .mathstats import *
+from .visualization import get_document_topics_delayed
 
    
 # https://examples.dask.org/applications/embarrassingly-parallel.html
@@ -328,11 +329,10 @@ def train_model_v2(data_source: str, n_topics: int, alpha_str: Union[str, float]
         show_topics_jsonb = pickle.dumps(json.dumps(topics_results_to_store))
 
     try:
-        # Create a delayed task for document topic extraction with error handling
-        validation_results_task_delayed = dask.delayed(lambda: [
-            ldamodel.get_document_topics(bow_doc, minimum_probability=0.01) or [{"topic_id": None, "probability": 0}]
-            for bow_doc in corpus_data[phase]
-        ])()
+        validation_results_task_delayed = [
+            get_document_topics_delayed(ldamodel, bow_doc) for bow_doc in corpus_data[phase]
+        ]
+        validation_results_task_delayed = dask.compute(*validation_results_task_delayed)
         
         # Retrieve the results by calling .compute()
         validation_results_to_store = validation_results_task_delayed.compute()
