@@ -655,6 +655,9 @@ if __name__=="__main__":
                 # Wait for all training futures and then process results
                 done_train, _ = wait(train_futures, timeout=None)
                 completed_train_futures = [done.result() for done in done_train]
+
+                client.rebalance()
+                
                 if len(completed_train_futures) == 0:
                     logging.error("No results were output from '_v2' for writing to SSD. Number of completed train futures: {len(completed_train_futures)}")
             except Exception as e:
@@ -764,7 +767,7 @@ if __name__=="__main__":
                     validation_pcoa_vis = create_vis_pca(
                         pickle.loads(validation_result['lda_model']),
                         pickle.loads(validation_result['corpus']),
-                        n_topics, "TRAIN", validation_result['text_md5'],
+                        n_topics, "VALIDATION", validation_result['text_md5'],
                         validation_result['time_key'], PCOA_DIR
                     )
                     validation_pca_gpu_vis = create_pca_plot_gpu(
@@ -780,7 +783,7 @@ if __name__=="__main__":
                         pickle.loads(validation_result['lda_model']),
                         pickle.loads(validation_result['corpus']),
                         pickle.loads(validation_result['dictionary']),
-                        n_topics, "TRAIN", validation_result['text_md5'], CORES,
+                        n_topics, "VALIDATION", validation_result['text_md5'], CORES,
                         validation_result['time_key'], PYLDA_DIR
                     )
 
@@ -829,13 +832,13 @@ if __name__=="__main__":
                 test_pcoa_vis = create_vis_pca(
                     pickle.loads(test_resut['lda_model']),
                     pickle.loads(test_resut['corpus']),
-                    n_topics, "TRAIN", test_resut['text_md5'],
+                    n_topics, "TEST", test_resut['text_md5'],
                     test_resut['time_key'], PCOA_DIR
                 )
                 test_pca_gpu_vis = create_pca_plot_gpu(
                     pickle.loads(test_resut['validation_result']), 
                     pickle.loads(test_resut['topic_labels']),
-                    "VALIDATION",
+                    "TEST",
                     test_resut['num_words'], 
                     n_topics, test_resut['text_md5'],
                     test_resut['time_key'], PCA_GPU_DIR,
@@ -845,7 +848,7 @@ if __name__=="__main__":
                     pickle.loads(test_resut['lda_model']),
                     pickle.loads(test_resut['corpus']),
                     pickle.loads(test_resut['dictionary']),
-                    n_topics, "TRAIN", test_resut['text_md5'], CORES,
+                    n_topics, "TEST", test_resut['text_md5'], CORES,
                     test_resut['time_key'], PYLDA_DIR
                 )
 
