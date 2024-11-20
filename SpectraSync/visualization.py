@@ -61,6 +61,30 @@ matplotlib.use('Agg')
 plt.rcParams['figure.max_open_warning'] = 0 # suppress memory warning msgs re too many plots being open simultaneously
 
 
+@dask.delayed
+def get_document_topics_delayed(ldamodel, bow_doc):
+    """
+    Retrieve significant topics for a given document in a delayed Dask task.
+
+    Parameters:
+    - ldamodel (LdaModel): Trained LDA model to extract document topics.
+    - bow_doc (list of tuples): Bag-of-words representation of the document.
+
+    Returns:
+    - list: List of topics with their respective probabilities.
+      Returns a default value if no significant topics are found or an error occurs.
+    """
+    try:
+        topics = ldamodel.get_document_topics(bow_doc, minimum_probability=0.01)
+        if not topics:
+            logging.warning(f"No significant topics found for document: {bow_doc}")
+            return [{"topic_id": None, "probability": 0}]
+        return topics
+    except Exception as e:
+        logging.error(f"Error getting document topics for document {bow_doc}: {e}")
+        return [{"topic_id": None, "probability": 0}]
+
+
 def fill_distribution_matrix(ldaModel, corpus, num_topics):
     """
     Constructs a topic distribution matrix for each document in the corpus.
@@ -316,7 +340,7 @@ def create_pca_plot_gpu(document_topic_distributions, topics_to_store_task, mode
         for dist, label in zip(processed_distributions, dominant_topics_labels):
             if sum(dist) > 0:
                 coherence_score = np.std(dist)
-                if coherence_score >= coherence_threshold:
+                if coherence_score >= coherence_threshold and coherence_score >= mode_coherence:
                     valid_distributions.append(dist)
                     valid_labels.append(label)
 
