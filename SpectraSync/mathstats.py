@@ -136,11 +136,18 @@ def calculate_coherence_metrics(default_score=None, data=None, ldamodel=None, di
     """
     # Retrieve coherence scores list for calculations
     if isinstance(data, dict):
-        coherence_scores = data.get('coherence_scores', cp.linspace(-1.0, 0.01, 10))
+        coherence_scores = data.get('coherence_scores', None)
+        if coherence_scores is None:
+            logging.warning("Coherence scores are empty. Using simulated data as fallback.")
+            coherence_scores = cp.random.uniform(0.1, 0.9, 100)
     elif isinstance(data, list):
-        coherence_scores = data[0] if len(data) > 0 else cp.linspace(-1.0, 0.01, 10)
+        coherence_scores = data[0] if len(data) > 0 else None
+        if coherence_scores is None:
+            logging.warning("Coherence scores list is empty. Using simulated data as fallback.")
+            coherence_scores = cp.random.uniform(0.1, 0.9, 100)
     elif data is None:
-        coherence_scores = cp.linspace(-1.0, 0.01, 10)
+        logging.warning("Data is None. Using simulated data as fallback.")
+        coherence_scores = cp.random.uniform(0.1, 0.9, 100)
     else:
         raise TypeError("Expected `data` to be either a dictionary or list.")
     
@@ -179,19 +186,11 @@ def calculate_coherence_metrics(default_score=None, data=None, ldamodel=None, di
 
     # Calculate mode, with fallback if bincount fails
     try:
-        if coherence_scores.size > 1:
-            mode_value = cp.argmax(cp.bincount(coherence_scores.astype(int)))
-        else:
-            raise ValueError("Not enough elements for mode calculation.")
-    except ValueError:
-        logging.warning("Mode calculation using bincount failed or insufficient data. Attempting KDE.")
-        #mode_value = float(cp.mean(coherence_scores))
-        try:
-            kde = stats.gaussian_kde(cp.asnumpy(coherence_scores))
-            mode_value = coherence_scores[cp.argmax(kde.evaluate(coherence_scores))]
-        except Exception as e:
-            logging.warning(f"Mode calculation using KDE failed. Falling back to simple average: {e}")
-            mode_value = float(cp.mean(coherence_scores))
+        kde = stats.gaussian_kde(cp.asnumpy(coherence_scores))
+        mode_value = coherence_scores[cp.argmax(kde.evaluate(coherence_scores))]
+    except Exception as e:
+        logging.warning(f"Mode calculation using KDE failed. Falling back to simple average: {e}")
+        mode_value = float(cp.mean(coherence_scores))
 
     data['mode_coherence'] = mode_value
 
