@@ -100,7 +100,7 @@ def create_dynamic_table_class(table_name):
     # Document and Batch Details
     'batch_size' : Column(Integer, nullable=False),
     'num_documents' : Column(Integer, nullable=False),
-    'num_words' : Column(Integer, nullable=False),
+    'num_word' : Column(Integer, nullable=False),
     'text' : Column(LargeBinary, nullable=False),
     'text_json' : Column(LargeBinary, nullable=False),
     'max_attemps': Column(Integer, nullable=False),
