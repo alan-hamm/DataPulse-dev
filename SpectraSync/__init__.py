@@ -9,7 +9,7 @@
 
 # Import essential functions and classes from submodules
 from .utils import *
-from .process_futures import process_completed_futures, futures_create_lda_datasets, futures_create_lda_datasets_v2
+from .process_futures import process_completed_futures, futures_create_lda_datasets, futures_create_lda_datasets_v2, get_and_process_show_topics, get_document_topics_batch
 from .topic_model_trainer import train_model_v2
 from .alpha_eta import calculate_numeric_alpha, calculate_numeric_beta, validate_alpha_beta, calculate_alpha_beta
 from .visualization import create_vis_pylda, create_vis_pcoa, process_visualizations, create_vis_pca, create_tsne_plot, get_document_topics
@@ -73,11 +73,13 @@ __all__ = [
     'create_tsne_plot',
     'process_visualizations',
     'get_document_topics',
+    'get_document_topics_batch',
 
     # process_futures
     'process_completed_futures',
     'futures_create_lda_datasets',
     'futures_create_lda_datasets_v2',
+    'get_and_process_show_topics',
 
     # writeToPostgres
     'save_to_zip', 
