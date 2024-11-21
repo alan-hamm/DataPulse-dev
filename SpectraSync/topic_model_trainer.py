@@ -43,13 +43,14 @@ from typing import Union  # Allows type hinting for function parameters, improvi
 import random
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
+from time import time
 
 from .alpha_eta import calculate_numeric_alpha, calculate_numeric_beta  # Functions that calculate alpha and beta values for LDA.
 from .utils import convert_float32_to_float  # Utility functions for data type conversion, ensuring compatibility within the script.
 from .utils import NumpyEncoder
 from .batch_estimation import estimate_futures_batches_large_docs_v2
 from .mathstats import *
-from .visualization import get_document_topics_delayed
+from .visualization import get_document_topics
 
    
 # https://examples.dask.org/applications/embarrassingly-parallel.html
@@ -328,21 +329,46 @@ def train_model_v2(data_source: str, n_topics: int, alpha_str: Union[str, float]
         # Serialize topic data to JSON format for structured storage
         show_topics_jsonb = pickle.dumps(json.dumps(topics_results_to_store))
 
+    # Assuming the corpus_data[phase] is already split into batches
     try:
-        validation_results_task_delayed = [
-            get_document_topics_delayed(ldamodel, bow_doc) for bow_doc in corpus_data[phase]
-        ]
-        validation_results_task_delayed = dask.compute(*validation_results_task_delayed)
-        
-        # Retrieve the results by calling .compute()
-        validation_results_to_store = validation_results_task_delayed.compute()
-        
+
+        # Define batch size for processing
+        batch_size = estimate_futures_batches_large_docs_v2(data_source, min_batch_size=5, max_batch_size=20, memory_limit_ratio=0.4, cpu_factor=3)
+
+        # Create batches from the corpus data
+        corpus_batches = [corpus_data[phase][i:i + batch_size] for i in range(0, len(corpus_data[phase]), batch_size)]
+
+        # Define a helper function to process each batch
+        def process_batch_get_document_topics(ldamodel, batch):
+            return [get_document_topics(ldamodel, bow_doc) for bow_doc in batch]
+
+        # Submit each batch for processing directly
+        futures = []
+        for idx, batch in enumerate(corpus_batches):
+            start_time = time()
+            # Submit each batch for processing
+            future = client.submit(process_batch_get_document_topics, ldamodel, batch, pure=False)
+            futures.append(future)
+            batch_id = idx + 1
+            total_batches = len(corpus_batches)
+            elapsed_time = time() - start_time
+            #print(f"[get_document_topics] Submitted batch {batch_id}/{total_batches} in {elapsed_time:.2f} seconds.")
+            logging.info(f"[get_document_topics] Submitted batch {batch_id}/{total_batches} in {elapsed_time:.2f} seconds.")
+
+        # Wait for completion and gather results
+        done_batches, _ = wait(futures, timeout=None)
+        validation_results_to_store = [result for future in done_batches for result in future.result()]
+        total_documents = len(validation_results_to_store)
+        #print(f"[get_document_topics] Completed processing {total_documents} documents.")
+        logging.info(f"[get_document_topics] Completed processing {total_documents} documents.")
+
         # Log the computed structure before further processing
-        logging.debug(f"Computed validation results: {validation_results_to_store}")
-        
+        logging.debug(f"[get_document_topics] Computed validation results: {validation_results_to_store}")
+
     except Exception as e:
-        logging.error(f"Error in computing validation_results_task_delayed: {e}")
-        validation_results_to_store = [{"error": "Validation data generation failed", "phase": phase}]
+        logging.error(f"[get_document_topics] Error while computing validation results task: {e}")
+        validation_results_to_store = [{"error": "Validation get_document_topics data generation failed", "phase": phase}]
+
 
     try:
         validation_results_jsonb = json.dumps(
@@ -458,8 +484,8 @@ def train_model_v2(data_source: str, n_topics: int, alpha_str: Union[str, float]
         text_data = "No content available"  # Use a default value or handle as necessary
     
     # Group all main tasks that can be computed at once for efficiency
-    threshold, coherence_score, coherence_data, convergence_score, perplexity_score, topics_to_store, validation_results = dask.compute(
-        threshold, coherence_task, coherence_scores_data, convergence_task, perplexity_task, topics_to_store_task, validation_results_task_delayed
+    threshold, coherence_score, coherence_data, convergence_score, perplexity_score, topics_to_store = dask.compute(
+        threshold, coherence_task, coherence_scores_data, convergence_task, perplexity_task, topics_to_store_task
     )
 
 
