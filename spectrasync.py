@@ -378,11 +378,17 @@ dask.config.set({'logging.distributed': 'error'})
 dask.config.set({"distributed.scheduler.worker-ttl": '30m'})
 dask.config.set({'distributed.worker.daemon': False})
 
-#These settings disable automatic spilling but allow for pausing work when 80% of memory is consumed and terminating workers at 99%.
-dask.config.set({'distributed.worker.memory.target': False,
-                 'distributed.worker.memory.spill': False,
-                 'distributed.worker.memory.pause': 0.8
-                 ,'distributed.worker.memory.terminate': 0.99})
+# Set various Dask configurations
+dask.config.set({
+    'distributed.worker.memory.target': False,        # Disable automatic memory targeting (spilling to disk)
+    'distributed.worker.memory.spill': False,         # Disable memory spilling to disk
+    'distributed.worker.memory.pause': 0.8,           # Pause work when 80% of memory is used
+    'distributed.worker.memory.terminate': 0.99,      # Terminate workers when 99% of memory is used
+    'distributed.worker.timeout': '500s',             # Set worker timeout to 500 seconds
+    'distributed.comm.timeouts.connect': '300s',      # Set connection timeout to 300 seconds
+    'distributed.comm.timeouts.tcp': '500s',          # Set TCP heartbeat timeout to 500 seconds
+    'distributed.client.heartbeat': '15s'             # Set client heartbeat interval to 15 seconds
+})
 
 
 
@@ -411,13 +417,15 @@ if __name__=="__main__":
             local_directory=DASK_DIR,
             #dashboard_address=None,
             dashboard_address=":8787",
+            death_timeout = '300s',
+            lifetime = '45 minutes',
             protocol="tcp",
-            death_timeout='1000s',  # Increase timeout before forced kill
-    )
+            lifetime_stagger='10 minutes'  # Increase timeout before forced kill
+        )
 
 
     # Create the distributed client
-    client = Client(cluster, timeout='1000s')
+    client = Client(cluster, timeout='500s')
 
     # set for adaptive scaling
     client.cluster.adapt(minimum=CORES, maximum=MAXIMUM_CORES)
@@ -603,7 +611,7 @@ if __name__=="__main__":
         key=lambda x: phase_order[x[3]]
     )
     # Initialize combined visualization lists outside the loop
-    completed_pylda_vis, completed_pcoa_vis, completed_pca_gpu_vis = [], [], []
+    completed_pylda_vis, completed_pcoa_vis, completed_tsne_vis = [], [], []
     train_models_dict, validation_models_dict, test_models_dict = {}, {}, {}
     completed_train_futures, completed_validation_futures, completed_test_futures = [], [], []
 
@@ -615,40 +623,52 @@ if __name__=="__main__":
     # Process sorted combinations by train, validation, and test phases
     for i, (n_topics, alpha_value, beta_value, train_eval_type) in enumerate(sorted_combinations):
 
-        # Adaptive throttling logic remains here
-        logging.info("Evaluating if adaptive throttling is necessary...")
-        throttle_attempt = 0
-        while throttle_attempt < MAX_RETRIES:
-            scheduler_info = client.scheduler_info()
-            all_workers_below_cpu_threshold = all(
-                worker['metrics']['cpu'] < CPU_UTILIZATION_THRESHOLD for worker in scheduler_info['workers'].values()
-            )
-            all_workers_below_memory_threshold = all(
-                worker['metrics']['memory'] < MEMORY_UTILIZATION_THRESHOLD for worker in scheduler_info['workers'].values()
-            )
-            if not (all_workers_below_cpu_threshold and all_workers_below_memory_threshold):
-                logging.warning(f"Adaptive throttling (attempt {throttle_attempt + 1} of {MAX_RETRIES})")
-                sleep(exponential_backoff(throttle_attempt, BASE_WAIT_TIME=BASE_WAIT_TIME))
-                throttle_attempt += 1
-            else:
-                break
-        if throttle_attempt == MAX_RETRIES:
-            logging.warning("Maximum retries reached; proceeding despite resource usage.")
-
         num_workers = len(client.scheduler_info()["workers"])
 
         # Train Phase
         if train_eval_type == "train":
+
+            # Adaptive throttling logic remains here
+            logging.info("Evaluating if adaptive throttling is necessary...")
+            throttle_attempt = 0
+            while throttle_attempt < MAX_RETRIES:
+                scheduler_info = client.scheduler_info()
+                all_workers_below_cpu_threshold = all(
+                    worker['metrics']['cpu'] < CPU_UTILIZATION_THRESHOLD for worker in scheduler_info['workers'].values()
+                )
+                all_workers_below_memory_threshold = all(
+                    worker['metrics']['memory'] < MEMORY_UTILIZATION_THRESHOLD for worker in scheduler_info['workers'].values()
+                )
+                if not (all_workers_below_cpu_threshold and all_workers_below_memory_threshold):
+                    logging.warning(f"Adaptive throttling (attempt {throttle_attempt + 1} of {MAX_RETRIES})")
+                    for worker_id, worker in scheduler_info['workers'].items():
+                        logging.debug(f"Worker {worker_id} - CPU: {worker['metrics']['cpu']}, Memory: {worker['metrics']['memory']}")
+                    sleep(exponential_backoff(throttle_attempt, BASE_WAIT_TIME=BASE_WAIT_TIME))
+                    throttle_attempt += 1
+                else:
+                    break
+            if throttle_attempt == MAX_RETRIES:
+                logging.warning("Maximum retries reached; proceeding despite resource usage.")
+                memory_usages = [worker['metrics']['memory'] for worker in scheduler_info['workers'].values()]
+                if max(memory_usages) > MEMORY_UTILIZATION_THRESHOLD * 1.5:  # Example: Rebalance if any worker exceeds 1.5 times the memory threshold
+                    logging.info("Rebalancing due to high memory imbalance across workers.")
+                    client.rebalance()
+
             try:
                 # Train phase logic
-                for scattered_data in scattered_train_data_futures:
+                for j, scattered_data in enumerate(scattered_train_data_futures):
                     model_key = (n_topics, alpha_value, beta_value)
                     future = client.submit(
                         train_model_v2, DATA_SOURCE, n_topics, alpha_value, beta_value, TEXTS_ZIP_DIR, PYLDA_DIR, PCOA_DIR, PCA_GPU_DIR, unified_dictionary, scattered_data, "train",
-                        RANDOM_STATE, PASSES, ITERATIONS, UPDATE_EVERY, EVAL_EVERY, num_workers, PER_WORD_TOPICS
+                        RANDOM_STATE, PASSES, ITERATIONS, UPDATE_EVERY, EVAL_EVERY, num_workers, PER_WORD_TOPICS, ldamodel_parameter=None, pure=False
                     )
                     train_futures.append(future)
                     progress_bar.update()
+
+                    # Rebalance every 100 batches to avoid memory overload
+                    if (j + 1) % 100 == 0:
+                        client.rebalance()
+
             except Exception as e:
                 logging.error("Train phase error in SpectraSync.py with train_model_v2")
             try:
@@ -659,7 +679,8 @@ if __name__=="__main__":
                 client.rebalance()
                 
                 if len(completed_train_futures) == 0:
-                    logging.error("No results were output from '_v2' for writing to SSD. Number of completed train futures: {len(completed_train_futures)}")
+                    logging.error(f"No results were output from '_v2' for writing to SSD. Number of completed train futures: {len(completed_train_futures)}")
+                    sys.exit()
             except Exception as e:
                 logging.error(f"Train phase error with WAIT: {e}")
                 print(f"Train phase error with WAIT: {e}")
@@ -670,17 +691,6 @@ if __name__=="__main__":
                     model_key = (train_result['topics'], str(train_result['alpha_str'][0]), str(train_result['beta_str'][0]))
                     train_models_dict[model_key] = train_result['lda_model']
 
-                    # Compute delayed objects before using them
-                    #for key, value in train_result.items():
-                    #    if isinstance(value, dask.delayed.Delayed):
-                    #        logging.debug(f"train_result['{key}'] is a Delayed object and needs to be computed.")
-                    #sys.exit()
-
-                    # Compute delayed objects before using them
-                    #lda_model = pickle.loads(train_result['lda_model']).compute() if isinstance(train_result['lda_model'], dask.delayed.Delayed) else train_result['lda_model']
-                    #corpus = pickle.loads(train_result['corpus']).compute() if isinstance(train_result['corpus'], dask.delayed.Delayed) else train_result['corpus']
-                    #dictionary = pickle.loads(train_result['dictionary']).compute() if isinstance(train_result['dictionary'], dask.delayed.Delayed) else train_result['dictionary']
-                    
                     try:
                         # Visualization tasks
                         train_pcoa_vis = create_vis_pca(
@@ -693,17 +703,16 @@ if __name__=="__main__":
                         logging.error(f"Visualization/SpectaSync/Train Phase/create_vis_pca: {e}")
                     
                     try:
-                        train_pca_gpu_vis = create_pca_plot_gpu(
+                        train_tsne_vis = create_tsne_plot(
                             train_result['validation_result'], 
-                            train_result['topics_words'],
+                            train_result['perplexity'],
                             train_result['mode_coherence'],
                                         "TRAIN",
-                                        train_result['num_word'], 
                                         n_topics, train_result['text_md5'],
                                         train_result['time_key'], PCA_GPU_DIR
                         )
                     except Exception as e:
-                        logging.error(f"Visualization/SpectaSync/Train Phase/create_pca_plot_gpu: {e}")
+                        logging.error(f"Visualization/SpectaSync/Train Phase/create_tsne_plot: {e}")
 
                     try:
                         train_pylda_vis = create_vis_pylda(
@@ -721,11 +730,10 @@ if __name__=="__main__":
                     #completed_pcoa_vis.append(train_pcoa_vis.compute())
                     completed_pylda_vis.append(train_pylda_vis)
                     completed_pcoa_vis.append(train_pcoa_vis)
-                    completed_pca_gpu_vis.append(train_pca_gpu_vis)
+                    completed_tsne_vis.append(train_tsne_vis)
             except Exception as e:
                 logging.error(f"Error in visualization train phase: {e}")
                 sys.exit()
-                continue
 
             # After processing all train phases in the sorted combinations
             try:
@@ -735,130 +743,172 @@ if __name__=="__main__":
                         completed_train_futures, completed_validation_futures, completed_test_futures,
                         len(completed_train_futures),
                         num_workers, BATCH_SIZE, TEXTS_ZIP_DIR, 
-                        vis_pylda=completed_pylda_vis, vis_pcoa=completed_pcoa_vis, vis_pca=completed_pca_gpu_vis
+                        vis_pylda=completed_pylda_vis, vis_pcoa=completed_pcoa_vis, vis_pca=completed_tsne_vis
                     )
             except Exception as e:
                 logging.error(f"Error processing TRAIN completed futures: {e}")
                 print(f"Error processing TRAIN completed futures: {e}")
                 sys.exit()
 
+            completed_train_futures.clear()
+            train_futures.clear()
+            client.rebalance()
+
         # Validation Phase
+        print("Entering the validation phase")
         try:
-            for scattered_data in scattered_validation_data_futures:
+            for j, scattered_data in enumerate(scattered_validation_data_futures):
                 model_key = (n_topics, alpha_value, beta_value)
                 ldamodel = pickle.loads(train_models_dict[model_key])
                 future = client.submit(
                     train_model_v2, DATA_SOURCE, n_topics, alpha_value, beta_value, TEXTS_ZIP_DIR, PYLDA_DIR, PCOA_DIR, PCA_GPU_DIR, unified_dictionary, scattered_data, "validation",
-                    RANDOM_STATE, PASSES, ITERATIONS, UPDATE_EVERY, EVAL_EVERY, num_workers, PER_WORD_TOPICS, ldamodel=ldamodel
+                    RANDOM_STATE, PASSES, ITERATIONS, UPDATE_EVERY, EVAL_EVERY, num_workers, PER_WORD_TOPICS, ldamodel=ldamodel, pure = False
                 )
                 validation_futures.append(future)
                 progress_bar.update()
 
-                # Wait for validation futures and update progress
-                done_validation, _ = wait(validation_futures, timeout=None)
-                completed_validation_futures = [done.result() for done in done_validation]
-                
-                # Gather model results and visualize
-                for validation_result in completed_validation_futures:
-                    model_key = (validation_result['topics'], str(validation_result['alpha_str'][0]), str(validation_result['beta_str'][0]))
-                    validation_models_dict[model_key] = validation_result['lda_model']
-
-                    # Visualization tasks
-                    validation_pcoa_vis = create_vis_pca(
-                        pickle.loads(validation_result['lda_model']),
-                        pickle.loads(validation_result['corpus']),
-                        n_topics, "VALIDATION", validation_result['text_md5'],
-                        validation_result['time_key'], PCOA_DIR
-                    )
-                    validation_pca_gpu_vis = create_pca_plot_gpu(
-                            validation_result['validation_result'], 
-                            validation_result['topics_words'],
-                            validation_result['mode_coherence'],
-                                        "TRAIN",
-                                        validation_result['num_word'], 
-                                        n_topics, validation_result['text_md5'],
-                                        validation_result['time_key'], PCA_GPU_DIR
-                    )
-                    validation_pylda_vis = create_vis_pylda(
-                        pickle.loads(validation_result['lda_model']),
-                        pickle.loads(validation_result['corpus']),
-                        pickle.loads(validation_result['dictionary']),
-                        n_topics, "VALIDATION", validation_result['text_md5'], CORES,
-                        validation_result['time_key'], PYLDA_DIR
-                    )
-
-                    # Compute visualization results
-                    completed_pylda_vis.append(validation_pylda_vis.compute())
-                    completed_pcoa_vis.append(validation_pcoa_vis.compute())
-                    completed_pca_gpu_vis.append(validation_pca_gpu_vis.compute())
+                # Rebalance every 100 batches to avoid memory overload
+                if (j + 1) % 100 == 0:
+                    client.rebalance()
         except Exception as e:
-            logging.error(f"Error in validation phase: {e}")
-            continue
+            logging.error("Validation phase error in SpectraSync.py with train_model_v2")                    
+        try:
+            # Wait for validation futures and update progress
+            done_validation, _ = wait(validation_futures, timeout=None)
+            completed_validation_futures = [done.result() for done in done_validation]
+                
+            client.rebalance()
+
+            if len(completed_validation_futures) == 0:
+                logging.error(f"No results were output from '_v2' for writing to SSD. Number of completed train futures: {len(completed_validation_futures)}")
+                sys.exit()
+        except Exception as e:
+            logging.error(f"Validation phase error with WAIT: {e}")
+            print(f"Validation phase error with WAIT: {e}")
+            sys.exit()
+
+        try:    
+            # Gather model results and visualize
+            for validation_result in completed_validation_futures:
+                model_key = (validation_result['topics'], str(validation_result['alpha_str'][0]), str(validation_result['beta_str'][0]))
+                validation_models_dict[model_key] = validation_result['lda_model']
+
+                 # Visualization tasks
+                validation_pcoa_vis = create_vis_pca(
+                    pickle.loads(validation_result['lda_model']),
+                    pickle.loads(validation_result['corpus']),
+                    n_topics, "VALIDATION", validation_result['text_md5'],
+                    validation_result['time_key'], PCOA_DIR
+                )
+                validation_tsne_vis = create_tsne_plot(
+                        validation_result['validation_result'], 
+                        validation_result['perplexity'],
+                        validation_result['mode_coherence'],
+                        "TRAIN",
+                        n_topics, validation_result['text_md5'],
+                        validation_result['time_key'], PCA_GPU_DIR
+                )
+                validation_pylda_vis = create_vis_pylda(
+                    pickle.loads(validation_result['lda_model']),
+                    pickle.loads(validation_result['corpus']),
+                    pickle.loads(validation_result['dictionary']),
+                    n_topics, "VALIDATION", validation_result['text_md5'], CORES,
+                    validation_result['time_key'], PYLDA_DIR
+                )
+
+                # Compute visualization results
+                completed_pylda_vis.append(validation_pylda_vis.compute())
+                completed_pcoa_vis.append(validation_pcoa_vis.compute())
+                completed_tsne_vis.append(validation_tsne_vis.compute())
+        except Exception as e:
+            logging.error(f"Error in validation visualize phase: {e}")
 
         # After processing all train phases in the sorted combinations
         try:
             if completed_train_futures or completed_validation_futures or completed_test_futures:
-                process_completed_futures("VALIDATION",
+                    process_completed_futures("VALIDATION",
                         CONNECTION_STRING, CORPUS_LABEL,
                         completed_train_futures, completed_validation_futures, completed_test_futures,
                         len(completed_validation_futures),
-                        num_workers, BATCH_SIZE, TEXTS_ZIP_DIR, vis_pylda=completed_pylda_vis, vis_pcoa=completed_pcoa_vis
-                )
+                        num_workers, BATCH_SIZE, TEXTS_ZIP_DIR, 
+                        vis_pylda=completed_pylda_vis, vis_pcoa=completed_pcoa_vis, vis_pca=completed_tsne_vis
+                    )
         except Exception as e:
-            logging.error(f"Error processing VALIDATION completed futures: {e}")
+            logging.error(f"Error processing VALIDATION process completed futures: {e}")
+
+        completed_validation_futures.clear()
+        validation_futures.clear()
+        client.rebalance()
 
         # Test Phase
+        print("Entering the test phase")
         try:
-            for scattered_data in scattered_test_data_futures:
+            for j, scattered_data in enumerate(scattered_test_data_futures):
                 model_key = (n_topics, alpha_value, beta_value)
                 ldamodel = pickle.loads(test_models_dict[model_key])
                 future = client.submit(
                     train_model_v2, DATA_SOURCE, n_topics, alpha_value, beta_value, TEXTS_ZIP_DIR, PYLDA_DIR, PCOA_DIR, PCA_GPU_DIR, unified_dictionary, scattered_data, "test",
-                    RANDOM_STATE, PASSES, ITERATIONS, UPDATE_EVERY, EVAL_EVERY, num_workers, PER_WORD_TOPICS, ldamodel=ldamodel
+                    RANDOM_STATE, PASSES, ITERATIONS, UPDATE_EVERY, EVAL_EVERY, num_workers, PER_WORD_TOPICS, ldamodel=ldamodel, pure=False
                 )
                 test_futures.append(future)
                 progress_bar.update()
 
+                # Rebalance every 100 batches to avoid memory overload
+                if (j + 1) % 100 == 0:
+                    client.rebalance()
+        except Exception as e:
+            logging.error("Test phase error in SpectraSync.py with train_model_v2") 
+        try:
             # Wait for test futures and update progress
             done_test, _ = wait(test_futures, timeout=None)
             completed_test_futures = [done.result() for done in done_test]
 
+            # Rebalance after training completion
+            client.rebalance()
+
+            if len(completed_test_futures) == 0:
+                logging.error(f"No results were output from '_v2' for writing to SSD. Number of completed test futures: {len(completed_test_futures)}")
+                sys.exit()
+        except Exception as e:
+            logging.error(f"Test phase error with WAIT: {e}")
+            print(f"Test phase error with WAIT: {e}")
+            sys.exit()
+
+        try:
             # Gather model results and visualize
-            for test_resut in completed_test_futures:
-                model_key = (test_resut['topics'], str(test_resut['alpha_str'][0]), str(test_resut['beta_str'][0]))
-                test_models_dict[model_key] = test_resut['lda_model']
+            for test_result in completed_test_futures:
+                model_key = (test_result['topics'], str(test_result['alpha_str'][0]), str(test_result['beta_str'][0]))
+                test_models_dict[model_key] = test_result['lda_model']
 
                 # Visualization tasks
                 test_pcoa_vis = create_vis_pca(
-                    pickle.loads(test_resut['lda_model']),
-                    pickle.loads(test_resut['corpus']),
-                    n_topics, "TEST", test_resut['text_md5'],
-                    test_resut['time_key'], PCOA_DIR
+                    pickle.loads(test_result['lda_model']),
+                    pickle.loads(test_result['corpus']),
+                    n_topics, "TEST", test_result['text_md5'],
+                    test_result['time_key'], PCOA_DIR
                 )
-                test_pca_gpu_vis = create_pca_plot_gpu(
-                        test_resut['validation_result'], 
-                        test_resut['topics_words'],
-                        test_resut['mode_coherence'],
-                        "TEST",
-                        test_resut['num_word'], 
-                        n_topics, test_resut['text_md5'],
-                        test_resut['time_key'], PCA_GPU_DIR
+                test_tsne_vis = create_tsne_plot(
+                        test_result['validation_result'], 
+                        test_result['perplexity'],
+                        test_result['mode_coherence'],
+                        "TEST", 
+                        n_topics, test_result['text_md5'],
+                        test_result['time_key'], PCA_GPU_DIR
                 )
                 test_pylda_vis = create_vis_pylda(
-                    pickle.loads(test_resut['lda_model']),
-                    pickle.loads(test_resut['corpus']),
-                    pickle.loads(test_resut['dictionary']),
-                    n_topics, "TEST", test_resut['text_md5'], CORES,
-                    test_resut['time_key'], PYLDA_DIR
+                    pickle.loads(test_result['lda_model']),
+                    pickle.loads(test_result['corpus']),
+                    pickle.loads(test_result['dictionary']),
+                    n_topics, "TEST", test_result['text_md5'], CORES,
+                    test_result['time_key'], PYLDA_DIR
                 )
 
                 # Compute visualization results
                 completed_pylda_vis.append(test_pylda_vis.compute())
                 completed_pcoa_vis.append(test_pcoa_vis.compute())
-                completed_pcoa_vis.append(test_pca_gpu_vis.compute())
+                completed_pcoa_vis.append(test_tsne_vis.compute())
         except Exception as e:
-            logging.error(f"Error in test phase: {e}")
-            continue
+            logging.error(f"Error in test visualization phase: {e}")
 
         # After processing all train phases in the sorted combinations
         try:
@@ -867,22 +917,21 @@ if __name__=="__main__":
                         CONNECTION_STRING, CORPUS_LABEL,
                         completed_train_futures, completed_validation_futures, completed_test_futures,
                         len(completed_test_futures),
-                        num_workers, BATCH_SIZE, TEXTS_ZIP_DIR, vis_pylda=completed_pylda_vis, vis_pcoa=completed_pcoa_vis
+                        num_workers, BATCH_SIZE, TEXTS_ZIP_DIR, 
+                        vis_pylda=completed_pylda_vis, vis_pcoa=completed_pcoa_vis, vis_pca=completed_tsne_vis
                     )
         except Exception as e:
-            logging.error(f"Error processing TEST completed futures: {e}")
+            logging.error(f"Error processing TEST process completed futures: {e}")
 
-        # Log the processing time
-        elapsed_time = round(((time() - started) / 60), 2)
-        logging.info(f"Finished processing futures to disk in {elapsed_time} minutes")
-    
-        completed_train_futures.clear()
-        completed_validation_futures.clear()
         completed_test_futures.clear()
         test_futures.clear()
-        validation_futures.clear()
-        train_futures.clear()
         client.rebalance()
+
+
+    # Log the processing time
+    elapsed_time = round(((time() - started) / 60), 2)
+    logging.info(f"Finished processing futures to disk in {elapsed_time} minutes")
+
 
     # Capture the end time
     end_time = pd.Timestamp.now()
