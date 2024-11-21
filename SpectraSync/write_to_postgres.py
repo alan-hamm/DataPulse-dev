@@ -104,7 +104,6 @@ def create_dynamic_table_class(table_name):
     'text' : Column(LargeBinary, nullable=False),
     'text_json' : Column(LargeBinary, nullable=False),
     'max_attemps': Column(Integer, nullable=False),
-    'show_topics': Column(JSONB, nullable=False),
     'topics_words': Column(JSONB, nullable=False),
     'validation_result': Column(JSONB, nullable=False),
     'text_sha256' : Column(String(64), nullable=False),
