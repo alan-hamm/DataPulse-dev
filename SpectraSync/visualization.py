@@ -60,22 +60,39 @@ matplotlib.use('Agg')
 # Set max_open_warning to 0 to suppress the warning
 plt.rcParams['figure.max_open_warning'] = 0 # suppress memory warning msgs re too many plots being open simultaneously
 
+@delayed
+def process_row(row, num_topics, threshold=0.001):
+    if isinstance(row, list) and row:
+        # Apply smoothing only to values below a specific threshold
+        processed_row = [
+            value if value > threshold else threshold
+            for value in row if isinstance(value, (int, float))
+        ]
 
-@dask.delayed
-def get_document_topics_delayed(ldamodel, bow_doc):
-    """
-    Retrieve significant topics for a given document in a delayed Dask task.
+        # Ensure the processed row has the expected number of topics
+        if len(processed_row) < num_topics:
+            processed_row.extend([threshold] * (num_topics - len(processed_row)))
 
-    Parameters:
-    - ldamodel (LdaModel): Trained LDA model to extract document topics.
-    - bow_doc (list of tuples): Bag-of-words representation of the document.
+        # Normalize the row to ensure it sums to 1
+        total = sum(processed_row)
+        if total > 0:
+            processed_row = [value / total for value in processed_row]
 
-    Returns:
-    - list: List of topics with their respective probabilities.
-      Returns a default value if no significant topics are found or an error occurs.
-    """
+        # Find the dominant topic label
+        dominant_topic_label = f"Topic {processed_row.index(max(processed_row))}"
+    else:
+        # Default to assigning 'No Topic' if the row is not valid
+        processed_row = [threshold] * num_topics
+        dominant_topic_label = "No Topic"
+
+    return processed_row, dominant_topic_label
+
+
+
+
+def get_document_topics(ldamodel, bow_doc):
     try:
-        topics = ldamodel.get_document_topics(bow_doc, minimum_probability=0.01)
+        topics = ldamodel.get_document_topics(bow_doc, minimum_probability=0)
         if not topics:
             logging.warning(f"No significant topics found for document: {bow_doc}")
             return [{"topic_id": None, "probability": 0}]
@@ -83,6 +100,7 @@ def get_document_topics_delayed(ldamodel, bow_doc):
     except Exception as e:
         logging.error(f"Error getting document topics for document {bow_doc}: {e}")
         return [{"topic_id": None, "probability": 0}]
+
 
 
 def fill_distribution_matrix(ldaModel, corpus, num_topics):
@@ -293,7 +311,7 @@ def create_vis_pca(ldaModel, corpus, topics, phase_name, filename, time_key, PCO
 
 
 
-def create_pca_plot_gpu(document_topic_distributions, topics_to_store_task, mode_coherence, phase_name, num_words, topics, filename, time_key, pca_dir, title="PCA Topic Distribution"):
+def create_tsne_plot(document_topic_distributions, perplexity_score, mode_coherence, phase_name, topics, filename, time_key, pca_dir, title="tSNE Topic Distribution"):
     create_pca = None
     PCoAfilename = filename
 
@@ -303,7 +321,7 @@ def create_pca_plot_gpu(document_topic_distributions, topics_to_store_task, mode
         os.makedirs(pca_dir, exist_ok=True)
         PCoAIMAGEFILE = os.path.join(pca_dir, PCoAfilename)
     except Exception as e:
-        logging.error(f"Couldn't create PCoA file: {e}")
+        logging.error(f"Couldn't create tSNE file: {e}")
         return time_key, False
 
     # Use the provided number of topics
@@ -311,20 +329,8 @@ def create_pca_plot_gpu(document_topic_distributions, topics_to_store_task, mode
 
     # Initialize GPU tensor directly and prepare labels (optimized for efficiency)
     try:
-        # Use Dask delayed for parallel processing
-        @delayed
-        def process_row(row):
-            if isinstance(row, list) and row:
-                processed_row = [(float(item) + 0.01) for item in row if isinstance(item, (int, float))]  # Added smoothing
-                if len(processed_row) < num_topics:
-                    processed_row.extend([0.01] * (num_topics - len(processed_row)))  # Add smoothing for empty slots
-                dominant_topic_label = f"Topic {processed_row.index(max(processed_row))}"
-            else:
-                processed_row = [0.01] * num_topics
-                dominant_topic_label = "No Topic"
-            return processed_row, dominant_topic_label
 
-        delayed_results = [process_row(row) for row in document_topic_distributions]
+        delayed_results = [process_row(row, num_topics) for row in document_topic_distributions]
         results = compute(*delayed_results)
         processed_distributions, dominant_topics_labels = zip(*results)
 
@@ -380,16 +386,32 @@ def create_pca_plot_gpu(document_topic_distributions, topics_to_store_task, mode
 
     # Perform PCA and visualization
     try:
+        # Ensure perplexity is less than n_samples and within a reasonable range for t-SNE
+        n_samples = distributions_tensor_cpu.shape[0]
+        # Use the actual perplexity score if available, otherwise default to a typical value (e.g., 30)
+        actual_perplexity = max(5, min(perplexity_score, 50))  # Assuming perplexity_score is calculated from your model
+        perplexity = min(actual_perplexity, n_samples - 1)  # Ensure perplexity is valid for t-SNE
+
         # Use GPU-accelerated TSNE for dimensionality reduction
-        tsne_result = TSNE(n_components=2, perplexity=30, n_iter=300, random_state=42).fit_transform(distributions_tensor_cpu)
+        tsne_result = TSNE(n_components=2, perplexity=perplexity, n_iter=1000, random_state=42).fit_transform(distributions_tensor_cpu)
         df = pd.DataFrame({
-            'PCA1': tsne_result[:, 0],
-            'PCA2': tsne_result[:, 1],
+            'TSNE1': tsne_result[:, 0],
+            'TSNE2': tsne_result[:, 1],
             'Dominant_Topic': valid_labels[:len(tsne_result)]
         })
 
+        # Generate unique colors for each topic label using a colormap
+        unique_labels = list(set(valid_labels))
+        colors = plt.cm.jet(np.linspace(0, 1, len(unique_labels)))
+        
+        # Create a mapping from topic labels to colors
+        label_to_color = dict(zip(unique_labels, colors))
+
+        # Create a new column in the DataFrame for color
+        df['Color'] = df['Dominant_Topic'].map(label_to_color)
+
         # Create and save interactive plot
-        fig = px.scatter(df, x='PCA1', y='PCA2', color='Dominant_Topic', hover_data={'PCA1': False, 'PCA2': False}, title=title)
+        fig = px.scatter(df, x='TSNE1', y='TSNE2', color='Dominant_Topic', hover_data={'TSNE1': False, 'TSNE2': False}, title=title)
         fig.update_traces(marker=dict(size=8, opacity=0.7))
         fig.write_html(f'{PCoAIMAGEFILE}.html')
         logging.info(f"Figure saved successfully to {PCoAIMAGEFILE}.html")
@@ -508,7 +530,8 @@ def process_visualizations(phase_results, phase_name, performance_log, cores, py
                         result_dict['text_md5'],  # filename
                         cores,
                         result_dict['time_key'],
-                        pylda_dir
+                        pylda_dir,
+                        pure=False
                     )
                     visualization_futures_pylda.append(vis_future_pylda)
                 except Exception as e:
@@ -516,7 +539,7 @@ def process_visualizations(phase_results, phase_name, performance_log, cores, py
                     logging.error(f"TYPE: pyLDA -- MD5: {result_dict['text_md5']}")
                 
                 try:
-                    vis_future_pca_gpu = client.submit(create_pca_plot_gpu,
+                    vis_future_pca_gpu = client.submit(create_tsne_plot,
                         result_dict['validation_result'], 
                         result_dict['topic_labels'],
                         phase_name,
@@ -525,7 +548,8 @@ def process_visualizations(phase_results, phase_name, performance_log, cores, py
                         result_dict['text_md5'],
                         result_dict['time_key'], 
                         pca_gpu_dir,
-                        title="PCA Topic Distribution"
+                        title="PCA Topic Distribution",
+                        pure=False
                     )
                     visualization_futures_pca_gpu.append(vis_future_pca_gpu)
                 except Exception as e:
@@ -540,7 +564,8 @@ def process_visualizations(phase_results, phase_name, performance_log, cores, py
                         phase_name,
                         result_dict['text_md5'],  # filename
                         result_dict['time_key'],
-                        pcoa_dir
+                        pcoa_dir,
+                        pure=False
                     )
                     visualization_futures_pcoa.append(vis_future_pcoa)
                 except Exception as e:
@@ -548,13 +573,13 @@ def process_visualizations(phase_results, phase_name, performance_log, cores, py
                             logging.error(f"TYPE: PCoA -- MD5: {result_dict['text_md5']}")
 
         # Wait for all visualization tasks to complete
-        logging.info(f"Executing WAIT on {phase_name} pyLDA visualizations: {len(visualization_futures_pylda)} futures.")
+        logging.info(f"Execute WAIT on {phase_name} pyLDA visualizations: {len(visualization_futures_pylda)} futures.")
         done_viz_futures_pylda, not_done_viz_futures_pylda = wait(visualization_futures_pylda)
         
-        logging.info(f"Executing WAIT on {phase_name} PCoA visualizations: {len(visualization_futures_pcoa)} futures.")
+        logging.info(f"Execute WAIT on {phase_name} PCoA visualizations: {len(visualization_futures_pcoa)} futures.")
         done_viz_futures_pcoa, not_done_viz_futures_pcoa = wait(visualization_futures_pcoa)
 
-        logging.info(f"Executing WAIT on {phase_name} PCoA visualizations: {len(visualization_futures_pca_gpu)} futures.")
+        logging.info(f"Execute WAIT on {phase_name} PCoA visualizations: {len(visualization_futures_pca_gpu)} futures.")
         done_viz_futures_pca_gpu, not_done_viz_futures_pca_gpu = wait(visualization_futures_pca_gpu)
 
         if len(not_done_viz_futures_pylda) > 0:
