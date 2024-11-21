@@ -12,7 +12,7 @@ from .utils import *
 from .process_futures import process_completed_futures, futures_create_lda_datasets, futures_create_lda_datasets_v2
 from .topic_model_trainer import train_model_v2
 from .alpha_eta import calculate_numeric_alpha, calculate_numeric_beta, validate_alpha_beta, calculate_alpha_beta
-from .visualization import create_vis_pylda, create_vis_pcoa, process_visualizations, create_vis_pca, create_tsne_plot, get_document_topics_delayed
+from .visualization import create_vis_pylda, create_vis_pcoa, process_visualizations, create_vis_pca, create_tsne_plot, get_document_topics
 from .write_to_postgres import save_to_zip, create_dynamic_table_class, create_table_if_not_exists, add_model_data_to_database
 from .yaml_loader import join, getenv, get_current_time
 from .postgres_logging  import  PostgresLoggingHandler
@@ -72,7 +72,7 @@ __all__ = [
     'create_vis_pca',
     'create_tsne_plot',
     'process_visualizations',
-    'get_document_topics_delayed',
+    'get_document_topics',
 
     # process_futures
     'process_completed_futures',
