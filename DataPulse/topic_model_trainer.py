@@ -51,7 +51,7 @@ from .utils import NumpyEncoder
 from .batch_estimation import estimate_futures_batches_large_docs_v2
 from .mathstats import *
 from .visualization import *
-from .process_futures import get_and_process_show_topics, get_document_topics_batch
+from .process_futures import get_and_process_show_topics, get_document_topics_batch, extract_topics_with_get_topic_terms
 
    
 # https://examples.dask.org/applications/embarrassingly-parallel.html
@@ -276,9 +276,10 @@ def train_model_v2(data_source: str, n_topics: int, alpha_str: Union[str, float]
             perplexity_task = dask.delayed(lambda: DEFAULT_SCORE)()
 
 
-
-    # Set a default value for topics_results_jsonb in case of failures
-    topics_results_jsonb = "[]"  # Default to an empty JSON array
+    # Set a default value for *_jsonb in case of failures
+    topics_results_jsonb = json.dumps(["not_initialized_yet", "no_real_data"])
+    topic_words_jsonb = json.dumps(["not_initialized_yet", "no_real_data"])
+    validation_results_jsonb = json.dumps(["not_initialized_yet", "no_real_data"])
     
     # Set a default value for num_words in case of errors during calculation
     try:
@@ -289,28 +290,38 @@ def train_model_v2(data_source: str, n_topics: int, alpha_str: Union[str, float]
 
     try:
         # Create delayed task for getting and processing show_topics
-        topics_to_store_task = get_and_process_show_topics(ldamodel, num_words=num_words)
+        topics_to_store_task = extract_topics_with_get_topic_terms(ldamodel, num_words=num_words)
 
         # Compute the delayed topics result
         topics_results_to_store = topics_to_store_task.compute()
 
-        # Ensure all numerical values are in a JSON-compatible format for downstream compatibility
-        topics_results_to_store = convert_float32_to_float(topics_results_to_store)
-
-        # Serialize the topics data to JSON format for structured storage
         try:
-            # Attempt with custom fallback handler using the 'default' parameter
-            topics_results_jsonb = json.dumps(
-                topics_results_to_store,
-                default=lambda obj: float(obj) if isinstance(obj, (int, float, np.float32, np.float64)) else float('nan')
-            )
-        except TypeError as e:
-            logging.warning(f"JSON serialization failed on first attempt due to non-compatible types: {e}")
+            topics_results_jsonb = convert_float32_to_float(topics_results_to_store)
+        except Exception as e:
+            logging.error(f"First attempt to serialize topics_results_to_store failed: {e}")
+            try:
+                topics_results_jsonb = json.dumps(topics_results_to_store, cls=NumpyEncoder)
+            except Exception as e:
+                logging.warning(f"Second topics_results_jsonb serialization attempt failed: {e}")
+                try:
+                    # second attempt with specific handling for arrays/dataframes
+                    if isinstance(topics_results_to_store, np.ndarray):
+                        data = topics_results_to_store.astype(float).tolist()
+                        topics_results_jsonb = json.dumps(data)
 
+                    elif isinstance(topics_results_to_store, pd.DataFrame):
+                        data = topics_results_to_store.applymap(lambda x: float(x) if isinstance(x, (np.float32, np.float64)) else x)
+                        topics_results_jsonb = json.dumps(data)
+
+                    else:
+                        topics_results_jsonb = json.dumps(topics_results_to_store)
+
+                except Exception as e:
+                    logging.error(f"All JSON topics_results_jsonb serialization attempts failed: {e}")
+                    topics_results_jsonb = json.dumps({"error": "Validation data generation failed", "phase": phase})
     except Exception as e:
-        logging.error(f"Unexpected error during topic processing: {e}")
-
-
+        logging.error(f"Unexpected extract_topics_with_get_topic_terms error during topic processing: {e}")
+    
 
 
     # Assuming the corpus_data[phase] is already split into batches
@@ -318,6 +329,8 @@ def train_model_v2(data_source: str, n_topics: int, alpha_str: Union[str, float]
 
         # Define batch size for processing
         batch_size = estimate_futures_batches_large_docs_v2(data_source, min_batch_size=5, max_batch_size=20, memory_limit_ratio=0.4, cpu_factor=3)
+
+        batch_size = min(len(corpus_data[phase]), batch_size)
 
         # Create batches from the corpus data
         corpus_batches = [corpus_data[phase][i:i + batch_size] for i in range(0, len(corpus_data[phase]), batch_size)]
@@ -331,7 +344,7 @@ def train_model_v2(data_source: str, n_topics: int, alpha_str: Union[str, float]
         for idx, batch in enumerate(corpus_batches):
             start_time = time()
             # Submit each batch for processing
-            future = client.submit(process_batch_get_document_topics, ldamodel, batch, pure=False)
+            future = client.submit(process_batch_get_document_topics, ldamodel, batch)
             futures.append(future)
             batch_id = idx + 1
             total_batches = len(corpus_batches)
@@ -363,12 +376,12 @@ def train_model_v2(data_source: str, n_topics: int, alpha_str: Union[str, float]
             )
         )
         #print("Serialized validation results (JSONB):", validation_results_jsonb)
-    except TypeError as e:
+    except Exception as e:
         logging.error(f"JSON serialization failed with TypeError: {e}")
         try:
             validation_results_jsonb = json.dumps(validation_results_to_store, cls=NumpyEncoder)
 
-        except TypeError as e:
+        except Exception as e:
             logging.warning(f"Second serialization attempt failed: {e}")
             try:
                 # Third attempt with specific handling for arrays/dataframes
@@ -383,7 +396,7 @@ def train_model_v2(data_source: str, n_topics: int, alpha_str: Union[str, float]
                 else:
                     validation_results_jsonb = json.dumps(validation_results_to_store)
 
-            except TypeError as e:
+            except Exception as e:
                 logging.error("All JSON serialization attempts failed.")
                 validation_results_jsonb = json.dumps({"error": "Validation data generation failed", "phase": phase})
 
@@ -396,39 +409,91 @@ def train_model_v2(data_source: str, n_topics: int, alpha_str: Union[str, float]
                     logging.error(f"Type of {key}: {type(value)}")
 
 
+        # Validate batch_documents
+        if not batch_documents:
+            raise ValueError("Batch documents are empty!")
+        if not all(isinstance(doc, list) and all(isinstance(token, str) for token in doc) for doc in batch_documents):
+            print(f"ERROR IN BATCH STRUCTURE: {batch_documents}:")
+            raise ValueError("Batch documents have an incorrect structure!")
+
+        # Validate LDAModel
+        if not hasattr(ldamodel, 'num_topics') or ldamodel.num_topics <= 0:
+            raise ValueError("LDAModel is not properly trained. Ensure it has been trained with valid data.")
+        if not hasattr(ldamodel, 'state') or ldamodel.state is None:
+            raise ValueError("LDAModel state is missing. Training might not have been completed.")
+
+        # Test LDAModel functionality
+        try:
+            topic_words = ldamodel.show_topic(0, topn=5)  # Get top 5 words from topic 0
+            logging.debug(f"Top words for topic 0: {topic_words}")
+        except Exception as e:
+            logging.error(f"Error while retrieving topic words: {e}")
+            raise
+
+        
+        # Ensure that show_topic works without errors
+        try:
+            topic_words = ldamodel.show_topic(0, topn=5)  # Get top 5 words from topic 0
+            logging.debug(f"Top words for topic 0: {topic_words}")
+        except Exception as e:
+            logging.error(f"Error while retrieving topic words: {e}")
+            raise
         try:
             if phase == "train":
                 try:
-                    # Create a delayed task for retrieving top words directly from the model without computing immediately
+                    logging.debug("Phase: train - creating topic_words_task.")
                     topic_words_task = dask.delayed(lambda: [
                         [word for word, _ in ldamodel.show_topic(topic_id, topn=10)]
                         for topic_id in range(ldamodel.num_topics)
                     ])()
+                    logging.debug("topic_words_task created successfully.")
                 except Exception as e:
-                    logging.error(f"An error occurred while extracting topic words directly from the model: {e}")
-                    # Fallback delayed task if topic extraction fails
+                    logging.error(f"Error creating topic_words_task in train phase: {e}")
                     topic_words_task = dask.delayed(lambda: [["N/A"]])()
             else:
-                # Create a delayed task to retrieve top topics with coherence ordering
+                logging.debug("Phase: non-train - creating topics_task.")
                 topics_task = dask.delayed(ldamodel.top_topics)(
                     texts=batch_documents,
                     processes=math.floor(cores * (2 / 3))
                 )
-                
-                # Create a delayed task to process and extract only words from each topic
+                logging.debug("topics_task created successfully.")
+
                 topic_words_task = dask.delayed(lambda topics: [[word for _, word in topic[0]] for topic in topics])(topics_task)
+                logging.debug("topic_words_task created successfully.")
+
+            logging.debug("Computing topic_words_task...")
+            topic_words = topic_words_task.compute()
+            logging.debug(f"topic_words computed successfully: {topic_words}")
+
+            topics_to_store = convert_float32_to_float(topic_words)
+            topic_words_jsonb = json.dumps(topics_to_store)  # Serialize to JSON format
+            logging.debug(f"Serialized topic words: {topic_words_jsonb}")
 
         except Exception as e:
-            logging.error(f"An error occurred while processing topics: {e}")
-            # Fallback delayed task if extraction fails
-            topic_words_task = dask.delayed(lambda: [["N/A"]])()
+            # Error during topic processing or serialization
+            logging.error(f"Critical failure in topic processing or serialization: {e}. Attempting second attempt with NumpyEncoder.")
 
-        # Later in the program, retrieve the topic words by calling .compute()
-        topic_words = topic_words_task.compute()
+            try:
+                topic_words_jsonb = json.dumps(topics_to_store, cls=NumpyEncoder)
 
-        # Ensure all numerical values are in a JSON-compatible format for downstream compatibility.
-        topics_to_store = convert_float32_to_float(topic_words)
-        topic_words_jsonb = json.dumps(topics_to_store)  # Serializes to JSON format
+            except TypeError as e:
+                logging.warning(f"Second topics_to_store serialization attempt failed: {e}")
+                try:
+                    # Third attempt with specific handling for arrays/dataframes
+                    if isinstance(topics_to_store, np.ndarray):
+                        data = topics_to_store.astype(float).tolist()
+                        topic_words_jsonb = json.dumps(data)
+
+                    elif isinstance(topics_to_store, pd.DataFrame):
+                        data = topics_to_store.applymap(lambda x: float(x) if isinstance(x, (np.float32, np.float64)) else x)
+                        topic_words_jsonb = json.dumps(data)
+
+                    else:
+                        topic_words_jsonb = json.dumps(topics_to_store)
+
+                except TypeError as e:
+                    logging.error("All JSON topics_to_store serialization attempts failed.")
+                    topic_words_jsonb = json.dumps({"error": "Validation data generation failed", "phase": phase})
 
 
     # Calculate batch size based on training data batch
@@ -470,7 +535,14 @@ def train_model_v2(data_source: str, n_topics: int, alpha_str: Union[str, float]
         threshold, coherence_task, coherence_scores_data, convergence_task, perplexity_task, topics_to_store_task
     )
 
-
+    if topic_words_jsonb == json.dumps(["not_initialized_yet", "no_real_data"]):
+        logging.warning("topics_results_jsonb is still using the default placeholder!")
+    
+    if topics_results_jsonb == json.dumps(["not_initialized_yet", "no_real_data"]):
+        logging.warning("topics_results_jsonb is still using the default placeholder!")
+        
+    if validation_results_jsonb == json.dumps(["not_initialized_yet", "no_real_data"]):
+        logging.warning("topics_results_jsonb is still using the default placeholder!")
     current_increment_data = {
     # Metadata and Identifiers
     'time_key': unique_primary_key,
