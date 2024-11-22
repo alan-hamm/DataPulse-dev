@@ -50,7 +50,8 @@ from .utils import convert_float32_to_float  # Utility functions for data type c
 from .utils import NumpyEncoder
 from .batch_estimation import estimate_futures_batches_large_docs_v2
 from .mathstats import *
-from .visualization import get_document_topics
+from .visualization import *
+from .process_futures import get_and_process_show_topics, get_document_topics_batch
 
    
 # https://examples.dask.org/applications/embarrassingly-parallel.html
@@ -214,7 +215,7 @@ def train_model_v2(data_source: str, n_topics: int, alpha_str: Union[str, float]
         try:
             # Create a delayed task for coherence score calculation without computing it immediately
             coherence_task = dask.delayed(calculate_torch_coherence)(
-                ldamodel, batch_documents, train_dictionary_batch
+                data_source, ldamodel, batch_documents, train_dictionary_batch
             )
         except Exception as e:
             logging.warning("calculate_torch_coherence score calculation failed. Using default score.")
@@ -275,59 +276,42 @@ def train_model_v2(data_source: str, n_topics: int, alpha_str: Union[str, float]
             perplexity_task = dask.delayed(lambda: DEFAULT_SCORE)()
 
 
-    # Set the number of words to display for each topic, allowing deeper insight into topic composition.
-    num_words = math.floor(len(batch_documents) * .80)  # Adjust based on the level of detail required for topic terms.
+
+    # Set a default value for topics_results_jsonb in case of failures
+    topics_results_jsonb = "[]"  # Default to an empty JSON array
     
-    # Retrieve the top words for each topic with their probabilities. This provides the most relevant words defining each topic.
+    # Set a default value for num_words in case of errors during calculation
     try:
-        # Create a delayed task for ldamodel.show_topics without computing it immediately
-        show_topics_task = dask.delayed(ldamodel.show_topics)(num_topics=-1, num_words=num_words, formatted=False)
-        
-        # Create a delayed task to process the show_topics results
-        topics_to_store_task = dask.delayed(lambda show_topics: [
-            {
-                "method": "show_topics",
-                "topic_id": topic[0],
-                "words": [{"word": word, "prob": prob} for word, prob in topic[1]]
-            }
-            for topic in show_topics
-        ])(show_topics_task)
+        num_words = sum(sum(count for _, count in doc) for doc in corpus_data[phase])
     except Exception as e:
-        # Handle errors and provide diagnostic information as a delayed task
-        logging.warning("An error occurred while processing show_topics.")
-        topics_to_store_task = dask.delayed(lambda: [
-            {
-                "method": "show_topics",
-                "topic_id": None,
-                "words": [],
-                "error": str(e),
-                "record_id": kwargs.get("record_id", "unknown"),
-                "parameters": {
-                    "num_topics": kwargs.get("num_topics", "unknown"),
-                    "num_words": kwargs.get("num_words", "unknown"),
-                    "alpha": kwargs.get("alpha", "unknown"),
-                    "beta": kwargs.get("beta", "unknown"),
-                }
-            }
-        ])()
+        logging.warning(f"Error calculating num_words: {e}")
+        num_words = 10  # Assign a fallback value for num_words
 
-    topics_results_to_store = topics_to_store_task.compute()
-    # Ensure all numerical values are in a JSON-compatible format for downstream compatibility 
-    topics_results_to_store = convert_float32_to_float(topics_results_to_store)
-    # Serialize the topics data to JSON format for structured storage
     try:
-        # attempt with custom fallback handler using the 'default' parameter
-        topics_results_jsonb = json.dumps(topics_results_to_store, default=lambda obj: float(obj) if isinstance(obj, (int, float, np.float32, np.float64)) else float('nan'))
+        # Create delayed task for getting and processing show_topics
+        topics_to_store_task = get_and_process_show_topics(ldamodel, num_words=num_words)
 
-    except TypeError as e:
-        logging.warning(f"JSON serialization failed on first attempt due to non-compatible types: {e}")
+        # Compute the delayed topics result
+        topics_results_to_store = topics_to_store_task.compute()
 
-
-    with np.errstate(divide='ignore', invalid='ignore'):
         # Ensure all numerical values are in a JSON-compatible format for downstream compatibility
         topics_results_to_store = convert_float32_to_float(topics_results_to_store)
-        # Serialize topic data to JSON format for structured storage
-        show_topics_jsonb = pickle.dumps(json.dumps(topics_results_to_store))
+
+        # Serialize the topics data to JSON format for structured storage
+        try:
+            # Attempt with custom fallback handler using the 'default' parameter
+            topics_results_jsonb = json.dumps(
+                topics_results_to_store,
+                default=lambda obj: float(obj) if isinstance(obj, (int, float, np.float32, np.float64)) else float('nan')
+            )
+        except TypeError as e:
+            logging.warning(f"JSON serialization failed on first attempt due to non-compatible types: {e}")
+
+    except Exception as e:
+        logging.error(f"Unexpected error during topic processing: {e}")
+
+
+
 
     # Assuming the corpus_data[phase] is already split into batches
     try:
@@ -340,7 +324,7 @@ def train_model_v2(data_source: str, n_topics: int, alpha_str: Union[str, float]
 
         # Define a helper function to process each batch
         def process_batch_get_document_topics(ldamodel, batch):
-            return [get_document_topics(ldamodel, bow_doc) for bow_doc in batch]
+            return [get_document_topics_batch(ldamodel, bow_doc) for bow_doc in batch]
 
         # Submit each batch for processing directly
         futures = []
@@ -352,14 +336,12 @@ def train_model_v2(data_source: str, n_topics: int, alpha_str: Union[str, float]
             batch_id = idx + 1
             total_batches = len(corpus_batches)
             elapsed_time = time() - start_time
-            #print(f"[get_document_topics] Submitted batch {batch_id}/{total_batches} in {elapsed_time:.2f} seconds.")
             logging.info(f"[get_document_topics] Submitted batch {batch_id}/{total_batches} in {elapsed_time:.2f} seconds.")
 
         # Wait for completion and gather results
         done_batches, _ = wait(futures, timeout=None)
-        validation_results_to_store = [result for future in done_batches for result in future.result()]
+        validation_results_to_store = [r.result() for r in done_batches]
         total_documents = len(validation_results_to_store)
-        #print(f"[get_document_topics] Completed processing {total_documents} documents.")
         logging.info(f"[get_document_topics] Completed processing {total_documents} documents.")
 
         # Log the computed structure before further processing
@@ -500,11 +482,11 @@ def train_model_v2(data_source: str, n_topics: int, alpha_str: Union[str, float]
     # Document and Batch Details
     'batch_size': batch_size,
     'num_documents': len(train_dictionary_batch),
-    'num_word': len(flattened_batch),
+    'num_word': len(flattened_batch) if num_words != -1 else -1,
     'text': pickle.dumps(text_data),
     'text_json': pickle.dumps(validation_test_data if phase == "train" else batch_documents),
     'max_attempts': max_attempts, 
-    'show_topics': show_topics_jsonb,
+    'top_topics': topic_words_jsonb,
     'topics_words':topics_results_jsonb,
     'validation_result': validation_results_jsonb,
     'text_sha256': hashlib.sha256(text_data.encode()).hexdigest(),

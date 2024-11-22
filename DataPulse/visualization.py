@@ -508,7 +508,7 @@ def process_visualizations(phase_results, phase_name, performance_log, cores, py
 
         visualization_futures_pylda = []
         visualization_futures_pcoa = []
-        visualization_futures_pca_gpu = []
+        visualization_futures_tsne = []
 
         processed_results = set()  # Track processed result hashes
 
@@ -539,7 +539,7 @@ def process_visualizations(phase_results, phase_name, performance_log, cores, py
                     logging.error(f"TYPE: pyLDA -- MD5: {result_dict['text_md5']}")
                 
                 try:
-                    vis_future_pca_gpu = client.submit(create_tsne_plot,
+                    train_tsne_vis = client.submit(create_tsne_plot,
                         result_dict['validation_result'], 
                         result_dict['topic_labels'],
                         phase_name,
@@ -551,7 +551,7 @@ def process_visualizations(phase_results, phase_name, performance_log, cores, py
                         title="PCA Topic Distribution",
                         pure=False
                     )
-                    visualization_futures_pca_gpu.append(vis_future_pca_gpu)
+                    visualization_futures_tsne.append(train_tsne_vis)
                 except Exception as e:
                     logging.error(f"Error in create_vis_pca_gpu() Dask operation: {e}")
                     logging.error(f"TYPE: PCA_GPU -- MD5: {result_dict['text_md5']}")                 
@@ -579,22 +579,22 @@ def process_visualizations(phase_results, phase_name, performance_log, cores, py
         logging.info(f"Execute WAIT on {phase_name} PCoA visualizations: {len(visualization_futures_pcoa)} futures.")
         done_viz_futures_pcoa, not_done_viz_futures_pcoa = wait(visualization_futures_pcoa)
 
-        logging.info(f"Execute WAIT on {phase_name} PCoA visualizations: {len(visualization_futures_pca_gpu)} futures.")
-        done_viz_futures_pca_gpu, not_done_viz_futures_pca_gpu = wait(visualization_futures_pca_gpu)
+        logging.info(f"Execute WAIT on {phase_name} PCoA visualizations: {len(visualization_futures_tsne)} futures.")
+        done_viz_futures_tsne, not_done_viz_futures_tsne = wait(visualization_futures_tsne)
 
         if len(not_done_viz_futures_pylda) > 0:
             logging.error(f"Some {phase_name} pyLDA visualizations were not created: {len(not_done_viz_futures_pylda)}.")
         if len(not_done_viz_futures_pcoa) > 0:
             logging.error(f"Some {phase_name} PCoA visualizations were not created: {len(not_done_viz_futures_pcoa)}.")
         if len(not_done_viz_futures_pcoa) > 0:
-            logging.error(f"Some {phase_name} PCA GPU visualizations were not created: {len(not_done_viz_futures_pca_gpu)}.")
+            logging.error(f"Some {phase_name} PCA GPU visualizations were not created: {len(not_done_viz_futures_tsne)}.")
 
         # Gather results from completed visualization tasks
         completed_pylda_vis = [future.result() for future in done_viz_futures_pylda]
         completed_pcoa_vis = [future.result() for future in done_viz_futures_pcoa]
-        completed_pca_gpu_vis = [future.result() for future in done_viz_futures_pca_gpu]
+        completed_futures_tsne = [future.result() for future in done_viz_futures_tsne]
 
-        logging.info(f"Completed gathering {len(completed_pylda_vis) + len(completed_pcoa_vis) +len(completed_pca_gpu_vis)} {phase_name} visualization results.")
+        logging.info(f"Completed gathering {len(completed_pylda_vis) + len(completed_pcoa_vis) +len(completed_futures_tsne)} {phase_name} visualization results.")
 
-    return completed_pylda_vis, completed_pcoa_vis, completed_pca_gpu_vis
+    return completed_pylda_vis, completed_pcoa_vis, completed_futures_tsne
 

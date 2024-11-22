@@ -49,6 +49,7 @@ from decimal import Decimal, InvalidOperation
 from scipy.stats import gaussian_kde
 import random
 from scipy import stats
+from .batch_estimation import estimate_futures_batches_large_docs_v2
 
 # Calculate mean, median, and mode using CuPy for GPU acceleration
 def calculate_statistics(coherence_scores):
@@ -329,10 +330,17 @@ def calculate_dynamic_coherence(ldamodel, batch_documents, train_dictionary_batc
 
 # PyTorch-based coherence calculation function
 @delayed
-def calculate_torch_coherence(ldamodel, sample_docs, dictionary):
+def calculate_torch_coherence(data_source, ldamodel, sample_docs, dictionary):
     # Ensure sample_docs is a list of tokenized documents
     if isinstance(sample_docs, tuple):
         sample_docs = list(sample_docs)
+
+    batch_size = estimate_futures_batches_large_docs_v2(data_source)
+
+    # Split sample_docs into smaller batches
+    batches = [sample_docs[i:i + batch_size] for i in range(0, len(sample_docs), batch_size)]
+
+    coherence_scores = []
 
     # Validate and sanitize the sample_docs
     for idx, doc in enumerate(sample_docs):
@@ -355,34 +363,38 @@ def calculate_torch_coherence(ldamodel, sample_docs, dictionary):
         sample_docs[idx] = [str(token) for token in doc]
 
     # Convert documents to topic vectors using the LDA model
-    try:
-        topic_vectors = [
-            ldamodel.get_document_topics(dictionary.doc2bow(doc), minimum_probability=0.01)
-            for doc in sample_docs
-        ]
-    except AttributeError as e:
-        raise AttributeError(
-            f"An error occurred while processing the documents. Please ensure that sample_docs is a list of lists "
-            f"where each inner list is a tokenized document. Details: {str(e)}"
-        )
+    for batch in batches:
+        try:
+            # Convert documents in the batch to topic vectors using the LDA model
+            topic_vectors = [
+                ldamodel.get_document_topics(dictionary.doc2bow(doc), minimum_probability=0.01)
+                for doc in batch
+            ]
 
-    # Convert to dense vectors suitable for tensor operations
-    num_topics = ldamodel.num_topics
-    dense_topic_vectors = torch.zeros((len(topic_vectors), num_topics), dtype=torch.float32, device='cuda')
+            # Convert to dense vectors suitable for tensor operations
+            num_topics = ldamodel.num_topics
+            dense_topic_vectors = torch.zeros((len(topic_vectors), num_topics), dtype=torch.float32, device='cuda')
 
-    for i, doc_topics in enumerate(topic_vectors):
-        for topic_id, prob in doc_topics:
-            dense_topic_vectors[i, topic_id] = torch.tensor(prob, dtype=torch.float32, device='cuda')
+            for i, doc_topics in enumerate(topic_vectors):
+                for topic_id, prob in doc_topics:
+                    dense_topic_vectors[i, topic_id] = torch.tensor(prob, dtype=torch.float32, device='cuda')
 
-    # Calculate cosine similarity on the GPU
-    similarities = torch.nn.functional.cosine_similarity(
-        dense_topic_vectors.unsqueeze(1), dense_topic_vectors.unsqueeze(0), dim=-1
-    )
+            # Calculate cosine similarity on the GPU
+            similarities = torch.nn.functional.cosine_similarity(
+                dense_topic_vectors.unsqueeze(1), dense_topic_vectors.unsqueeze(0), dim=-1
+            )
 
-    # Calculate coherence score by averaging the cosine similarities
-    coherence_score = torch.mean(similarities).item()
-    return coherence_score
+            # Calculate coherence score by averaging the cosine similarities for the batch
+            batch_coherence_score = torch.mean(similarities).item()
+            coherence_scores.append(batch_coherence_score)
 
+        except Exception as e:
+            logging.error(f"Error processing batch for coherence calculation: {e}")
+            coherence_scores.append(0)  # Append a default score in case of failure
+    
+    # Calculate overall coherence score by averaging all batch scores
+    overall_coherence_score = sum(coherence_scores) / len(coherence_scores) if coherence_scores else 0
+    return overall_coherence_score
 
 
 @delayed

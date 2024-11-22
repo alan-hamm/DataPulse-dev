@@ -18,7 +18,7 @@
 # Developed with AI assistance and designed for those who push the boundaries of data exploration.
 
 #%%
-from SpectraSync import *
+from DataPulse import *
 
 import argparse
 
@@ -381,8 +381,8 @@ dask.config.set({'distributed.worker.daemon': False})
 # Set various Dask configurations
 dask.config.set({
     'distributed.worker.memory.target': False,        # Disable automatic memory targeting (spilling to disk)
-    'distributed.worker.memory.spill': False,         # Disable memory spilling to disk
-    'distributed.worker.memory.pause': 0.8,           # Pause work when 80% of memory is used
+    'distributed.worker.memory.spill': True,         # Disable memory spilling to disk
+    'distributed.worker.memory.pause': 0.95,           # Pause work when 80% of memory is used
     'distributed.worker.memory.terminate': 0.99,      # Terminate workers when 99% of memory is used
     'distributed.worker.timeout': '500s',             # Set worker timeout to 500 seconds
     'distributed.comm.timeouts.connect': '300s',      # Set connection timeout to 300 seconds
@@ -685,55 +685,14 @@ if __name__=="__main__":
                 logging.error(f"Train phase error with WAIT: {e}")
                 print(f"Train phase error with WAIT: {e}")
                 sys.exit()
+
+
             try:
-                # Gather model results and visualize
-                for train_result in completed_train_futures:
-                    model_key = (train_result['topics'], str(train_result['alpha_str'][0]), str(train_result['beta_str'][0]))
-                    train_models_dict[model_key] = train_result['lda_model']
-
-                    try:
-                        # Visualization tasks
-                        train_pcoa_vis = create_vis_pca(
-                            pickle.loads(train_result['lda_model']),
-                            pickle.loads(train_result['corpus']),
-                            n_topics, "TRAIN", train_result['text_md5'],
-                            train_result['time_key'], PCOA_DIR
-                        )
-                    except Exception as e:
-                        logging.error(f"Visualization/SpectaSync/Train Phase/create_vis_pca: {e}")
-                    
-                    try:
-                        train_tsne_vis = create_tsne_plot(
-                            train_result['validation_result'], 
-                            train_result['perplexity'],
-                            train_result['mode_coherence'],
-                                        "TRAIN",
-                                        n_topics, train_result['text_md5'],
-                                        train_result['time_key'], PCA_GPU_DIR
-                        )
-                    except Exception as e:
-                        logging.error(f"Visualization/SpectaSync/Train Phase/create_tsne_plot: {e}")
-
-                    try:
-                        train_pylda_vis = create_vis_pylda(
-                            pickle.loads(train_result['lda_model']),
-                            pickle.loads(train_result['corpus']),
-                            pickle.loads(train_result['dictionary']),
-                            n_topics, "TRAIN", train_result['text_md5'], CORES,
-                            train_result['time_key'], PYLDA_DIR
-                        )
-                    except Exception as e:
-                        logging.error(f"Visualization/SpectaSync/Train Phase/create_vis_pylda: {e}")
-
-                    # Compute visualization results
-                    #completed_pylda_vis.append(train_pylda_vis.compute())
-                    #completed_pcoa_vis.append(train_pcoa_vis.compute())
-                    completed_pylda_vis.append(train_pylda_vis)
-                    completed_pcoa_vis.append(train_pcoa_vis)
-                    completed_tsne_vis.append(train_tsne_vis)
+                os.makedirs(f"{IMAGE_DIR}/log", exist_ok=True)
+                performance_log= f"{IMAGE_DIR}/log/performance_report.html"
+                completed_pylda_vis, completed_pcoa_vis, completed_futures_tsne = process_visualizations(completed_train_futures, 'TRAIN', performance_log, CORES, PYLDA_DIR, PCOA_DIR, PCA_GPU_DIR)
             except Exception as e:
-                logging.error(f"Error in visualization train phase: {e}")
-                sys.exit()
+                print("Failure at process visualizations")
 
             # After processing all train phases in the sorted combinations
             try:
@@ -743,7 +702,7 @@ if __name__=="__main__":
                         completed_train_futures, completed_validation_futures, completed_test_futures,
                         len(completed_train_futures),
                         num_workers, BATCH_SIZE, TEXTS_ZIP_DIR, 
-                        vis_pylda=completed_pylda_vis, vis_pcoa=completed_pcoa_vis, vis_pca=completed_tsne_vis
+                        vis_pylda=completed_pylda_vis, vis_pcoa=completed_pcoa_vis, vis_pca=completed_futures_tsne
                     )
             except Exception as e:
                 logging.error(f"Error processing TRAIN completed futures: {e}")
