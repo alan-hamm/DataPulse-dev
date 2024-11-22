@@ -24,7 +24,6 @@ from .write_to_postgres import add_model_data_to_database, create_dynamic_table_
 
 from time import sleep
 import logging
-from dask import delayed
 from dask.distributed import wait
 import os
 from json import load
@@ -35,7 +34,6 @@ import numpy as np
 from .utils import garbage_collection
 from gensim.corpora import Dictionary
 from .batch_estimation import estimate_futures_batches_large_docs_v2
-
 
 def futures_create_lda_datasets(filename, train_ratio, validation_ratio, batch_size):
     with open(filename, 'r', encoding='utf-8') as jsonfile:
@@ -349,97 +347,3 @@ def process_completed_futures(phase, connection_string, corpus_label, \
                 logging.error(f"Error occurred during process_completed_futures() add_model_data_to_database() TEST: {e}")
 
     return completed_train_futures, completed_validation_futures, completed_test_futures
-
-
-# Batch process to get topics and calculate coherence efficiently
-@delayed
-def get_show_topics(ldamodel, num_words):
-    try:
-        show_topics = ldamodel.show_topics(num_topics=-1, num_words=num_words, formatted=False)
-        processed_topics = [
-            {
-                "method": "show_topics",
-                "topic_id": topic[0],
-                "words": [{"word": word, "prob": prob} for word, prob in topic[1]]
-            }
-            for topic in show_topics
-        ]
-        return processed_topics
-    except Exception as e:
-        logging.warning(f"An error occurred while processing show_topics: {e}")
-        return [{"method": "show_topics", "topic_id": None, "words": [], "error": str(e)}]
-
-
-
-# Module for delayed topic extraction
-@delayed
-def get_and_process_show_topics(ldamodel, num_words, kwargs=None):
-    """
-    Delayed function to get and process show_topics from an LDA model.
-
-    Parameters:
-    - ldamodel: Trained LDA model.
-    - num_words: Number of words to extract for each topic.
-    - kwargs (optional): Additional parameters for diagnostic information.
-
-    Returns:
-    - A list of processed topics in the desired format.
-    """
-    try:
-        # Extract topics from the LDA model
-        show_topics = ldamodel.show_topics(num_topics=-1, num_words=num_words, formatted=False)
-        processed_topics = [
-            {
-                "method": "show_topics",
-                "topic_id": topic[0],
-                "words": [{"word": word, "prob": prob} for word, prob in topic[1]]
-            }
-            for topic in show_topics
-        ]
-        return processed_topics
-    except Exception as e:
-        # Handle errors and provide diagnostic information
-        logging.warning(f"An error occurred while processing show_topics: {e}")
-        return [
-            {
-                "method": "show_topics",
-                "topic_id": None,
-                "words": [],
-                "error": str(e),
-                "record_id": kwargs.get("record_id", "unknown") if kwargs else "unknown",
-                "parameters": {
-                    "num_topics": kwargs.get("num_topics", "unknown") if kwargs else "unknown",
-                    "num_words": kwargs.get("num_words", "unknown") if kwargs else "unknown",
-                    "alpha": kwargs.get("alpha", "unknown") if kwargs else "unknown",
-                    "beta": kwargs.get("beta", "unknown") if kwargs else "unknown",
-                }
-            }
-        ]
-
-# Batch process to get topics for a batch of documents
-@delayed
-def get_document_topics_batch(ldamodel, bow_docs):
-    """
-    Retrieve significant topics for a batch of documents in a delayed Dask task.
-
-    Parameters:
-    - ldamodel (LdaModel): Trained LDA model to extract document topics.
-    - bow_docs (list of list of tuples): List of Bag-of-Words representations of documents.
-
-    Returns:
-    - list: A list of topic lists for each document with their respective probabilities.
-    """
-    batch_results = []
-    for bow_doc in bow_docs:
-        try:
-            topics = ldamodel.get_document_topics(bow_doc, minimum_probability=0)
-            if not topics:
-                logging.warning(f"No significant topics found for document: {bow_doc}")
-                batch_results.append([{"topic_id": None, "probability": 0}])
-            else:
-                batch_results.append(topics)
-        except Exception as e:
-            logging.error(f"Error getting document topics for document {bow_doc}: {e}")
-            batch_results.append([{"topic_id": None, "probability": 0}])
-
-    return batch_results
