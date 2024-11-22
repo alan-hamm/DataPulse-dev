@@ -416,6 +416,49 @@ def get_and_process_show_topics(ldamodel, num_words, kwargs=None):
             }
         ]
 
+@delayed
+def extract_topics_with_get_topic_terms(ldamodel, num_words, kwargs=None):
+    """
+    Delayed function to extract topics using get_topic_terms from an LDA model.
+
+    Parameters:
+    - ldamodel: Trained LDA model.
+    - num_words: Number of words to extract for each topic.
+    - kwargs (optional): Additional parameters for diagnostic information.
+
+    Returns:
+    - A list of processed topics in the desired format.
+    """
+    try:
+        # Extract topic-word distributions for all topics
+        topics = [
+            {
+                "method": "get_topic_terms",
+                "topic_id": topic_id,
+                "words": [{"word": word, "prob": prob} for word, prob in ldamodel.get_topic_terms(topic_id, num_words)]
+            }
+            for topic_id in range(ldamodel.num_topics)
+        ]
+        return topics
+    except Exception as e:
+        # Handle errors and provide diagnostic information
+        logging.warning(f"An error occurred while extracting topics: {e}")
+        return [
+            {
+                "method": "get_topic_terms",
+                "topic_id": None,
+                "words": [],
+                "error": str(e),
+                "record_id": kwargs.get("record_id", "unknown") if kwargs else "unknown",
+                "parameters": {
+                    "num_topics": kwargs.get("num_topics", "unknown") if kwargs else "unknown",
+                    "num_words": kwargs.get("num_words", "unknown") if kwargs else "unknown",
+                    "alpha": kwargs.get("alpha", "unknown") if kwargs else "unknown",
+                    "beta": kwargs.get("beta", "unknown") if kwargs else "unknown",
+                }
+            }
+        ]
+    
 # Batch process to get topics for a batch of documents
 @delayed
 def get_document_topics_batch(ldamodel, bow_docs):
