@@ -51,6 +51,93 @@ import random
 from scipy import stats
 from .batch_estimation import estimate_futures_batches_large_docs_v2
 
+
+import numpy as np
+import cupy as cp
+import logging
+
+import torch
+import numpy as np
+import logging
+
+
+@delayed
+def simulate_coherence_scores_with_lln(alpha, initial_size=100, max_attempts=1000, growth_factor=2, convergence_threshold=0.01, device="cuda"):
+    """
+    Simulate coherence scores using Dirichlet distribution until key statistics converge using the Law of Large Numbers.
+
+    Parameters:
+    - alpha (float or list of float): The concentration parameter for Dirichlet distribution.
+    - initial_size (int): Initial number of coherence scores to simulate.
+    - max_attempts (int): Maximum number of attempts to accumulate and stabilize coherence scores.
+    - growth_factor (int): Factor by which to grow the sample size each iteration.
+    - convergence_threshold (float): Threshold for acceptable change in key statistics.
+    - device (str): Device to perform calculations ('cuda' for GPU, 'cpu' for CPU).
+
+    Returns:
+    - coherence_scores (torch.Tensor): A stabilized tensor of coherence scores.
+    """
+    # Check if CUDA is available and set the device accordingly
+    device = torch.device(device if torch.cuda.is_available() else "cpu")
+
+    attempts = 0
+    previous_stats = None
+    sample_size = initial_size
+    coherence_scores = torch.tensor([], dtype=torch.float32, device=device)
+
+    while attempts < max_attempts:
+        attempts += 1
+        logging.info(f"Attempt {attempts}: Simulating coherence scores using Dirichlet distribution with sample size {sample_size}.")
+
+        # Simulate new coherence scores using Dirichlet distribution
+        dirichlet_sample = torch.tensor(
+            np.random.dirichlet(alpha, sample_size).flatten(), dtype=torch.float32, device=device
+        )
+
+        # Concatenate new coherence scores to the existing ones
+        coherence_scores = torch.cat((coherence_scores, dirichlet_sample))
+
+        # Calculate current statistics
+        current_stats = {
+            "mean": torch.mean(coherence_scores).item(),
+            "median": torch.median(coherence_scores).item(),
+            "std": torch.std(coherence_scores).item(),
+        }
+
+        # Log the current statistics
+        logging.info(f"Attempt {attempts}: Current Statistics - Mean: {current_stats['mean']:.4f}, "
+                     f"Median: {current_stats['median']:.4f}, Std: {current_stats['std']:.4f}")
+
+        # Check for convergence of key statistics using relative change
+        if previous_stats is not None:
+            relative_change = {
+                key: abs(current_stats[key] - previous_stats[key]) / (previous_stats[key] + 1e-10)
+                for key in current_stats
+            }
+            convergence = all(change < convergence_threshold for change in relative_change.values())
+
+            # Log the convergence status
+            logging.info(f"Attempt {attempts}: Relative Change - {relative_change}")
+
+            if convergence:
+                logging.info(f"Convergence achieved after {attempts} attempts with sample size {len(coherence_scores)}.")
+                break
+
+        # Update previous_stats for the next iteration
+        previous_stats = current_stats
+
+        # Increase the sample size for the next iteration according to the growth factor
+        sample_size *= growth_factor
+
+    if coherence_scores.size(0) == 0:
+        logging.error("Simulated coherence scores list is empty after all retries.")
+        return torch.tensor([0.5], dtype=torch.float32, device=device)  # Return a default value if no valid scores are generated
+
+    logging.info(f"Final coherence scores size: {coherence_scores.size(0)}")
+    return coherence_scores
+
+
+
 # Calculate mean, median, and mode using CuPy for GPU acceleration
 def calculate_statistics(coherence_scores):
     coherence_array = cp.array(coherence_scores)
@@ -194,13 +281,6 @@ def calculate_coherence_metrics(default_score=None, data=None, ldamodel=None, di
         mode_value = float(cp.mean(coherence_scores))
 
     data['mode_coherence'] = mode_value
-
-    # Convert to PyTorch tensor if needed
-    if return_torch_tensor:
-        data['mean_coherence'] = torch.tensor(float(data['mean_coherence'].get()), device='cuda')
-        data['median_coherence'] = torch.tensor(float(data['median_coherence'].get()), device='cuda')
-        data['std_coherence'] = torch.tensor(float(data['std_coherence'].get()), device='cuda')
-        data['mode_coherence'] = torch.tensor(float(data['mode_coherence'].get()), device='cuda')
 
     return data
 
@@ -393,7 +473,7 @@ def calculate_torch_coherence(data_source, ldamodel, sample_docs, dictionary):
             coherence_scores.append(0)  # Append a default score in case of failure
     
     # Calculate overall coherence score by averaging all batch scores
-    overall_coherence_score = sum(coherence_scores) / len(coherence_scores) if coherence_scores else 0
+    overall_coherence_score = sum(coherence_scores) / len(coherence_scores) if coherence_scores else float('nan')
     return overall_coherence_score
 
 
