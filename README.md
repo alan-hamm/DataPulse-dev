@@ -95,53 +95,54 @@ To ensure your Dask environment is correctly configured, follow these steps:
    Configuring `futures_batches`, `base_batch_size`, and `max_batch_size` is critical to balancing resource utilization and achieving efficient processing times, especially on high-performance systems. The script `batch_estimation.py` is provided for adaptive batch size estimation based on document complexity, memory, and CPU limits. This script is recommended for anyone running DataPulse on datasets with varying document sizes or on systems with constrained resources.
 
 
-   ### Guidlines for Setting Key Batch Size Parameter
-   
-   1. **Understanding Batch Size Impact**
+   ### Guidelines for Setting Key Batch Size Parameter
 
-      -  **Base Batch Size**: Setting an appropriate base batch size is crucial. A batch size too small will increase scheduling overhead, while a batch size too large can exhaust memory resources, leading to performance degradation. For large documents or complex tasks, use larger batch sizes to optimize resource use and reduce scheduling overhead. For smaller tasks, use smaller batch sizes to increase task concurrency and CPU utilization.
-   
-      -  **Max Batch Size**: Defines the upper limit for document processing per batch. Adaptive batching helps to manage tasks dynamically based on resource availability. Setting this value appropriately helps DataPulse adapt to different document types without exhausting memory.
+1. **Pulse Width: Setting the Batch Frequency**
 
-   2. **Batch Calculation and System Resource Balance**
+   - **Base Batch Size**: The base batch size defines the initial slice of data processed, the foundational rhythm of DataPulse. Set this too low, and you’ll see latency spikes—an ocean of tasks endlessly queued up, choking the system’s flow. Crank it too high, and memory consumption becomes an insatiable beast, starving the rest of the network grid. When facing dense archives—like fifteen years of CDC chronicles—boost the base batch to handle the swell. For smaller echoes, dial it back to quicken the pace. The secret? Tuning the base size until each cycle pulses in synchrony with the system’s limits.
 
-      Batch size should be calculated to balance memory usage and task efficiency. The `batch_estimation.py` script automates this process by analyzing document complexity, system memory, and CPU limits to suggest an optimal batch size for both standard and large documents. This script is highly recommended for fine-tuning `futures_batches`, `base_batch_size`, and `max_batch_size` based on empirical testing.
+   - **Max Batch Size**: This is your safety rail. It’s the limiter that prevents DataPulse from diving too deep, overwhelming the capacitors, and triggering unwanted restarts. Adaptive batching recalculates these limits on-the-fly, sensing how heavy the load is and pushing just enough data through the pipes to maximize flow without throttling the system.
 
-         **Example Usage of `batch_estimation.py`**:
-         ```python
-         from batch_estimation import estimate_futures_batches
-         optimal_batch_size = estimate_futures_batches(document="path/to/document.json")
-         ```
+2. **Voltage Control: Balancing Load with System Capacity**
 
-   3. **Optimal Futures Batches**
+   The future doesn’t wait, and neither should your data streams. Let `batch_estimation.py` tap into the complexity matrix of your document streams, weigh them against available system bandwidth, and precisely tune your batch size. System capacity varies—let the estimation script be your stabilizer, dynamically regulating `futures_batches`, `base_batch_size`, and `max_batch_size` to minimize system spikes.
 
-      The `futures_batches` parameter is essential for parallel task processing. Setting this to a higher value allows more concurrent tasks but may increase memory usage. For initial configurations, a conservative value (e.g., 3–10) is recommended, then adjust based on system performance. Higher values can improve speed but risk memory overflow.
+   **Example Usage of `batch_estimation.py`**:
+   ```python
+   from batch_estimation import estimate_futures_batches
+   optimal_batch_size = estimate_futures_batches(document="path/to/document.json")
+   ```
 
-   4. **Benefits of Adaptive Batch Sizes**
+3. **Futures Batches: Amp Up the Throughput**
 
-      Adaptive batch sizes calculated by 'batch_estimation.py' allow the DataPulse framework to better handle document variability and optimize resource usage. This approach reduces memory-related issues, as batch sizes are optimized for current system capacity and workload, ensuring smooth execution without overwhelming resources.
+   To blitz through tasks, `futures_batches` is the lever to pull. More futures? More throughput. But it's a delicate dance—overloading here means excess memory load, risking system crashes. Start with a modest setting (3–10), then inch it up. Ride the edge but don’t fall off—push higher only if your Dask dashboard signals it can handle the extra juice. If the wires start to glow, dial back.
 
-   5. **Monitoring and Iterative Adjustment**
+4. **Adaptive Oscillation: Tune in Real Time**
 
-      Use the [Dask dashboard](https://docs.dask.org/en/latest/dashboard.html) to observe task distribution, memory usage, and performance metrics. Monitor the impact of changes in batch size on system utilization, and adjust batch sizes if memory or CPU usage approaches system thresholds.
+   Adaptive batch sizing is the key to staying in tune with an ever-shifting data landscape. With variability inherent to the digital ocean, let DataPulse wield `batch_estimation.py` to flow with the tide—adjusting to current system capacity to prevent overload. Adaptive oscillation means smoother runs and less downtime.
 
-   6. **RAM Allocation and Management**
+5. **Dashboard Diagnostics: Iterate and Fine-Tune**
 
-      DataPulse is memory-intensive, especially when handling large datasets or high batch sizes. Setting a high memory_limit in the Dask LocalCluster configuration is recommended if system RAM allows. For optimal memory usage:
+   This isn’t a set-it-and-forget-it game. Run the dashboard, stay wired in. Watch how memory fluctuates and tasks get assigned. If your resource meters start peaking—pull back, adjust, recalibrate. This is about staying nimble in the face of a fluctuating workload, fine-tuning for harmony between the task queue and system pulse.
 
-      -  Adjust memory_limit based on available system RAM and the expected load. As a rule of thumb, ensure that memory_limit per worker is balanced with the total number of workers to avoid exceeding system memory.
-      -  Monitor RAM usage in the Dask dashboard. If you notice frequent memory spills or high memory consumption, consider reducing base_batch_size or max_batch_size.
-      -  Use Adaptive Scaling to optimize worker utilization without overloading RAM. Configure min_workers and max_workers according to your system's capabilities. For instance, setting min_workers=10 and max_workers=14 can dynamically scale tasks without overwhelming available memory.
+6. **Memory Overdrive: Managing RAM Burn**
 
-   7. **Core and Thread Configuration**
+   DataPulse runs hot—especially on high-volume feeds. Memory is gold here. Set `memory_limit` parameters in Dask’s LocalCluster to ensure the pulse doesn't burn out. 
 
-      Adjust 'num_workers', 'max_workers', and 'num_threads' based on the core count of your system. Higher core counts improve model training speed, while thread configuration impacts memory efficiency. Example configurations:
+   - Allocate worker memory mindfully. Stack it too high, and your system thrashes in the red; too low, and you bottleneck.
+   - Adaptive scaling is your friend—let workers swell when the data floodgates open, but make sure they recede when tides go down.
 
-      #### **Example Configurations:**
-      -  **High-Core Count Systems:** `--num_workers=10`, `--max_workers 14`, `--num_threads=2`.
-      -  **Low-Core Count Systems:** `--num_workers=4`, `--max_workers 6`, `--num_threads=1`.
+7. **Cores, Threads, and the Network Pulse**
 
-   Profiling parallel code can be challenging, but Dask's distributed scheduler offers an [interactived dashboard](https://docs.dask.org/en/latest/dashboard.html) for diagnostics that simplifies real-time computation monitoring. Built with Bokeh, the dashboard is available upon starting the scheduler and provides a user-specified link(_e.g._ http://localhost:8787/status) to track task progress and resource usage according to your Dask configuration.
+   Know your hardware—pulse frequency is determined by how many processors you have in the grid. Use `num_workers` and `max_workers` to draw out maximum parallelism, but don’t overclock without heat shields.
+
+   - **High-Core Systems**: If you've got a beastly rig, set `--num_workers=10`, `--max_workers=14`, `--num_threads=2` to maintain an optimal processing cadence.
+   - **Low-Core Systems**: Adjust to `--num_workers=4`, `--max_workers=6`, `--num_threads=1`. Keep it smooth, keep it flowing.
+
+8. **Monitoring the Pulse: Keep the Rhythm Steady**
+
+   The Dask dashboard isn't just a tool—it's your eyes on the wire, your ears in the digital hum. Use it, understand it. Let it guide you to the right tweaks. Task lag? Increase concurrency. Memory spill? Lower the batch frequency. This is all about harmonizing DataPulse to your system’s beat, finding that perfect rhythm between capacity and demand.
+
 
    See [How to diagnose performance](https://distributed.dask.org/en/latest/diagnosing-performance.html)\,  [Diagnostics(local)](https://docs.dask.org/en/stable/diagnostics-local.html)\,  and [Diagnostics(distributed)](https://docs.dask.org/en/stable/diagnostics-distributed.html)
 
