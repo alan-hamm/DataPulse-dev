@@ -130,7 +130,7 @@ DOC_ID = r'.*[\d\w\-.]+\.(html|json)$'  # Regular expression pattern to identify
 #DOC_ID = r'^.*/cleaned/[^/]+\.(html|json)$'
 
 DOC_TYPE = 'json'
-DOC_FOLDER = '2020_2024'
+DOC_FOLDER = '2010'
 
 TAGS = ['p', 'i']  # List of HTML tags to extract content from; 'p' is commonly used to denote paragraphs in HTML.
 
