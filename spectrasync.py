@@ -374,20 +374,19 @@ warnings.filterwarnings("ignore", category=RuntimeWarning, message="overflow enc
 
 # Enable serialization optimizations 
 dask.config.set(scheduler='distributed', serialize=True)
-dask.config.set({'logging.distributed': 'error'})
 dask.config.set({"distributed.scheduler.worker-ttl": '30m'})
 dask.config.set({'distributed.worker.daemon': False})
 
-# Set various Dask configurations
+# Memory management and adaptive scaling adjustments
 dask.config.set({
-    'distributed.worker.memory.target': False,        # Disable automatic memory targeting (spilling to disk)
-    'distributed.worker.memory.spill': True,         # Disable memory spilling to disk
-    'distributed.worker.memory.pause': 0.95,           # Pause work when 80% of memory is used
-    'distributed.worker.memory.terminate': 0.99,      # Terminate workers when 99% of memory is used
-    'distributed.worker.timeout': '500s',             # Set worker timeout to 500 seconds
-    'distributed.comm.timeouts.connect': '300s',      # Set connection timeout to 300 seconds
-    'distributed.comm.timeouts.tcp': '500s',          # Set TCP heartbeat timeout to 500 seconds
-    'distributed.client.heartbeat': '15s'             # Set client heartbeat interval to 15 seconds
+    'distributed.worker.memory.target': 0.8,        # Spill to disk at 80% memory usage
+    'distributed.worker.memory.spill': True,       # Enable memory spilling to disk
+    'distributed.worker.memory.pause': 0.85,       # Pause at 85%
+    'distributed.worker.memory.terminate': 0.95,   # Terminate at 95%
+    'distributed.comm.timeouts.connect': '300s',   # Connection timeout
+    'distributed.comm.timeouts.tcp': '500s',       # TCP timeout
+    'distributed.client.heartbeat': '15s',         # Client heartbeat interval
+    'logging.distributed': 'debug',                # Enable verbose logging for debugging
 })
 
 
@@ -418,9 +417,9 @@ if __name__=="__main__":
             #dashboard_address=None,
             dashboard_address=":8787",
             death_timeout = '300s',
-            lifetime = '45 minutes',
+            lifetime = '90 minutes',
             protocol="tcp",
-            lifetime_stagger='10 minutes'  # Increase timeout before forced kill
+            lifetime_stagger='15 minutes'  # Increase timeout before forced kill
         )
 
 
@@ -470,7 +469,7 @@ if __name__=="__main__":
     
     # Process each batch as it is generated
     #for batch_info in futures_create_lda_datasets(DATA_SOURCE, TRAIN_RATIO, VALIDATION_RATIO, FUTURES_BATCH_SIZE):
-    for batch_info in futures_create_lda_datasets_v2(DATA_SOURCE):
+    for batch_info in futures_create_lda_datasets_v3(DATA_SOURCE):
         if batch_info['type'] == "dictionary":
             # Retrieve the dictionary
             unified_dictionary = batch_info['data']
@@ -519,9 +518,9 @@ if __name__=="__main__":
     logging.info(f"Completed creation of train-validation-test split in {round((time() - started)/60,2)} minutes.\n")
     #print("Document scatter across workers complete...\n")
     logging.info("Document scatter across workers complete...")
-    print(f"\nFinal count - Number of training batches: {len(scattered_train_data_futures)}, "
-      f"Number of validation batches: {len(scattered_validation_data_futures)}, "
-      f"Number of test batches: {len(scattered_test_data_futures)}\n")
+    print(f"\nFinal count - Number of scattered training batches: {len(scattered_train_data_futures)}, "
+      f"Number of scattered validation batches: {len(scattered_validation_data_futures)}, "
+      f"Number of scattered test batches: {len(scattered_test_data_futures)}\n")
 
     train_futures = []  # List to store futures for training
     validation_futures = []  # List to store futures for validation
