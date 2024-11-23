@@ -17,7 +17,7 @@ from .write_to_postgres import save_to_zip, create_dynamic_table_class, create_t
 from .yaml_loader import join, getenv, get_current_time
 from .postgres_logging  import  PostgresLoggingHandler
 from .mathstats import *
-from .batch_estimation import estimate_futures_batches, estimate_futures_batches_large_docs, estimate_futures_batches_large_docs_v2, estimate_futures_batches_large_optimized
+from .batch_estimation import *
 
 # Define __all__ to control what is imported with "from SpectraSync import *"
 __all__ = [
@@ -43,6 +43,7 @@ __all__ = [
     'estimate_futures_batches',
     'estimate_futures_batches_large_docs_v2',
     'estimate_futures_batches_large_optimized',
+    'estimate_futures_batches_large_optimized_v2',
 
     # utils
     'garbage_collection',
