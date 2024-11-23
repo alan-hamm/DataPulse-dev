@@ -60,26 +60,48 @@ import torch
 import numpy as np
 import logging
 
+from scipy import stats  # Import for KDE
 
 @delayed
-def simulate_coherence_scores_with_lln(alpha, initial_size=100, max_attempts=1000, growth_factor=2, convergence_threshold=0.01, device="cuda"):
-    """
-    Simulate coherence scores using Dirichlet distribution until key statistics converge using the Law of Large Numbers.
+def gpu_simulate_coherence_scores_with_lln(alpha, initial_size=100, max_attempts=1000, growth_factor=2, convergence_threshold=0.01, device="cuda"):
+  """
+    Simulate coherence scores using the Dirichlet distribution and the Law of Large Numbers (LLN) until key statistics converge.
 
     Parameters:
-    - alpha (float or list of float): The concentration parameter for Dirichlet distribution.
-    - initial_size (int): Initial number of coherence scores to simulate.
-    - max_attempts (int): Maximum number of attempts to accumulate and stabilize coherence scores.
-    - growth_factor (int): Factor by which to grow the sample size each iteration.
-    - convergence_threshold (float): Threshold for acceptable change in key statistics.
-    - device (str): Device to perform calculations ('cuda' for GPU, 'cpu' for CPU).
+        alpha (float or list of float): The concentration parameter(s) for the Dirichlet distribution.
+        initial_size (int): The initial number of coherence scores to simulate. Default is 100.
+        max_attempts (int): The maximum number of iterations to stabilize coherence scores. Default is 1000.
+        growth_factor (int): Factor by which to increase the sample size each iteration. Default is 2.
+        convergence_threshold (float): The threshold for the relative change in statistics (mean, median, std) to determine convergence. Default is 0.01.
+        device (str): The device to perform calculations on ('cuda' for GPU, 'cpu' for CPU). Default is 'cuda'.
 
     Returns:
-    - coherence_scores (torch.Tensor): A stabilized tensor of coherence scores.
-    """
-    # Check if CUDA is available and set the device accordingly
-    device = torch.device(device if torch.cuda.is_available() else "cpu")
+        dict: A dictionary containing the following statistics:
+            - "mean" (float): The mean of the coherence scores.
+            - "median" (float): The median of the coherence scores.
+            - "std" (float): The standard deviation of the coherence scores.
+            - "mode" (float): The mode of the coherence scores, calculated using Kernel Density Estimation (KDE). Falls back to the mean if KDE fails.
+    
+    Raises:
+        ValueError: If the coherence scores list is empty after all attempts.
+        RuntimeError: If the mode calculation using KDE fails.
 
+    Notes:
+        - This function is GPU-accelerated if CUDA is available and the `device` parameter is set to "cuda".
+        - The simulation stops early if the relative change in mean, median, and std is below the convergence threshold.
+        - Default fallback values are returned if no valid coherence scores are generated.
+
+    Example:
+        >>> gpu_simulate_coherence_scores_with_lln(
+                alpha=[0.1, 0.2, 0.3],
+                initial_size=50,
+                max_attempts=500,
+                growth_factor=2,
+                convergence_threshold=0.01,
+                device="cuda"
+            )
+    """
+    device = torch.device(device if torch.cuda.is_available() else "cpu")
     attempts = 0
     previous_stats = None
     sample_size = initial_size
@@ -87,55 +109,221 @@ def simulate_coherence_scores_with_lln(alpha, initial_size=100, max_attempts=100
 
     while attempts < max_attempts:
         attempts += 1
-        logging.info(f"Attempt {attempts}: Simulating coherence scores using Dirichlet distribution with sample size {sample_size}.")
-
-        # Simulate new coherence scores using Dirichlet distribution
         dirichlet_sample = torch.tensor(
             np.random.dirichlet(alpha, sample_size).flatten(), dtype=torch.float32, device=device
         )
-
-        # Concatenate new coherence scores to the existing ones
         coherence_scores = torch.cat((coherence_scores, dirichlet_sample))
 
-        # Calculate current statistics
         current_stats = {
             "mean": torch.mean(coherence_scores).item(),
             "median": torch.median(coherence_scores).item(),
             "std": torch.std(coherence_scores).item(),
         }
 
-        # Log the current statistics
-        logging.info(f"Attempt {attempts}: Current Statistics - Mean: {current_stats['mean']:.4f}, "
-                     f"Median: {current_stats['median']:.4f}, Std: {current_stats['std']:.4f}")
-
-        # Check for convergence of key statistics using relative change
         if previous_stats is not None:
             relative_change = {
                 key: abs(current_stats[key] - previous_stats[key]) / (previous_stats[key] + 1e-10)
                 for key in current_stats
             }
-            convergence = all(change < convergence_threshold for change in relative_change.values())
-
-            # Log the convergence status
-            logging.info(f"Attempt {attempts}: Relative Change - {relative_change}")
-
-            if convergence:
-                logging.info(f"Convergence achieved after {attempts} attempts with sample size {len(coherence_scores)}.")
+            if all(change < convergence_threshold for change in relative_change.values()):
                 break
 
-        # Update previous_stats for the next iteration
         previous_stats = current_stats
-
-        # Increase the sample size for the next iteration according to the growth factor
         sample_size *= growth_factor
 
     if coherence_scores.size(0) == 0:
-        logging.error("Simulated coherence scores list is empty after all retries.")
-        return torch.tensor([0.5], dtype=torch.float32, device=device)  # Return a default value if no valid scores are generated
+        return {"mean": 0.5, "median": 0.5, "std": 0.0, "mode": 0.5}  # Default values
 
-    logging.info(f"Final coherence scores size: {coherence_scores.size(0)}")
-    return coherence_scores
+    # Calculate mode using KDE
+    try:
+        coherence_scores_np = coherence_scores.cpu().numpy()  # Convert to NumPy for KDE
+        kde = stats.gaussian_kde(coherence_scores_np)
+        mode_index = np.argmax(kde.evaluate(coherence_scores_np))
+        mode = coherence_scores_np[mode_index]
+    except Exception as e:
+        logging.warning(f"Mode calculation using KDE failed. Falling back to mean: {e}")
+        mode = current_stats["mean"]
 
+    # Return all statistics
+    return {
+        "mean": current_stats["mean"],
+        "median": current_stats["median"],
+        "std": current_stats["std"],
+        "mode": mode,
+    }
+
+
+
+@delayed
+def cpu_simulate_coherence_scores_with_lln(alpha, initial_size=100, max_attempts=1000, growth_factor=2, convergence_threshold=0.01):
+    """
+    Simulate coherence scores using the Dirichlet distribution on the CPU until key statistics converge,
+    based on the Law of Large Numbers (LLN).
+
+    Parameters:
+        alpha (list of float): The concentration parameters for the Dirichlet distribution.
+        initial_size (int): The initial number of samples to generate. Default is 100.
+        max_attempts (int): The maximum number of iterations for the simulation. Default is 1000.
+        growth_factor (int): The factor by which the sample size increases each iteration. Default is 2.
+        convergence_threshold (float): The threshold for relative change in statistics (mean, median, std) 
+                                       to determine convergence. Default is 0.01.
+
+    Returns:
+        dict: A dictionary containing the following statistics:
+            - "mean" (float): The mean of the simulated coherence scores.
+            - "median" (float): The median of the simulated coherence scores.
+            - "std" (float): The standard deviation of the simulated coherence scores.
+            - "mode" (float): The mode of the simulated coherence scores, calculated using 
+                              Kernel Density Estimation (KDE). Falls back to the mean if KDE fails.
+
+    Notes:
+        - This implementation performs all computations on the CPU, using `torch` for tensor operations.
+        - The simulation halts early if the relative change in key statistics falls below the convergence threshold.
+        - The mode is computed using KDE; if this computation fails, the mean is used as a fallback.
+
+    Example:
+        >>> cpu_simulate_coherence_scores_with_lln(
+                alpha=[0.1, 0.2, 0.3],
+                initial_size=50,
+                max_attempts=500,
+                growth_factor=2,
+                convergence_threshold=0.01
+            )
+    """
+    attempts = 0
+    previous_stats = None
+    sample_size = initial_size
+    coherence_scores = torch.tensor([], dtype=torch.float32)
+
+    while attempts < max_attempts:
+        attempts += 1
+        dirichlet_sample = torch.tensor(
+            np.random.dirichlet(alpha, sample_size).flatten(), dtype=torch.float32
+        )
+        coherence_scores = torch.cat((coherence_scores, dirichlet_sample))
+
+        current_stats = {
+            "mean": torch.mean(coherence_scores).item(),
+            "median": torch.median(coherence_scores).item(),
+            "std": torch.std(coherence_scores).item(),
+        }
+
+        if previous_stats is not None:
+            relative_change = {
+                key: abs(current_stats[key] - previous_stats[key]) / (previous_stats[key] + 1e-10)
+                for key in current_stats
+            }
+            if all(change < convergence_threshold for change in relative_change.values()):
+                break
+
+        previous_stats = current_stats
+        sample_size *= growth_factor
+
+    if coherence_scores.size(0) == 0:
+        return {"mean": 0.5, "median": 0.5, "std": 0.0, "mode": 0.5}  # Default values
+
+    # Calculate mode using KDE
+    try:
+        coherence_scores_np = coherence_scores.numpy()  # Convert to NumPy for KDE
+        kde = stats.gaussian_kde(coherence_scores_np)
+        mode_index = np.argmax(kde.evaluate(coherence_scores_np))
+        mode = coherence_scores_np[mode_index]
+    except Exception as e:
+        logging.warning(f"Mode calculation using KDE failed. Falling back to mean: {e}")
+        mode = current_stats["mean"]
+
+    # Return all statistics
+    return {
+        "mean": current_stats["mean"],
+        "median": current_stats["median"],
+        "std": current_stats["std"],
+        "mode": mode,
+    }
+
+
+@delayed
+def simulate_coherence_scores_with_lln_optimized(alpha, initial_size=100, max_attempts=1000, growth_factor=2, convergence_threshold=0.01):
+    """
+    Simulate coherence scores using the Dirichlet distribution with an optimized implementation 
+    for improved memory efficiency and batch statistics computation.
+
+    Parameters:
+        alpha (list of float): The concentration parameters for the Dirichlet distribution.
+        initial_size (int): The initial number of samples to generate. Default is 100.
+        max_attempts (int): The maximum number of iterations for the simulation. Default is 1000.
+        growth_factor (int): The factor by which the sample size increases each iteration. Default is 2.
+        convergence_threshold (float): The threshold for relative change in statistics (mean, median, std) 
+                                       to determine convergence. Default is 0.01.
+
+    Returns:
+        dict: A dictionary containing the following statistics:
+            - "mean" (float): The mean of the simulated coherence scores.
+            - "median" (float): The median of the simulated coherence scores.
+            - "std" (float): The standard deviation of the simulated coherence scores.
+            - "mode" (float): The mode of the simulated coherence scores, calculated using 
+                              Kernel Density Estimation (KDE). Falls back to the mean if KDE fails.
+
+    Notes:
+        - This implementation uses preallocated arrays (`np.empty`) for memory efficiency and faster computation.
+        - The simulation halts early if the relative change in key statistics falls below the convergence threshold.
+        - The mode is computed using KDE, and if the computation fails, the mean is used as a fallback.
+
+    Example:
+        >>> simulate_coherence_scores_with_lln_optimized(
+                alpha=[0.1, 0.2, 0.3],
+                initial_size=50,
+                max_attempts=500,
+                growth_factor=2,
+                convergence_threshold=0.01
+            )
+    """
+    attempts = 0
+    previous_stats = None
+    sample_size = initial_size
+    total_samples = 0
+    max_sample_size = sum([initial_size * (growth_factor**i) for i in range(max_attempts)])
+    coherence_scores = np.empty((max_sample_size,), dtype=np.float32)
+    
+    while attempts < max_attempts:
+        attempts += 1
+        dirichlet_sample = np.random.dirichlet(alpha, size=sample_size).flatten()
+        coherence_scores[total_samples:total_samples + dirichlet_sample.size] = dirichlet_sample
+        total_samples += dirichlet_sample.size
+
+        # Compute batch statistics
+        mean = np.mean(coherence_scores[:total_samples])
+        median = np.median(coherence_scores[:total_samples])
+        std = np.std(coherence_scores[:total_samples])
+
+        current_stats = {"mean": mean, "median": median, "std": std}
+        
+        if previous_stats is not None:
+            relative_change = {
+                key: abs(current_stats[key] - previous_stats[key]) / (previous_stats[key] + 1e-10)
+                for key in current_stats
+            }
+            if all(change < convergence_threshold for change in relative_change.values()):
+                break
+
+        previous_stats = current_stats
+        sample_size *= growth_factor
+
+    # Compute mode using KDE
+    coherence_scores = coherence_scores[:total_samples]  # Truncate to actual size
+    try:
+        kde = stats.gaussian_kde(coherence_scores)
+        mode_index = np.argmax(kde.evaluate(coherence_scores))
+        mode = coherence_scores[mode_index]
+    except Exception as e:
+        logging.warning(f"Mode calculation using KDE failed. Falling back to mean: {e}")
+        mode = mean
+
+    return {
+        "mean": mean,
+        "median": median,
+        "std": std,
+        "mode": mode,
+    }
 
 
 # Calculate mean, median, and mode using CuPy for GPU acceleration
@@ -415,7 +603,7 @@ def calculate_torch_coherence(data_source, ldamodel, sample_docs, dictionary):
     if isinstance(sample_docs, tuple):
         sample_docs = list(sample_docs)
 
-    batch_size = estimate_futures_batches_large_docs_v2(data_source)
+    batch_size = estimate_futures_batches_large_docs_v2(data_source, min_batch_size=5, max_batch_size=65, memory_limit_ratio=0.4, cpu_factor=3)
 
     # Split sample_docs into smaller batches
     batches = [sample_docs[i:i + batch_size] for i in range(0, len(sample_docs), batch_size)]
