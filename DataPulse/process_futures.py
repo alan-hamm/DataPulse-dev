@@ -34,7 +34,7 @@ import pandas as pd
 import numpy as np
 from .utils import garbage_collection
 from gensim.corpora import Dictionary
-from .batch_estimation import estimate_futures_batches_large_docs_v2
+from .batch_estimation import estimate_futures_batches_large_docs_v2, estimate_futures_batches_large_optimized
 from .mathstats import calculate_torch_coherence
 
 def futures_create_lda_datasets(filename, train_ratio, validation_ratio, batch_size):
@@ -125,7 +125,7 @@ def futures_create_lda_datasets_v2(documents_path, train_ratio=0.7, validation_r
     dictionary = Dictionary(documents)
 
     # Estimate batch size based on the documents using the estimator
-    batch_size = estimate_futures_batches_large_docs_v2(documents_path)
+    batch_size = estimate_futures_batches_large_optimized(documents_path)
 
     # Calculate diversity-based sampling probabilities
     weights = [len(set(doc)) for doc in documents]  # Number of unique words in each document
@@ -185,6 +185,100 @@ def futures_create_lda_datasets_v2(documents_path, train_ratio=0.7, validation_r
     yield from create_batches(train_documents, "train")
     yield from create_batches(validation_documents, "validation")
     yield from create_batches(test_documents, "test")
+
+
+
+def futures_create_lda_datasets_v3(documents_path, train_ratio=0.7, validation_ratio=0.15, seed=42):
+    """
+    Create training, validation, and test datasets for LDA with diversity-based sampling and batch generation.
+
+    Args:
+        documents_path (str): Path to the document JSON file.
+        train_ratio (float): Proportion of documents for training.
+        validation_ratio (float): Proportion of documents for validation.
+        seed (int): Random seed for reproducibility. Default is 42.
+
+    Yields:
+        dict: Batches of data with type ('train', 'validation', or 'test') and document data.
+    """
+    
+    # Set the random seed for reproducibility
+    np.random.seed(seed)
+
+    # Load the document data from JSON file
+    with open(documents_path, 'r', encoding='utf-8') as jsonfile:
+        documents = load(jsonfile)
+
+    # Create a unified dictionary using the entire corpus (list of lists of tokens)
+    dictionary = Dictionary(documents)
+
+    # Estimate batch size based on the documents using the estimator
+    batch_size = estimate_futures_batches_large_optimized(
+        documents_path, min_batch_size=5, max_batch_size=50, memory_limit_ratio=0.4, cpu_factor=4
+    )
+
+    # Determine the number of documents for each split
+    total_documents = len(documents)
+    train_size = int(train_ratio * total_documents)
+    validation_size = int(validation_ratio * total_documents)
+    test_size = total_documents - train_size - validation_size
+
+    # Print dataset split sizes
+    print(f"Total documents assigned to training set: {train_size}")
+    print(f"Total documents assigned to validation set: {validation_size}")
+    print(f"Total documents assigned to test set: {test_size} \n")
+
+    # Calculate diversity-based sampling probabilities
+    weights = [len(set(doc)) + len(doc) * 0.1 for doc in documents]
+    total_weight = sum(weights)
+    probabilities = np.array([weight / total_weight for weight in weights], dtype=float)
+
+    # Weighted sampling for train, validation, and test indices
+    all_indices = np.arange(total_documents)
+    train_indices = np.random.choice(all_indices, size=train_size, replace=False, p=probabilities)
+    remaining_indices = np.setdiff1d(all_indices, train_indices)
+
+    # Normalize probabilities for the remaining indices
+    remaining_probabilities = probabilities[remaining_indices]
+    remaining_probabilities /= remaining_probabilities.sum()  # Normalize to sum to 1
+
+    # Validation sampling
+    validation_indices = np.random.choice(
+        remaining_indices, size=validation_size, replace=False, p=remaining_probabilities
+    )
+    test_indices = np.setdiff1d(remaining_indices, validation_indices)
+
+    # Ensure no overlap between splits
+    assert not (set(train_indices) & set(validation_indices)), "Train and validation indices overlap!"
+    assert not (set(validation_indices) & set(test_indices)), "Validation and test indices overlap!"
+    assert not (set(train_indices) & set(test_indices)), "Train and test indices overlap!"
+
+    # Use sampled indices to create datasets
+    train_documents = [documents[i] for i in train_indices]
+    validation_documents = [documents[i] for i in validation_indices]
+    test_documents = [documents[i] for i in test_indices]
+
+    # Log batch counts
+    print(f"Training batches: {len(train_documents) // batch_size + (1 if len(train_documents) % batch_size != 0 else 0)}")
+    print(f"Validation batches: {len(validation_documents) // batch_size + (1 if len(validation_documents) % batch_size != 0 else 0)}")
+    print(f"Test batches: {len(test_documents) // batch_size + (1 if len(test_documents) % batch_size != 0 else 0)}\n")
+
+    # Yield the dictionary as the first item
+    yield {"type": "dictionary", "data": dictionary}
+
+    # Yield batches for each phase
+    def create_batches(dataset, phase_type):
+        num_batches = len(dataset) // batch_size + (1 if len(dataset) % batch_size != 0 else 0)
+        for i in range(num_batches):
+            yield {
+                "type": phase_type,
+                "data": dataset[i * batch_size: (i + 1) * batch_size]
+            }
+
+    yield from create_batches(train_documents, "train")
+    yield from create_batches(validation_documents, "validation")
+    yield from create_batches(test_documents, "test")
+
 
 
 
