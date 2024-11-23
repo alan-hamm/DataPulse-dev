@@ -329,6 +329,13 @@ def train_model_v2(data_source: str, n_topics: int, alpha_str: Union[str, float]
 
 
     # Assuming the corpus_data[phase] is already split into batches
+    # Define a helper function to process each batch
+    def process_batch_get_document_topics(ldamodel, batch):
+        try:
+            return [get_document_topics_batch(ldamodel, bow_doc) for bow_doc in batch]
+        except Exception as e:
+            logging.error(f"Error processing batch: {e}", exc_info=True)
+            raise
     try:
         try:
 
@@ -340,9 +347,6 @@ def train_model_v2(data_source: str, n_topics: int, alpha_str: Union[str, float]
             # Create batches from the corpus data
             corpus_batches = [corpus_data[phase][i:i + batch_size] for i in range(0, len(corpus_data[phase]), batch_size)]
 
-            # Define a helper function to process each batch
-            def process_batch_get_document_topics(ldamodel, batch):
-                return [get_document_topics_batch(ldamodel, bow_doc) for bow_doc in batch]
         except Exception as e:
             logging.error(f"Error in topic_model_trainer/process_batch_get_document_topics: {e}")
 
@@ -352,26 +356,34 @@ def train_model_v2(data_source: str, n_topics: int, alpha_str: Union[str, float]
             for idx, batch in enumerate(corpus_batches):
                 start_time = time()
                 # Submit each batch for processing
-                future = client.submit(process_batch_get_document_topics, ldamodel, batch)
+                logging.info(f"Submitting batch {idx + 1}: {batch[:5]}")  # Log a sample of the batch
+                future = client.submit(process_batch_get_document_topics, ldamodel, batch, pure=False, retries=3)
                 futures.append(future)
                 batch_id = idx + 1
                 total_batches = len(corpus_batches)
                 elapsed_time = time() - start_time
                 logging.info(f"[get_document_topics] Submitted batch {batch_id}/{total_batches} in {elapsed_time:.2f} seconds.")
         except Exception as e:
-            logging.error(f"Error in topic_model_trainer/client.submit(process_batch_get_document_topics)/")
+            logging.error(f"Error in topic_model_trainer/client.submit(process_batch_get_document_topics): {e}", exc_info=True)
+            print("SOURCE OF ERROR FOUND(0)")
+            sys.exit()
 
         # Wait for completion and gather results
-        done_batches, not_done = wait(futures, timeout=60)
+        done_batches, not_done = wait(futures, timeout=None)
+        for future in done_batches:
+            if future.status == 'error':
+                logging.error(f"Future failed with exception: {future.exception()}")
+                print("SOURCE OF ERROR FOUND(1)")
+                sys.exit()
         if not_done:
             logging.error(f"{len(not_done)} train tasks are still unresolved!")
             for future in not_done:
                 logging.error(f"Unresolved task: {future.key}")
-                print("SOURCE OF ERROR FOUND")
+                print("SOURCE OF ERROR FOUND(2)")
                 sys.exit()
 
         try:
-            validation_results_to_store = [r.result() for r in done_batches]
+            validation_results_to_store = [r.result(timeout=120) for r in done_batches]
             total_documents = len(validation_results_to_store)
             logging.info(f"[get_document_topics] Completed processing {total_documents} documents.")
         except Exception as e:
