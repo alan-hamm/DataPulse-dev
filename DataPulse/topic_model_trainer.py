@@ -190,6 +190,10 @@ def train_model_v2(data_source: str, n_topics: int, alpha_str: Union[str, float]
             )
             # Serialize the model as a delayed task
             ldamodel_bytes = delayed(pickle.dumps)(ldamodel)
+
+            #temp_dir = os.path.expanduser("~/temp/datapulse/")
+            #os.makedirs(temp_dir, exist_ok=True)
+            #ldamodel.save(f"{temp_dir}/model.model")
         except Exception as e:
             logging.error(f"An error occurred during LDA model training: {e}")
             raise
@@ -326,36 +330,52 @@ def train_model_v2(data_source: str, n_topics: int, alpha_str: Union[str, float]
 
     # Assuming the corpus_data[phase] is already split into batches
     try:
+        try:
 
-        # Define batch size for processing
-        batch_size = estimate_futures_batches_large_docs_v2(data_source, min_batch_size=5, max_batch_size=20, memory_limit_ratio=0.4, cpu_factor=3)
+            # Define batch size for processing
+            batch_size = estimate_futures_batches_large_docs_v2(data_source, min_batch_size=5, max_batch_size=10, memory_limit_ratio=0.4, cpu_factor=3)
 
-        batch_size = min(len(corpus_data[phase]), batch_size)
+            batch_size = min(len(corpus_data[phase]), batch_size)
 
-        # Create batches from the corpus data
-        corpus_batches = [corpus_data[phase][i:i + batch_size] for i in range(0, len(corpus_data[phase]), batch_size)]
+            # Create batches from the corpus data
+            corpus_batches = [corpus_data[phase][i:i + batch_size] for i in range(0, len(corpus_data[phase]), batch_size)]
 
-        # Define a helper function to process each batch
-        def process_batch_get_document_topics(ldamodel, batch):
-            return [get_document_topics_batch(ldamodel, bow_doc) for bow_doc in batch]
+            # Define a helper function to process each batch
+            def process_batch_get_document_topics(ldamodel, batch):
+                return [get_document_topics_batch(ldamodel, bow_doc) for bow_doc in batch]
+        except Exception as e:
+            logging.error(f"Error in topic_model_trainer/process_batch_get_document_topics: {e}")
 
-        # Submit each batch for processing directly
-        futures = []
-        for idx, batch in enumerate(corpus_batches):
-            start_time = time()
-            # Submit each batch for processing
-            future = client.submit(process_batch_get_document_topics, ldamodel, batch)
-            futures.append(future)
-            batch_id = idx + 1
-            total_batches = len(corpus_batches)
-            elapsed_time = time() - start_time
-            logging.info(f"[get_document_topics] Submitted batch {batch_id}/{total_batches} in {elapsed_time:.2f} seconds.")
+        try:
+            # Submit each batch for processing directly
+            futures = []
+            for idx, batch in enumerate(corpus_batches):
+                start_time = time()
+                # Submit each batch for processing
+                future = client.submit(process_batch_get_document_topics, ldamodel, batch)
+                futures.append(future)
+                batch_id = idx + 1
+                total_batches = len(corpus_batches)
+                elapsed_time = time() - start_time
+                logging.info(f"[get_document_topics] Submitted batch {batch_id}/{total_batches} in {elapsed_time:.2f} seconds.")
+        except Exception as e:
+            logging.error(f"Error in topic_model_trainer/client.submit(process_batch_get_document_topics)/")
 
         # Wait for completion and gather results
-        done_batches, _ = wait(futures, timeout=None)
-        validation_results_to_store = [r.result() for r in done_batches]
-        total_documents = len(validation_results_to_store)
-        logging.info(f"[get_document_topics] Completed processing {total_documents} documents.")
+        done_batches, not_done = wait(futures, timeout=60)
+        if not_done:
+            logging.error(f"{len(not_done)} train tasks are still unresolved!")
+            for future in not_done:
+                logging.error(f"Unresolved task: {future.key}")
+                print("SOURCE OF ERROR FOUND")
+                sys.exit()
+
+        try:
+            validation_results_to_store = [r.result() for r in done_batches]
+            total_documents = len(validation_results_to_store)
+            logging.info(f"[get_document_topics] Completed processing {total_documents} documents.")
+        except Exception as e:
+            logging.error(f"Error in topic_model_trainer/[r.result() for r in done_batches]")
 
         # Log the computed structure before further processing
         logging.debug(f"[get_document_topics] Computed validation results: {validation_results_to_store}")
