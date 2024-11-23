@@ -141,7 +141,7 @@ def estimate_futures_batches_large_docs_v2(document_path, min_batch_size=5, max_
     return batch_count
 
 
-def estimate_futures_batches_large_optimized(document_path, min_batch_size=5, max_batch_size=50, memory_limit_ratio=0.4, cpu_factor=3):
+def estimate_futures_batches_large_optimized(document_path, min_batch_size=5, max_batch_size=15, memory_limit_ratio=0.4, cpu_factor=3):
     """
     Estimates `futures_batch` size with additional adjustments for very large documents.
 
@@ -182,4 +182,67 @@ def estimate_futures_batches_large_optimized(document_path, min_batch_size=5, ma
         batch_count = max(int(available_memory / estimated_doc_size), min_batch_size)
 
     print(f"Optimized futures_batches size for large document: {batch_count}")
+    return batch_count
+
+
+def estimate_futures_batches_large_optimized_v2(
+    document_path,
+    min_batch_size=5,
+    max_batch_size=15,
+    memory_limit_ratio=0.4,
+    cpu_factor=3
+):
+    """
+    Estimates `futures_batch` size with additional adjustments for very large documents.
+
+    Args:
+        document_path (str): Path to the document with tokenized text.
+        min_batch_size (int): Minimum batch count.
+        max_batch_size (int): Maximum batch count.
+        memory_limit_ratio (float): Fraction of memory to use.
+        cpu_factor (int): Factor for CPU-based scaling.
+
+    Returns:
+        int: Estimated futures_batch size.
+    """
+    import json
+    import sys
+    import psutil
+
+    # Step 1: Lazy Load Document Data
+    with open(document_path, 'r', encoding='utf-8') as file:
+        document = json.load(file)
+
+    # Step 2: Document Analysis
+    num_elements = len(document)
+    total_tokens = sum(len(element) for element in document)
+    avg_tokens_per_element = total_tokens / max(1, num_elements)
+    estimated_doc_size = sum(sys.getsizeof(element) for element in document)
+
+    # Debugging Information
+    print(f"Total tokens: {total_tokens}, Average tokens per element: {avg_tokens_per_element:.2f}")
+    print(f"Estimated document size in memory: {estimated_doc_size / (1024 ** 2):.2f} MB")
+
+    # Step 3: System Constraints
+    available_memory = psutil.virtual_memory().available * memory_limit_ratio
+    num_cpus = psutil.cpu_count(logical=False)  # Use physical cores for scaling
+
+    # Debugging Information
+    print(f"Available memory for processing: {available_memory / (1024 ** 2):.2f} MB")
+    print(f"Number of physical CPUs: {num_cpus}")
+
+    # Step 4: Memory-Based Scaling
+    memory_batches = max(int(available_memory / estimated_doc_size), 1)
+
+    # Step 5: CPU-Based Scaling
+    cpu_batches = max(int(num_elements / (num_cpus * cpu_factor)), 1)
+
+    # Step 6: Combined Scaling and Constraints
+    batch_count = max(min(min(memory_batches, cpu_batches), max_batch_size), min_batch_size)
+
+    # Debugging Information
+    print(f"Memory-based batch count: {memory_batches}")
+    print(f"CPU-based batch count: {cpu_batches}")
+    print(f"Optimized futures_batches size for large document: {batch_count}")
+
     return batch_count
