@@ -64,7 +64,7 @@ from scipy import stats  # Import for KDE
 
 @delayed
 def gpu_simulate_coherence_scores_with_lln(alpha, initial_size=100, max_attempts=1000, growth_factor=2, convergence_threshold=0.01, device="cuda"):
-  """
+    """
     Simulate coherence scores using the Dirichlet distribution and the Law of Large Numbers (LLN) until key statistics converge.
 
     Parameters:
@@ -603,6 +603,17 @@ def calculate_torch_coherence(data_source, ldamodel, sample_docs, dictionary):
     if isinstance(sample_docs, tuple):
         sample_docs = list(sample_docs)
 
+    #if not ldamodel:
+    #    try:
+    #        temp_dir = os.path.expanduser("~/temp/datapulse/model.model")
+    #        if os.path.exists(temp_dir):
+    #            ldamodel = LdaModel.load(temp_dir)
+    #        else:
+    #            logging.info("No cached pre-trained model found at the specified path.")
+    #    except Exception as e:
+    #        raise FileNotFoundError(f"Could not load cached or trained model.")
+
+    
     batch_size = estimate_futures_batches_large_docs_v2(data_source, min_batch_size=5, max_batch_size=65, memory_limit_ratio=0.4, cpu_factor=3)
 
     # Split sample_docs into smaller batches
