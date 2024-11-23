@@ -424,7 +424,7 @@ if __name__=="__main__":
 
 
     # Create the distributed client
-    client = Client(cluster, timeout='500s')
+    client = Client(cluster, timeout='1000s')
 
     # set for adaptive scaling
     client.cluster.adapt(minimum=CORES, maximum=MAXIMUM_CORES)
@@ -469,7 +469,7 @@ if __name__=="__main__":
     
     # Process each batch as it is generated
     #for batch_info in futures_create_lda_datasets(DATA_SOURCE, TRAIN_RATIO, VALIDATION_RATIO, FUTURES_BATCH_SIZE):
-    for batch_info in futures_create_lda_datasets_v3(DATA_SOURCE):
+    for batch_info in futures_create_lda_datasets_v2(DATA_SOURCE):
         if batch_info['type'] == "dictionary":
             # Retrieve the dictionary
             unified_dictionary = batch_info['data']
@@ -610,7 +610,7 @@ if __name__=="__main__":
         key=lambda x: phase_order[x[3]]
     )
     # Initialize combined visualization lists outside the loop
-    completed_pylda_vis, completed_pcoa_vis, completed_tsne_vis = [], [], []
+    completed_pylda_vis, completed_pca_vis, completed_tsne_vis = [], [], []
     train_models_dict, validation_models_dict, test_models_dict = {}, {}, {}
     completed_train_futures, completed_validation_futures, completed_test_futures = [], [], []
 
@@ -646,34 +646,44 @@ if __name__=="__main__":
                     throttle_attempt += 1
                 else:
                     break
-            if throttle_attempt == MAX_RETRIES:
-                logging.warning("Maximum retries reached; proceeding despite resource usage.")
-                memory_usages = [worker['metrics']['memory'] for worker in scheduler_info['workers'].values()]
-                if max(memory_usages) > MEMORY_UTILIZATION_THRESHOLD * 1.5:  # Example: Rebalance if any worker exceeds 1.5 times the memory threshold
-                    logging.info("Rebalancing due to high memory imbalance across workers.")
-                    client.rebalance()
+
+                if throttle_attempt >= MAX_RETRIES:
+                    logging.warning("Maximum retries reached; proceeding despite resource usage.")
+                    memory_usages = [worker['metrics']['memory'] for worker in scheduler_info['workers'].values()]
+                    if max(memory_usages) > MEMORY_UTILIZATION_THRESHOLD * 1.5:  # Example: Rebalance if any worker exceeds 1.5 times the memory threshold
+                        logging.info("Rebalancing due to high memory imbalance across workers.")
+                        client.rebalance()
+                        break
 
             try:
                 # Train phase logic
                 for j, scattered_data in enumerate(scattered_train_data_futures):
                     model_key = (n_topics, alpha_value, beta_value)
-                    future = client.submit(
-                        train_model_v2, DATA_SOURCE, n_topics, alpha_value, beta_value, TEXTS_ZIP_DIR, PYLDA_DIR, PCOA_DIR, PCA_GPU_DIR, unified_dictionary, scattered_data, "train",
-                        RANDOM_STATE, PASSES, ITERATIONS, UPDATE_EVERY, EVAL_EVERY, num_workers, PER_WORD_TOPICS, ldamodel_parameter=None, pure=False
-                    )
-                    train_futures.append(future)
-                    progress_bar.update()
+                    try:
+                        future = client.submit(
+                            train_model_v2, DATA_SOURCE, n_topics, alpha_value, beta_value, TEXTS_ZIP_DIR, PYLDA_DIR, PCOA_DIR, PCA_GPU_DIR, unified_dictionary, scattered_data, "train",
+                            RANDOM_STATE, PASSES, ITERATIONS, UPDATE_EVERY, EVAL_EVERY, num_workers, PER_WORD_TOPICS, ldamodel_parameter=None, pure=False, retries=3
+                        )
+                        train_futures.append(future)
+                        progress_bar.update()
+                    except Exception as e:
+                        logging.error(f"Failed to submit train_model_v2 in Train phase.")
 
                     # Rebalance every 100 batches to avoid memory overload
                     if (j + 1) % 100 == 0:
                         client.rebalance()
-
             except Exception as e:
                 logging.error("Train phase error in SpectraSync.py with train_model_v2")
             try:
                 # Wait for all training futures and then process results
-                done_train, _ = wait(train_futures, timeout=None)
-                completed_train_futures = [done.result() for done in done_train]
+                done_train, not_done = wait(train_futures, timeout=None)
+                if not_done:
+                    logging.error(f"{len(not_done)} train tasks are still unresolved!")
+                    for future in not_done:
+                        logging.error(f"Unresolved task: {future.key}")
+                        print("SOURCE OF ERROR FOUND")
+                        sys.exit()
+                completed_train_futures = [done.result(timeout=120) for done in done_train]
 
                 client.rebalance()
                 
@@ -685,11 +695,10 @@ if __name__=="__main__":
                 print(f"Train phase error with WAIT: {e}")
                 sys.exit()
 
-
             try:
                 os.makedirs(f"{IMAGE_DIR}/log", exist_ok=True)
                 performance_log= f"{IMAGE_DIR}/log/performance_report.html"
-                completed_pylda_vis, completed_pcoa_vis, completed_futures_tsne = process_visualizations(completed_train_futures, 'TRAIN', performance_log, CORES, PYLDA_DIR, PCOA_DIR, PCA_GPU_DIR)
+                completed_pylda_vis, completed_pca_vis, completed_tsne_vis = process_visualizations(completed_train_futures, 'TRAIN', performance_log, n_topics, CORES, PYLDA_DIR, PCOA_DIR, PCA_GPU_DIR)
             except Exception as e:
                 print("Failure at process visualizations")
 
@@ -701,7 +710,7 @@ if __name__=="__main__":
                         completed_train_futures, completed_validation_futures, completed_test_futures,
                         len(completed_train_futures),
                         num_workers, BATCH_SIZE, TEXTS_ZIP_DIR, 
-                        vis_pylda=completed_pylda_vis, vis_pcoa=completed_pcoa_vis, vis_pca=completed_futures_tsne
+                        vis_pylda=completed_pylda_vis, vis_pcoa=completed_pca_vis, vis_pca=completed_tsne_vis
                     )
             except Exception as e:
                 logging.error(f"Error processing TRAIN completed futures: {e}")
@@ -720,7 +729,7 @@ if __name__=="__main__":
                 ldamodel = pickle.loads(train_models_dict[model_key])
                 future = client.submit(
                     train_model_v2, DATA_SOURCE, n_topics, alpha_value, beta_value, TEXTS_ZIP_DIR, PYLDA_DIR, PCOA_DIR, PCA_GPU_DIR, unified_dictionary, scattered_data, "validation",
-                    RANDOM_STATE, PASSES, ITERATIONS, UPDATE_EVERY, EVAL_EVERY, num_workers, PER_WORD_TOPICS, ldamodel=ldamodel, pure = False
+                    RANDOM_STATE, PASSES, ITERATIONS, UPDATE_EVERY, EVAL_EVERY, num_workers, PER_WORD_TOPICS, ldamodel=ldamodel, pure=False, retries=3
                 )
                 validation_futures.append(future)
                 progress_bar.update()
@@ -733,7 +742,7 @@ if __name__=="__main__":
         try:
             # Wait for validation futures and update progress
             done_validation, _ = wait(validation_futures, timeout=None)
-            completed_validation_futures = [done.result() for done in done_validation]
+            completed_validation_futures = [done.result(timeout=120) for done in done_validation]
                 
             client.rebalance()
 
@@ -762,7 +771,7 @@ if __name__=="__main__":
                         validation_result['validation_result'], 
                         validation_result['perplexity'],
                         validation_result['mode_coherence'],
-                        "TRAIN",
+                        "VALIDATION",
                         n_topics, validation_result['text_md5'],
                         validation_result['time_key'], PCA_GPU_DIR
                 )
@@ -776,7 +785,7 @@ if __name__=="__main__":
 
                 # Compute visualization results
                 completed_pylda_vis.append(validation_pylda_vis.compute())
-                completed_pcoa_vis.append(validation_pcoa_vis.compute())
+                completed_pca_vis.append(validation_pcoa_vis.compute())
                 completed_tsne_vis.append(validation_tsne_vis.compute())
         except Exception as e:
             logging.error(f"Error in validation visualize phase: {e}")
@@ -789,7 +798,7 @@ if __name__=="__main__":
                         completed_train_futures, completed_validation_futures, completed_test_futures,
                         len(completed_validation_futures),
                         num_workers, BATCH_SIZE, TEXTS_ZIP_DIR, 
-                        vis_pylda=completed_pylda_vis, vis_pcoa=completed_pcoa_vis, vis_pca=completed_tsne_vis
+                        vis_pylda=completed_pylda_vis, vis_pcoa=completed_pca_vis, vis_pca=completed_tsne_vis
                     )
         except Exception as e:
             logging.error(f"Error processing VALIDATION process completed futures: {e}")
@@ -806,7 +815,7 @@ if __name__=="__main__":
                 ldamodel = pickle.loads(test_models_dict[model_key])
                 future = client.submit(
                     train_model_v2, DATA_SOURCE, n_topics, alpha_value, beta_value, TEXTS_ZIP_DIR, PYLDA_DIR, PCOA_DIR, PCA_GPU_DIR, unified_dictionary, scattered_data, "test",
-                    RANDOM_STATE, PASSES, ITERATIONS, UPDATE_EVERY, EVAL_EVERY, num_workers, PER_WORD_TOPICS, ldamodel=ldamodel, pure=False
+                    RANDOM_STATE, PASSES, ITERATIONS, UPDATE_EVERY, EVAL_EVERY, num_workers, PER_WORD_TOPICS, ldamodel=ldamodel, pure=False, retries=3
                 )
                 test_futures.append(future)
                 progress_bar.update()
@@ -819,7 +828,7 @@ if __name__=="__main__":
         try:
             # Wait for test futures and update progress
             done_test, _ = wait(test_futures, timeout=None)
-            completed_test_futures = [done.result() for done in done_test]
+            completed_test_futures = [done.result(timeout=120) for done in done_test]
 
             # Rebalance after training completion
             client.rebalance()
@@ -863,8 +872,8 @@ if __name__=="__main__":
 
                 # Compute visualization results
                 completed_pylda_vis.append(test_pylda_vis.compute())
-                completed_pcoa_vis.append(test_pcoa_vis.compute())
-                completed_pcoa_vis.append(test_tsne_vis.compute())
+                completed_pca_vis.append(test_pcoa_vis.compute())
+                completed_tsne_vis.append(test_tsne_vis.compute())
         except Exception as e:
             logging.error(f"Error in test visualization phase: {e}")
 
@@ -876,7 +885,7 @@ if __name__=="__main__":
                         completed_train_futures, completed_validation_futures, completed_test_futures,
                         len(completed_test_futures),
                         num_workers, BATCH_SIZE, TEXTS_ZIP_DIR, 
-                        vis_pylda=completed_pylda_vis, vis_pcoa=completed_pcoa_vis, vis_pca=completed_tsne_vis
+                        vis_pylda=completed_pylda_vis, vis_pcoa=completed_pca_vis, vis_pca=completed_tsne_vis
                     )
         except Exception as e:
             logging.error(f"Error processing TEST process completed futures: {e}")
