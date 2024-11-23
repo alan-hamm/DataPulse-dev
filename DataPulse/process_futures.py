@@ -210,11 +210,12 @@ def futures_create_lda_datasets_v3(documents_path, train_ratio=0.7, validation_r
         documents = load(jsonfile)
 
     # Create a unified dictionary using the entire corpus (list of lists of tokens)
+    print("Creating dictinoary...\n")
     dictionary = Dictionary(documents)
 
     # Estimate batch size based on the documents using the estimator
     batch_size = estimate_futures_batches_large_optimized(
-        documents_path, min_batch_size=5, max_batch_size=50, memory_limit_ratio=0.4, cpu_factor=4
+        documents_path, min_batch_size=5, max_batch_size=15, memory_limit_ratio=0.4, cpu_factor=4
     )
 
     # Determine the number of documents for each split
@@ -578,5 +579,6 @@ def get_document_topics_batch(ldamodel, bow_docs):
         except Exception as e:
             logging.error(f"Error getting document topics for document {bow_doc}: {e}")
             batch_results.append([{"topic_id": None, "probability": 0}])
+            raise RuntimeError(f"Failed to process document {bow_doc} due to: {e}") from e
 
     return batch_results
