@@ -21,7 +21,7 @@ import psutil
 import math
 import json
 
-def estimate_batches(document, min_batch_size=5, max_batch_size=15, memory_limit_ratio=0.5, cpu_factor=2):
+def estimate_batches(document, min_batch_size=5, max_batch_size=50, memory_limit_ratio=0.5, cpu_factor=2):
     """
     Estimates a reasonable `futures_batch` size based on document structure and system resources.
 
@@ -61,7 +61,7 @@ def estimate_batches(document, min_batch_size=5, max_batch_size=15, memory_limit
     return batch_count
 
 
-def estimate_batches_large_docs(document, min_batch_size=5, max_batch_size=15, memory_limit_ratio=0.4, cpu_factor=3):
+def estimate_batches_large_docs(document, min_batch_size=5, max_batch_size=50, memory_limit_ratio=0.4, cpu_factor=3):
     """
     Estimates `futures_batch` size with additional adjustments for very large documents.
 
@@ -100,7 +100,7 @@ def estimate_batches_large_docs(document, min_batch_size=5, max_batch_size=15, m
     return batch_count
 
 
-def estimate_batches_large_docs_v2(document_path, min_batch_size=5, max_batch_size=15, memory_limit_ratio=0.4, cpu_factor=3):
+def estimate_batches_large_docs_v2(document_path, min_batch_size=5, max_batch_size=50, memory_limit_ratio=0.4, cpu_factor=3):
     """
     Estimates `futures_batch` size with additional adjustments for very large documents.
 
@@ -141,7 +141,7 @@ def estimate_batches_large_docs_v2(document_path, min_batch_size=5, max_batch_si
     return batch_count
 
 
-def estimate_batches_large_optimized(document_path, min_batch_size=5, max_batch_size=15, memory_limit_ratio=0.4, cpu_factor=3):
+def estimate_batches_large_optimized(document_path, min_batch_size=5, max_batch_size=50, memory_limit_ratio=0.4, cpu_factor=3):
     """
     Estimates `futures_batch` size with additional adjustments for very large documents.
 
@@ -189,7 +189,7 @@ def estimate_batches_large_optimized_v2(
     document_path,
     client,
     min_batch_size=5,
-    max_batch_size=15,
+    max_batch_size=50,
     memory_limit_ratio=0.4,
     cpu_factor=3
     ):
