@@ -537,8 +537,6 @@ def create_vis_pylda(ldaModel, corpus, dictionary, topics, phase_name, filename,
     """
     Generates an interactive HTML visualization of LDA topic distributions using pyLDAvis.
     """
-    create_pylda = None
-
     # Set up directory and file path
     try:
         PYLDA_DIR = os.path.join(PYLDA_DIR, phase_name, f"number_of_topics-{topics}")
@@ -558,7 +556,7 @@ def create_vis_pylda(ldaModel, corpus, dictionary, topics, phase_name, filename,
         return time_key, False
     except Exception as e:
         logging.error(f"The pyLDAvis HTML could not be saved: {e}")
-        create_pylda = False
+        return time_key, False
 
     try:
         try:
@@ -568,21 +566,22 @@ def create_vis_pylda(ldaModel, corpus, dictionary, topics, phase_name, filename,
             )
         except Exception as e:
             logging.error(f"There was an error with Gensim prepare(): {e}")
+            return time_key, False
         
         try:
             # Save using pyLDAvis' standard save_html
             with open(IMAGEFILE, 'w') as f:
                 f.write(pyLDAvis.prepared_data_to_html(vis))
-            create_pylda = True
             logging.info(f"pyLDAvis HTML saved successfully at {IMAGEFILE}")
         except Exception as e:
             logging.error(f"There was an error saving the pyLDAvis object.")
+            return time_key, False
 
     except Exception as e:
         logging.error(f"Error during pyLDAvis visualization creation: {e}")
-        create_pylda = False
+        return time_key, False
 
-    return (time_key, create_pylda)
+    return (time_key, True)
 
 def process_visualizations(phase_results, phase_name, performance_log, n_topics, cores, pylda_dir, pca_dir, pca_gpu_dir):
     """
