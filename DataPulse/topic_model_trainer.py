@@ -56,7 +56,7 @@ from .process_futures import get_and_process_show_topics, get_document_topics_ba
    
 # https://examples.dask.org/applications/embarrassingly-parallel.html
 def train_model_v2(data_source: str, n_topics: int, alpha_str: Union[str, float], beta_str: Union[str, float], zip_path:str, pylda_path:str, pca_path:str, pca_gpu_path: str,
-                   train_dictionary: Dictionary, validation_test_data: list, phase: str,
+                   unified_dictionary: Dictionary, train_val_test_corpus: list, phase: str,
                    random_state: int, passes: int, iterations: int, update_every: int, eval_every: int, cores: int,
                    per_word_topics: bool, ldamodel_parameter=None, **kwargs):
     client = get_client()
@@ -70,10 +70,9 @@ def train_model_v2(data_source: str, n_topics: int, alpha_str: Union[str, float]
         "test": []
     }
 
-
     try:
         # Compute the Dask future and convert the result to a list to make it mutable
-        batch_documents = list(dask.compute(*validation_test_data))
+        batch_documents = list(dask.compute(*train_val_test_corpus))
 
         # Flatten the list of documents if needed
         if len(batch_documents) == 1 and all(isinstance(item, list) for item in batch_documents[0]):
@@ -116,13 +115,18 @@ def train_model_v2(data_source: str, n_topics: int, alpha_str: Union[str, float]
         logging.error(f"Error computing streaming_documents data: {e}")  # Log any errors during
 
 
+    # Check for empty batch_documents after cleaning
+    if not batch_documents:
+        logging.error("All documents were filtered out during cleaning in train_model_v2.")
+        return None  # Return None to indicate failure
+    
     # Check for extra nesting in batch_documents and flatten if necessary
     if len(batch_documents) == 1 and isinstance(batch_documents[0], list):
         batch_documents = batch_documents[0]   
 
     # Create a Gensim dictionary from the batch documents, mapping words to unique IDs for the corpus.
     try:
-        train_dictionary_batch = Dictionary(batch_documents)
+        train_val_test_dictionary = Dictionary(batch_documents)
     except TypeError as e:
         logging.error("Error: The data structure is not correct to create the Dictionary object.")  # Print an error if data format is incompatible.
         logging.error(f"Details: {e}")
@@ -131,31 +135,25 @@ def train_model_v2(data_source: str, n_topics: int, alpha_str: Union[str, float]
     # Corrected code inside train_model_v2
     number_of_documents = 0  # Counter for tracking the number of documents processed.
 
-    flattened_batch = []
-    try:
-        # Flatten and log structure
-        flattened_batch = [item for sublist in batch_documents for item in sublist]
-        logging.debug(f"Flattened batch structure: {flattened_batch[:10]}")  # Log a sample of the flattened batch
-    except Exception as e:
-        logging.error(f"Error while flattening batch_documents: {e}")
-
     corpus_to_pickle = ''
     try:
         # Convert tokens to BoW format
-        for doc_tokens in batch_documents:
+        for doc_tokens in train_val_test_dictionary:
             # Validate `doc_tokens`
             if not isinstance(doc_tokens, list):
                 logging.warning(f"Unexpected structure for doc_tokens: {type(doc_tokens)}, content: {doc_tokens}")
+                logging.warning("Skipping token in dictionary build.")
                 continue  # Skip invalid document
 
             # Validate non-empty tokens
             if len(doc_tokens) == 0:
                 logging.warning(f"Skipping empty document: {doc_tokens}")
+                logging.warning("Skipping document in dictionary build.")
                 continue  # Skip empty documents
 
             try:
                 # Convert tokens to BoW format
-                bow_out = train_dictionary_batch.doc2bow(doc_tokens)
+                bow_out = train_val_test_dictionary.doc2bow(doc_tokens)
                 if not isinstance(bow_out, list) or not all(isinstance(pair, tuple) and len(pair) == 2 for pair in bow_out):
                     logging.error(f"Malformed BoW output: {bow_out}. Skipping.")
                     continue  # Skip malformed BoW outputs
@@ -171,7 +169,7 @@ def train_model_v2(data_source: str, n_topics: int, alpha_str: Union[str, float]
         corpus_to_pickle = pickle.dumps(corpus_data[phase])
 
     except Exception as e:
-        logging.error(f"Error in creating or appending BoW representation: {e}")
+        logging.error(f"CRITICAL: Error in creating or appending BoW representation: {e}")
 
     #print(f"Final corpus_data[phase]: {corpus_data[phase][:5]}")  # Log a sample of corpus_data[phase]
 
@@ -197,7 +195,8 @@ def train_model_v2(data_source: str, n_topics: int, alpha_str: Union[str, float]
         try:
             # Create and train the LdaModel for the training phase
             ldamodel = LdaModel(
-                id2word=train_dictionary_batch,
+                corpus = corpus_data[phase],
+                id2word=unified_dictionary,
                 num_topics=n_topics,
                 alpha=float(n_alpha),
                 eta=float(n_beta),
@@ -219,15 +218,13 @@ def train_model_v2(data_source: str, n_topics: int, alpha_str: Union[str, float]
             logging.error(f"An error occurred during LDA model training: {e}")
             raise
 
-    else:
-        # For validation and test phases, use the already-trained model
-        try:
-            # Create the delayed task for the threshold without computing it immediately
-            threshold = dask.delayed(calculate_perplexity_threshold)(ldamodel, corpus_data[phase], DEFAULT_SCORE)
-        except Exception as e:
-            logging.warning(f"Perplexity threshold calculation failed for phase {phase}. Using default score: {DEFAULT_SCORE}")
-            # Create a delayed fallback task for the default score
-            threshold = dask.delayed(lambda: DEFAULT_SCORE)()
+    try:
+        # Create the delayed task for the threshold without computing it immediately
+        threshold = dask.delayed(calculate_perplexity_threshold)(ldamodel, corpus_data[phase], DEFAULT_SCORE)
+    except Exception as e:
+        logging.warning(f"Perplexity threshold calculation failed for phase {phase}. Using default score: {DEFAULT_SCORE}")
+        # Create a delayed fallback task for the default score
+        threshold = dask.delayed(lambda: DEFAULT_SCORE)()
 
 
     #############################
@@ -240,7 +237,7 @@ def train_model_v2(data_source: str, n_topics: int, alpha_str: Union[str, float]
         try:
             # Create a delayed task for coherence score calculation without computing it immediately
             coherence_task = dask.delayed(calculate_torch_coherence)(
-                data_source, ldamodel, batch_documents, train_dictionary_batch
+                data_source, ldamodel, batch_documents, train_val_test_dictionary
             )
         except Exception as e:
             logging.warning("calculate_torch_coherence score calculation failed. Using default score.")
@@ -253,7 +250,7 @@ def train_model_v2(data_source: str, n_topics: int, alpha_str: Union[str, float]
                 default_score=DEFAULT_SCORE,
                 data={'coherence_scores': coherence_task},
                 ldamodel=ldamodel,
-                dictionary=train_dictionary,
+                dictionary=train_val_test_dictionary,
                 texts=batch_documents,  # Correct parameter
                 max_attempts=max_attempts
             )
@@ -357,6 +354,9 @@ def train_model_v2(data_source: str, n_topics: int, alpha_str: Union[str, float]
         except Exception as e:
             logging.error(f"Error processing batch: {e}", exc_info=True)
             raise
+
+    corpus_batches = []
+    batch_size = -1
     try:
         validation_results_to_store = []
         try:
@@ -364,12 +364,16 @@ def train_model_v2(data_source: str, n_topics: int, alpha_str: Union[str, float]
             batch_size = estimate_batches_large_docs_v2(data_source, min_batch_size=1, max_batch_size=5, memory_limit_ratio=0.4, cpu_factor=3)
 
             batch_size = min(len(corpus_data[phase]), batch_size)
+            if batch_size == 0:
+                batch_size = 5
 
             # Create batches from the corpus data
             corpus_batches = [corpus_data[phase][i:i + batch_size] for i in range(0, len(corpus_data[phase]), batch_size)]
 
         except Exception as e:
             logging.error(f"Error in topic_model_trainer/process_batch_get_document_topics: {e}")
+            logging.warning("Utilizing entire corpus for document topic calculation.")
+            corpus_batches = corpus_data[phase]
 
         try:
             # Submit each batch for processing directly
@@ -589,7 +593,7 @@ def train_model_v2(data_source: str, n_topics: int, alpha_str: Union[str, float]
 
 
     # Calculate batch size based on training data batch
-    batch_size = len(validation_test_data) if phase == "train" else len(batch_documents)
+    #batch_size = len(batch_documents) if phase == "train" else len(batch_documents)
 
     # Generate a random number from two different distributions
     random_value_1 = random.uniform(1.0, 1000.0)  # Continuous uniform distribution
@@ -614,13 +618,6 @@ def train_model_v2(data_source: str, n_topics: int, alpha_str: Union[str, float]
     pca_image = os.path.join(pca_path, phase, number_of_topics)
     pca_gpu_image = os.path.join(pca_gpu_path, phase, number_of_topics)
     pyLDAvis_image = os.path.join(pylda_path, phase, number_of_topics)
-
-    # Ensure flattened_batch has content before concatenating and pickling
-    if flattened_batch:
-        text_data = ' '.join(flattened_batch)
-    else:
-        logging.warning("Flattened batch is empty. Setting default text for metadata.")
-        text_data = "No content available"  # Use a default value or handle as necessary
     
     # Group all main tasks that can be computed at once for efficiency
     threshold, coherence_score, coherence_data, convergence_score, perplexity_score, topics_to_store = dask.compute(
@@ -635,6 +632,21 @@ def train_model_v2(data_source: str, n_topics: int, alpha_str: Union[str, float]
         
     if validation_results_jsonb == json.dumps(["not_initialized_yet", "no_real_data"]):
         logging.warning("topics_results_jsonb is still using the default placeholder!")
+
+    flattened_batch = []
+    try:
+        # Flatten and log structure
+        flattened_batch = [item for sublist in batch_documents for item in sublist]
+        logging.debug(f"Flattened batch structure: {flattened_batch[:10]}")  # Log a sample of the flattened batch
+    except Exception as e:
+        logging.error(f"Error while flattening batch_documents: {e}. Type: {type(batch_documents)}, Content: {batch_documents[:5]}")
+        flattened_batch = [f"error: {str(e)}"]  
+
+    # Convert flattened_batch to a string for hashing
+    flattened_batch_str = ' '.join(flattened_batch)
+    flattened_batch_str =  flattened_batch_str + unique_primary_key
+
+
     current_increment_data = {
     # Metadata and Identifiers
     'time_key': unique_primary_key,
@@ -645,16 +657,15 @@ def train_model_v2(data_source: str, n_topics: int, alpha_str: Union[str, float]
 
     # Document and Batch Details
     'batch_size': batch_size,
-    'num_documents': len(train_dictionary_batch),
     'num_word': len(flattened_batch) if num_words != -1 else -1,
-    'text': pickle.dumps(text_data),
-    'text_json': pickle.dumps(validation_test_data if phase == "train" else batch_documents),
+    'text': pickle.dumps(flattened_batch),
+    'text_json': pickle.dumps(batch_documents),
     'max_attempts': max_attempts, 
     'top_topics': topic_words_jsonb,
     'topics_words':topics_results_jsonb,
     'validation_result': validation_results_jsonb,
-    'text_sha256': hashlib.sha256(text_data.encode()).hexdigest(),
-    'text_md5': hashlib.md5(text_data.encode()).hexdigest(),
+    'text_sha256': hashlib.sha256(flattened_batch_str.encode()).hexdigest(),
+    'text_md5': hashlib.md5(flattened_batch_str.encode()).hexdigest(),
     'text_path': texts_zip,
     'pca_path': pca_image,
     'pca_gpu_path': pca_gpu_image,
@@ -688,7 +699,7 @@ def train_model_v2(data_source: str, n_topics: int, alpha_str: Union[str, float]
     # Serialized Data
     'lda_model': ldamodel_bytes.compute(), # C:\Users\pqn7\OneDrive - CDC\git-projects\unified-topic-modeling-analysis\gpt\why-lda-is-delayed.md
     'corpus': corpus_to_pickle,
-    'dictionary': pickle.dumps(train_dictionary_batch),
+    'dictionary': pickle.dumps(train_val_test_dictionary),
 
     # Visualization Creation Verification Placeholders
     'create_pylda': None,
