@@ -30,6 +30,8 @@ import os
 import time
 import shutil
 from decimal import Decimal
+import pandas as pd
+import cupy
 
 
 # Define a custom encoder class for NumPy types
@@ -41,6 +43,24 @@ class NumpyEncoder(json.JSONEncoder):
             return int(obj)
         # Add other conversions as needed
         return super().default(obj)
+
+
+def safe_serialize_for_postgres(value):
+    """
+    Convert values to PostgreSQL-compatible types.
+    """
+    if isinstance(value, (np.ndarray, cupy.ndarray)):  # Handle both NumPy and CuPy arrays
+        value = value.item() if value.size == 1 else value.tolist()
+    elif isinstance(value, (np.float32, np.float64)):
+        value = float(value)
+    elif isinstance(value, np.integer):
+        value = int(value)
+
+    # Scale large numeric values
+    if isinstance(value, float) and abs(value) >= 10**5:
+        logging.warning(f"Scaling down large value: {value}")
+        value = value / 10**3  # Example: Scale by dividing by 1000   
+    return value
             
 # Helper function to ensure JSON compatibility by converting float32, float64, Decimal, and integer values to native Python types
 def convert_float32_to_float(data):

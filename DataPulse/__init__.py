@@ -55,6 +55,7 @@ __all__ = [
     'process_local_file',
     'clear_temp_files',
     'periodic_cleanup',
+    'safe_serialize_for_postgres',
 
 
     #yaml_loader
