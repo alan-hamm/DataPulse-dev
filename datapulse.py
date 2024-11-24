@@ -469,7 +469,7 @@ if __name__=="__main__":
     
     # Process each batch as it is generated
     #for batch_info in futures_create_lda_datasets(DATA_SOURCE, TRAIN_RATIO, VALIDATION_RATIO, FUTURES_BATCH_SIZE):
-    for batch_info in futures_create_lda_datasets_v2(DATA_SOURCE):
+    for batch_info in futures_create_lda_datasets_v3(DATA_SOURCE):
         if batch_info['type'] == "dictionary":
             # Retrieve the dictionary
             unified_dictionary = batch_info['data']
@@ -613,11 +613,6 @@ if __name__=="__main__":
     completed_pylda_vis, completed_pca_vis, completed_tsne_vis = [], [], []
     train_models_dict, validation_models_dict, test_models_dict = {}, {}, {}
     completed_train_futures, completed_validation_futures, completed_test_futures = [], [], []
-
-    # Create a unified dictionary for each (n_topics, alpha_value, beta_value) combination
-    #computed_train_data  = client.gather(scattered_train_data_futures)
-    #unified_train_data = [doc for scattered_data in computed_train_data for doc in scattered_data]
-    #unified_dictionary = Dictionary(unified_train_data)  # Using the complete training dataset
     
     # Process sorted combinations by train, validation, and test phases
     for i, (n_topics, alpha_value, beta_value, train_eval_type) in enumerate(sorted_combinations):
@@ -657,23 +652,54 @@ if __name__=="__main__":
 
             try:
                 # Train phase logic
+                future_map = {}  # Track futures for debugging
+                train_futures = []  # List to hold all submitted futures
                 for j, scattered_data in enumerate(scattered_train_data_futures):
                     model_key = (n_topics, alpha_value, beta_value)
                     try:
+                        # Submit future
                         future = client.submit(
                             train_model_v2, DATA_SOURCE, n_topics, alpha_value, beta_value, TEXTS_ZIP_DIR, PYLDA_DIR, PCOA_DIR, PCA_GPU_DIR, unified_dictionary, scattered_data, "train",
                             RANDOM_STATE, PASSES, ITERATIONS, UPDATE_EVERY, EVAL_EVERY, num_workers, PER_WORD_TOPICS, ldamodel_parameter=None, pure=False, retries=3
                         )
-                        train_futures.append(future)
+                        future_map[model_key] = future
+                        train_futures.append(future)  # Track future
+                        progress_bar.update()  # Uncomment if progress tracking is needed
+                    except Exception as e:
+                        logging.error(f"Failed to submit train_model_v2 for batch {j}, model {model_key}: {e}")
+
+                    # Process futures in batches of 50
+                    if (j + 1) % 50 == 0:
+                        done_train, not_done = wait(train_futures, timeout=120)
+                        for done in done_train:
+                            try:
+                                result = done.result()  # No timeout needed, wait() already applies it
+                                completed_train_futures.append(result)
+                            except Exception as e:
+                                logging.error(f"Error resolving batch future {done.key}: {e}")
+                        train_futures = not_done  # Retain unresolved futures
+                        client.rebalance()
+
+                # Process any remaining futures after the loop
+                done_train, not_done = wait(train_futures, timeout=120)
+                for done in done_train:
+                    try:
+                        result = done.result()
+                        completed_train_futures.append(result)
                         progress_bar.update()
                     except Exception as e:
-                        logging.error(f"Failed to submit train_model_v2 in Train phase.")
+                        logging.error(f"Error resolving remaining batch future {done.key}: {e}")
 
-                    # Rebalance every 100 batches to avoid memory overload
-                    if (j + 1) % 100 == 0:
-                        client.rebalance()
+                # Exit if no valid results
+                if len(completed_train_futures) == 0:
+                    logging.error("No results were output from '_v2' for writing to SSD. Exiting.")
+                    sys.exit()
+
             except Exception as e:
-                logging.error("Train phase error in SpectraSync.py with train_model_v2")
+                logging.error(f"Train phase error in DataPulse.py with train_model_v2: {e}")
+
+
+            """
             try:
                 # Wait for all training futures and then process results
                 done_train, not_done = wait(train_futures, timeout=None)
@@ -683,7 +709,15 @@ if __name__=="__main__":
                         logging.error(f"Unresolved task: {future.key}")
                         print("SOURCE OF ERROR FOUND")
                         sys.exit()
-                completed_train_futures = [done.result(timeout=120) for done in done_train]
+               
+                try:
+                    completed_train_futures = [done.result(timeout=120) for done in done_train]
+                except ZeroDivisionError as e:
+                    logging.error(f"Division by zero error while resolving train_model_v2 futures: {e}")
+                    sys.exit()
+                except Exception as e:
+                    logging.error(f"Unexpected error while resolving futures: {e}")
+                    sys.exit()
 
                 client.rebalance()
                 
@@ -694,6 +728,7 @@ if __name__=="__main__":
                 logging.error(f"Train phase error with WAIT: {e}")
                 print(f"Train phase error with WAIT: {e}")
                 sys.exit()
+            """
 
             try:
                 os.makedirs(f"{IMAGE_DIR}/log", exist_ok=True)
