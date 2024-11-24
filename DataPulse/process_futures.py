@@ -573,12 +573,15 @@ def get_document_topics_batch(ldamodel, bow_docs):
             topics = ldamodel.get_document_topics(bow_doc, minimum_probability=0)
             if not topics:
                 logging.warning(f"No significant topics found for document: {bow_doc}")
+                # Append a placeholder for empty results
                 batch_results.append([{"topic_id": None, "probability": 0}])
             else:
                 batch_results.append(topics)
         except Exception as e:
+            # Log the error and append a placeholder result
             logging.error(f"Error getting document topics for document {bow_doc}: {e}")
             batch_results.append([{"topic_id": None, "probability": 0}])
-            raise RuntimeError(f"Failed to process document {bow_doc} due to: {e}") from e
+            # Do NOT raise the exception; continue processing the next document
 
     return batch_results
+
