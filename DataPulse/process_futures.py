@@ -209,9 +209,28 @@ def futures_create_lda_datasets_v3(documents_path, train_ratio=0.7, validation_r
     with open(documents_path, 'r', encoding='utf-8') as jsonfile:
         documents = load(jsonfile)
 
+    total_raw_documents = len(documents)
+
+    # validate documents
+    cleaned_documents = []
+    for doc_tokens in documents:
+        # Validate `doc_tokens`
+        if not isinstance(doc_tokens, list):
+            logging.warning(f"Unexpected structure for doc_tokens: {type(doc_tokens)}, content: {doc_tokens}")
+            logging.warning("Skipping token in [futures_create_lda_datasets_v3].")
+            continue  # Skip invalid document
+
+        # Validate non-empty tokens
+        if len(doc_tokens) == 0:
+            logging.warning(f"Skipping empty document: {doc_tokens}")
+            logging.warning("Skipping document in [futures_create_lda_datasets_v3].")
+            continue  # Skip empty documents
+        
+        cleaned_documents.append(doc_tokens)
+
     # Create a unified dictionary using the entire corpus (list of lists of tokens)
     print("Creating dictinoary...\n")
-    dictionary = Dictionary(documents)
+    dictionary = Dictionary(cleaned_documents)
 
     # Estimate batch size based on the documents using the estimator
     batch_size = estimate_batches_large_optimized(
@@ -219,12 +238,19 @@ def futures_create_lda_datasets_v3(documents_path, train_ratio=0.7, validation_r
     )
 
     # Determine the number of documents for each split
-    total_documents = len(documents)
+    total_documents = len(cleaned_documents)
     train_size = int(train_ratio * total_documents)
     validation_size = int(validation_ratio * total_documents)
     test_size = total_documents - train_size - validation_size
 
+    # calculate percent documents loss during cleaning
+    percent_lost = ((total_raw_documents - total_documents) / total_raw_documents) * 100
+    
     # Print dataset split sizes
+    print(f"Total number of documents read from JSON: {total_raw_documents}.")
+    print(f"Total number of cleaned documents: {total_documents}.")
+    print(f"Percentage of documents lost during cleaning: {percent_lost}\n")
+
     print(f"Total documents assigned to training set: {train_size}")
     print(f"Total documents assigned to validation set: {validation_size}")
     print(f"Total documents assigned to test set: {test_size} \n")
@@ -255,9 +281,9 @@ def futures_create_lda_datasets_v3(documents_path, train_ratio=0.7, validation_r
     assert not (set(train_indices) & set(test_indices)), "Train and test indices overlap!"
 
     # Use sampled indices to create datasets
-    train_documents = [documents[i] for i in train_indices]
-    validation_documents = [documents[i] for i in validation_indices]
-    test_documents = [documents[i] for i in test_indices]
+    train_documents = [cleaned_documents[i] for i in train_indices]
+    validation_documents = [cleaned_documents[i] for i in validation_indices]
+    test_documents = [cleaned_documents[i] for i in test_indices]
 
     # Log batch counts
     print(f"Training batches: {len(train_documents) // batch_size + (1 if len(train_documents) % batch_size != 0 else 0)}")

@@ -695,7 +695,7 @@ def get_statistics(coherence_scores):
     
     return mean_coherence, median_coherence, mode_coherence, std_coherence
 
-def calculate_perplexity(negative_log_likelihood, num_words):
+def calculate_perplexity(negative_log_likelihood, num_words, DEFAULT_VALUE):
     """
     Calculate perplexity from negative log-likelihood.
 
@@ -708,7 +708,8 @@ def calculate_perplexity(negative_log_likelihood, num_words):
     """
     logging.debug(f"Inputs - Negative log-likelihood: {negative_log_likelihood}, num_words: {num_words}")
     if num_words == 0:
-        raise ValueError("Number of words must be greater than zero to avoid division by zero error.")
+        logging.warning("Number of words must be greater than zero to avoid division by zero error.")
+        logging.warning(f"Utilizing DEFAULT VALUE {DEFAULT_VALUE}")
     
     perplexity = math.exp(negative_log_likelihood / num_words)
     logging.debug(f"Calculated perplexity: {perplexity}")
@@ -729,10 +730,16 @@ def calculate_perplexity_threshold(ldamodel, documents, default_score):
         # Calculate perplexity directly
         num_words = sum(len(doc) for doc in documents)  # Total number of words
         if num_words == 0:
-            raise ValueError("[calculate_perplexity_threshold] Corpus contains zero words. Cannot calculate threshold.")
+            logging.warning("[calculate_perplexity_threshold] Corpus contains zero words. Returning default threshold.")
+            return default_score
 
-        perplexity = math.exp(negative_log_likelihood / num_words)
-        logging.debug(f"[calculate_perplexity_threshold] Calculated Perplexity: {perplexity}")
+        try:
+            # Inside train_model_v2
+            perplexity = math.exp(negative_log_likelihood / num_words)
+        except ZeroDivisionError as e:
+            logging.error(f"Division by zero while calculating perplexity: {e}")
+            raise
+
 
         # Define threshold as a function of perplexity
         threshold = max(0.1, min(perplexity * 0.5, 100))  # Example: Scale perplexity by 0.5, cap at 100
@@ -788,12 +795,33 @@ def calculate_convergence(ldamodel, phase_corpus, default_score):
         return default_score
 
 @delayed
-def calculate_perplexity_score(ldamodel, phase_corpus, num_words, default_score):
-    try:
-        logging.debug(f"[calculate_perplexity_score] Calculating perplexity. Phase corpus size: {len(phase_corpus)}, num_words: {num_words}")
-        negative_log_likelihood = ldamodel.log_perplexity(phase_corpus)
-        logging.debug(f"[calculate_perplexity_score] Negative log-likelihood: {negative_log_likelihood}")
-        return calculate_perplexity(negative_log_likelihood, num_words)
-    except RuntimeWarning as e:
-        logging.info(f"[calculate_perplexity_score] Issue calculating perplexity score: {e}. Value '{default_score}' assigned.")
+def calculate_perplexity_score(ldamodel, phase_corpus, num_words, default_score=0.25):
+    """
+    Calculate the perplexity score for a given phase_corpus.
+
+    Parameters:
+    - ldamodel: The trained LDA model.
+    - phase_corpus: The corpus for the current phase.
+    - num_words: Total number of words in the corpus.
+    - default_score: The default score to return in case of failure.
+
+    Returns:
+    - float: The calculated perplexity score or the default score.
+    """
+    if not phase_corpus or all(len(doc) == 0 for doc in phase_corpus):
+        logging.warning("[calculate_perplexity_score] Empty or invalid phase_corpus. Returning default score.")
         return default_score
+
+    with np.errstate(divide='ignore', invalid='ignore'):
+        try:
+            logging.debug(f"[calculate_perplexity_score] Calculating perplexity. Phase corpus size: {len(phase_corpus)}, num_words: {num_words}, ldamodel words: {getattr(ldamodel, 'num_words', 'N/A')}")
+            negative_log_likelihood = ldamodel.log_perplexity(phase_corpus)
+
+            if not np.isfinite(negative_log_likelihood):
+                raise ValueError(f"Non-finite negative log-likelihood: {negative_log_likelihood}")
+
+            logging.debug(f"[calculate_perplexity_score] Negative log-likelihood: {negative_log_likelihood}")
+            return calculate_perplexity(negative_log_likelihood, num_words, default_score)
+        except (RuntimeWarning, ValueError, Exception) as e:
+            logging.info(f"[calculate_perplexity_score] Issue calculating perplexity score: {e}. Returning default score: {default_score}.")
+            return default_score
