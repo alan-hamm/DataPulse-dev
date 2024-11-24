@@ -44,9 +44,10 @@ import random
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
 from time import time
+import copy
 
 from .alpha_eta import calculate_numeric_alpha, calculate_numeric_beta  # Functions that calculate alpha and beta values for LDA.
-from .utils import convert_float32_to_float  # Utility functions for data type conversion, ensuring compatibility within the script.
+from .utils import safe_serialize_for_postgres, convert_float32_to_float  # Utility functions for data type conversion, ensuring compatibility within the script.
 from .utils import NumpyEncoder
 from .batch_estimation import estimate_batches_large_docs_v2
 from .mathstats import *
@@ -299,9 +300,9 @@ def train_model_v2(data_source: str, n_topics: int, alpha_str: Union[str, float]
 
 
     # Set a default value for *_jsonb in case of failures
-    topics_results_jsonb = json.dumps(["not_initialized_yet", "no_real_data"])
-    topic_words_jsonb = json.dumps(["not_initialized_yet", "no_real_data"])
-    validation_results_jsonb = json.dumps(["not_initialized_yet", "no_real_data"])
+    topics_results_jsonb = json.dumps([["not_initialized_yet"], ["no_real_data"]])
+    topic_words_jsonb = json.dumps([["not_initialized_yet"], ["no_real_data"]])
+    validation_results_jsonb = json.dumps([["not_initialized_yet"], ["no_real_data"]])
     
     # Set a default value for num_words in case of errors during calculation
     try:
@@ -624,13 +625,12 @@ def train_model_v2(data_source: str, n_topics: int, alpha_str: Union[str, float]
         threshold, coherence_task, coherence_scores_data, convergence_task, perplexity_task, topics_to_store_task
     )
 
-    if topic_words_jsonb == json.dumps(["not_initialized_yet", "no_real_data"]):
+
+    if topic_words_jsonb == json.dumps([["not_initialized_yet"], ["no_real_data"]]):
         logging.warning("topics_results_jsonb is still using the default placeholder!")
-    
-    if topics_results_jsonb == json.dumps(["not_initialized_yet", "no_real_data"]):
-        logging.warning("topics_results_jsonb is still using the default placeholder!")
-        
-    if validation_results_jsonb == json.dumps(["not_initialized_yet", "no_real_data"]):
+    if topics_results_jsonb == json.dumps([["not_initialized_yet"], ["no_real_data"]]):
+        logging.warning("topics_results_jsonb is still using the default placeholder!") 
+    if validation_results_jsonb == json.dumps([["not_initialized_yet"], ["no_real_data"]]):
         logging.warning("topics_results_jsonb is still using the default placeholder!")
 
     flattened_batch = []
@@ -645,7 +645,6 @@ def train_model_v2(data_source: str, n_topics: int, alpha_str: Union[str, float]
     # Convert flattened_batch to a string for hashing
     flattened_batch_str = ' '.join(flattened_batch)
     flattened_batch_str =  flattened_batch_str + unique_primary_key
-
 
     current_increment_data = {
     # Metadata and Identifiers
@@ -707,4 +706,17 @@ def train_model_v2(data_source: str, n_topics: int, alpha_str: Union[str, float]
     'create_pca_gpu': None
     }
 
-    return current_increment_data
+    # Deep copy the dictionary for database-specific serialization
+    db_data = copy.deepcopy(current_increment_data)
+
+    db_data = {key: safe_serialize_for_postgres(value) for key, value in db_data.items()}
+    
+    # Debug serialized data types to ensure compatibility
+    for key, value in db_data.items():
+        logging.debug(f"DB Key: {key}, Type: {type(value)}, Serialized Value: {value}")
+        if isinstance(value, np.ndarray):
+            logging.error(f"Key {key} is still ndarray after serialization!")
+        elif isinstance(value, cp.ndarray):
+            logging.error(f"Key {key} is still ndarray after serialization!")
+
+    return db_data
