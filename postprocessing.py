@@ -631,7 +631,7 @@ def process_corpus_streaming(corpus_stream_generator, lemmatize=False, include_s
         inner_text = []
         doc = nlp(paras)
         for token in doc:
-            if len(token.text) >= 2 and token.text.isalpha():
+            if token.is_alpha:
                 if include_stopwords or (token.text.lower() not in stop_words and token.lemma_.lower() not in stop_words):
                     inner_text.append(token.lemma_ if lemmatize else token.text)
         if len(inner_text) > 0:
