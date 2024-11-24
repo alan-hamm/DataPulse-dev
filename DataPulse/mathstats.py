@@ -49,7 +49,7 @@ from decimal import Decimal, InvalidOperation
 from scipy.stats import gaussian_kde
 import random
 from scipy import stats
-from .batch_estimation import estimate_futures_batches_large_docs_v2
+from .batch_estimation import estimate_batches_large_docs_v2
 
 
 import numpy as np
@@ -614,7 +614,7 @@ def calculate_torch_coherence(data_source, ldamodel, sample_docs, dictionary):
     #        raise FileNotFoundError(f"Could not load cached or trained model.")
 
     
-    batch_size = estimate_futures_batches_large_docs_v2(data_source, min_batch_size=5, max_batch_size=65, memory_limit_ratio=0.4, cpu_factor=3)
+    batch_size = estimate_batches_large_docs_v2(data_source, min_batch_size=1, max_batch_size=10, memory_limit_ratio=0.4, cpu_factor=3)
 
     # Split sample_docs into smaller batches
     batches = [sample_docs[i:i + batch_size] for i in range(0, len(sample_docs), batch_size)]

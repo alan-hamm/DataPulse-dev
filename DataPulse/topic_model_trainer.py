@@ -48,7 +48,7 @@ from time import time
 from .alpha_eta import calculate_numeric_alpha, calculate_numeric_beta  # Functions that calculate alpha and beta values for LDA.
 from .utils import convert_float32_to_float  # Utility functions for data type conversion, ensuring compatibility within the script.
 from .utils import NumpyEncoder
-from .batch_estimation import estimate_futures_batches_large_docs_v2
+from .batch_estimation import estimate_batches_large_docs_v2
 from .mathstats import *
 from .visualization import *
 from .process_futures import get_and_process_show_topics, get_document_topics_batch, extract_topics_with_get_topic_terms
@@ -214,7 +214,7 @@ def train_model_v2(data_source: str, n_topics: int, alpha_str: Union[str, float]
     #############################
     with np.errstate(divide='ignore', invalid='ignore'):
         # Coherence configuration
-        max_attempts = estimate_futures_batches_large_docs_v2(data_source, min_batch_size=5, max_batch_size=20, memory_limit_ratio=0.4, cpu_factor=3)
+        max_attempts = estimate_batches_large_docs_v2(data_source, min_batch_size=5, max_batch_size=20, memory_limit_ratio=0.4, cpu_factor=3)
         
         try:
             # Create a delayed task for coherence score calculation without computing it immediately
@@ -340,7 +340,7 @@ def train_model_v2(data_source: str, n_topics: int, alpha_str: Union[str, float]
         try:
 
             # Define batch size for processing
-            batch_size = estimate_futures_batches_large_docs_v2(data_source, min_batch_size=5, max_batch_size=10, memory_limit_ratio=0.4, cpu_factor=3)
+            batch_size = estimate_batches_large_docs_v2(data_source, min_batch_size=1, max_batch_size=5, memory_limit_ratio=0.4, cpu_factor=3)
 
             batch_size = min(len(corpus_data[phase]), batch_size)
 
@@ -357,7 +357,7 @@ def train_model_v2(data_source: str, n_topics: int, alpha_str: Union[str, float]
                 start_time = time()
                 # Submit each batch for processing
                 logging.info(f"Submitting batch {idx + 1}: {batch[:5]}")  # Log a sample of the batch
-                future = client.submit(process_batch_get_document_topics, ldamodel, batch, pure=False, retries=3)
+                future = client.submit(process_batch_get_document_topics, ldamodel, batch, pure=False, retries=6)
                 futures.append(future)
                 batch_id = idx + 1
                 total_batches = len(corpus_batches)
@@ -365,22 +365,22 @@ def train_model_v2(data_source: str, n_topics: int, alpha_str: Union[str, float]
                 logging.info(f"[get_document_topics] Submitted batch {batch_id}/{total_batches} in {elapsed_time:.2f} seconds.")
         except Exception as e:
             logging.error(f"Error in topic_model_trainer/client.submit(process_batch_get_document_topics): {e}", exc_info=True)
-            print("SOURCE OF ERROR FOUND(0)")
-            sys.exit()
+            logging.error("SOURCE OF ERROR FOUND(0)")
+            #sys.exit()
 
         # Wait for completion and gather results
-        done_batches, not_done = wait(futures, timeout=None)
+        done_batches, not_done = wait(futures, timeout=300)
         for future in done_batches:
             if future.status == 'error':
                 logging.error(f"Future failed with exception: {future.exception()}")
-                print("SOURCE OF ERROR FOUND(1)")
-                sys.exit()
+                logging.error("SOURCE OF ERROR FOUND(1)")
+                #sys.exit()
         if not_done:
             logging.error(f"{len(not_done)} train tasks are still unresolved!")
             for future in not_done:
                 logging.error(f"Unresolved task: {future.key}")
-                print("SOURCE OF ERROR FOUND(2)")
-                sys.exit()
+                logging.error("SOURCE OF ERROR FOUND(2)")
+                #sys.exit()
 
         try:
             validation_results_to_store = [r.result(timeout=120) for r in done_batches]

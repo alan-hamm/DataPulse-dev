@@ -34,7 +34,7 @@ import pandas as pd
 import numpy as np
 from .utils import garbage_collection
 from gensim.corpora import Dictionary
-from .batch_estimation import estimate_futures_batches_large_docs_v2, estimate_futures_batches_large_optimized
+from .batch_estimation import estimate_batches_large_docs_v2, estimate_batches_large_optimized
 from .mathstats import calculate_torch_coherence
 
 def futures_create_lda_datasets(filename, train_ratio, validation_ratio, batch_size):
@@ -125,7 +125,7 @@ def futures_create_lda_datasets_v2(documents_path, train_ratio=0.7, validation_r
     dictionary = Dictionary(documents)
 
     # Estimate batch size based on the documents using the estimator
-    batch_size = estimate_futures_batches_large_optimized(documents_path)
+    batch_size = estimate_batches_large_optimized(documents_path)
 
     # Calculate diversity-based sampling probabilities
     weights = [len(set(doc)) for doc in documents]  # Number of unique words in each document
@@ -214,7 +214,7 @@ def futures_create_lda_datasets_v3(documents_path, train_ratio=0.7, validation_r
     dictionary = Dictionary(documents)
 
     # Estimate batch size based on the documents using the estimator
-    batch_size = estimate_futures_batches_large_optimized(
+    batch_size = estimate_batches_large_optimized(
         documents_path, min_batch_size=5, max_batch_size=15, memory_limit_ratio=0.4, cpu_factor=4
     )
 

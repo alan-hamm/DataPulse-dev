@@ -39,11 +39,11 @@ __all__ = [
     'simulate_coherence_scores_with_lln_optimized',
 
     # batch estimation
-    'estimate_futures_batches_large_docs',
-    'estimate_futures_batches',
-    'estimate_futures_batches_large_docs_v2',
-    'estimate_futures_batches_large_optimized',
-    'estimate_futures_batches_large_optimized_v2',
+    'estimate_batches_large_docs',
+    'estimate_batches',
+    'estimate_batches_large_docs_v2',
+    'estimate_batches_large_optimized',
+    'estimate_batches_large_optimized_v2',
 
     # utils
     'garbage_collection',
