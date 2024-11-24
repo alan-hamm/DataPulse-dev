@@ -99,7 +99,6 @@ def create_dynamic_table_class(table_name):
     
     # Document and Batch Details
     'batch_size' : Column(Integer, nullable=False),
-    'num_documents' : Column(Integer, nullable=False),
     'num_word' : Column(Integer, nullable=False),
     'text' : Column(LargeBinary, nullable=False),
     'text_json' : Column(LargeBinary, nullable=False),
@@ -130,15 +129,15 @@ def create_dynamic_table_class(table_name):
     'per_word_topics' : Column(Boolean, nullable=False),
     
     # Evaluation Metrics
-    'convergence' : Column(Numeric(precision=20, scale=15), nullable=False),
-    'nll': Column(Numeric(precision=20, scale=15), nullable=False),
-    'perplexity':  Column(Numeric(precision=20, scale=15), nullable=False),
-    'coherence' : Column(Numeric(precision=20, scale=15), nullable=False),
-    'mean_coherence': Column(Numeric(precision=20, scale=15), nullable=False),
-    'median_coherence': Column(Numeric(precision=20, scale=15), nullable=False),
-    'mode_coherence': Column(Numeric(precision=20, scale=15), nullable=False),
-    'std_coherence': Column(Numeric(precision=20, scale=15), nullable=False),
-    'perplexity_threshold': Column(Numeric(precision=20, scale=15), nullable=False),
+    'convergence': Column(Numeric(precision=20, scale=10), nullable=False),
+    'nll': Column(Numeric(precision=20, scale=10), nullable=False),
+    'perplexity': Column(Numeric(precision=20, scale=10), nullable=False),
+    'coherence': Column(Numeric(precision=20, scale=10), nullable=False),
+    'mean_coherence': Column(Numeric(precision=20, scale=10), nullable=False),
+    'median_coherence': Column(Numeric(precision=20, scale=10), nullable=False),
+    'mode_coherence': Column(Numeric(precision=20, scale=10), nullable=False),
+    'std_coherence': Column(Numeric(precision=20, scale=10), nullable=False),
+    'perplexity_threshold': Column(Numeric(precision=20, scale=10), nullable=False),
     
     # Visualization Placeholders
     'create_pylda' : Column(Boolean, nullable=False),
@@ -213,7 +212,7 @@ def add_model_data_to_database(model_data, phase, table_name, database_uri,
         logging.info(f"model_data['text_md5'] contents: {model_data.get('text_md5')}")
         text = [pickle.loads(model_data['text'])]
         for text_list in text:
-            combined_text = ''.join([''.join(sent) for sent in text_list])  # Combine all sentences into one string
+            combined_text = ' '.join([''.join(sent) for sent in text_list])  # Combine all sentences into one string
 
             #logging.info("Calling save_to_zip...")
             zip_path = save_to_zip(model_data['time_key'], document_dir, pickle.dumps(combined_text), \
@@ -241,7 +240,7 @@ def add_model_data_to_database(model_data, phase, table_name, database_uri,
         model_data['batch_size'] = batchsize
         model_data['num_workers'] = workers
         model_data['num_documents'] = num_documents
-        new_model_data = {key: val for key, val in model_data.items() if key not in ['lda_model', 'corpus', 'dictionary']}
+        new_model_data = {key: val for key, val in model_data.items() if key not in ['num_documents','lda_model', 'corpus', 'dictionary']}
         
         # Log type information before insertion
         #logging.info(f"Type of 'create_pylda' before insertion: {type(new_model_data['create_pylda'])}")
