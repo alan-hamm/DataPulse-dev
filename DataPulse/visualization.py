@@ -87,6 +87,39 @@ def process_row(row, num_topics, threshold=0.001):
 
     return processed_row, dominant_topic_label
 
+@delayed
+def process_row_v2(row, num_topics):
+    """
+    Process a single row of document-topic distributions to extract the dominant topic.
+
+    Parameters:
+    - row (list): List of topic probabilities for a document.
+    - num_topics (int): Number of topics in the model.
+
+    Returns:
+    - tuple: (processed_row, dominant_topic_label)
+    """
+    try:
+        # Ensure the row is valid
+        if not isinstance(row, list) or len(row) != num_topics:
+            logging.warning(f"Invalid row: {row}")
+            return [0] * num_topics, "No Topic"
+
+        # Normalize probabilities (ensure they sum to 1)
+        total = sum(row)
+        if total > 0:
+            processed_row = [value / total for value in row]
+        else:
+            processed_row = [0] * num_topics
+
+        # Determine the dominant topic
+        max_index = processed_row.index(max(processed_row))
+        dominant_topic_label = f"Topic {max_index + 1}"  # Label topics as "Topic 1", "Topic 2", etc.
+
+        return processed_row, dominant_topic_label
+    except Exception as e:
+        logging.error(f"Error processing row: {e}")
+        return [0] * num_topics, "No Topic"
 
 
 
@@ -241,14 +274,14 @@ def create_vis_pca(ldaModel, corpus, topics, phase_name, filename, time_key, PCO
     Generates a 2D Principal Component Analysis (PCA) visualization for topic distributions.
     """
     create_pcoa = None
-    PCoAfilename = filename
+    PCAfilename = filename
 
     # Set up directory and output file paths
     try:
         # Build the output directory
         PCOA_DIR = os.path.join(PCOA_DIR, phase_name, f"number_of_topics-{topics}")
         os.makedirs(PCOA_DIR, exist_ok=True)
-        PCoAIMAGEFILE = os.path.join(PCOA_DIR, PCoAfilename)
+        PCAIMAGEFILE = os.path.join(PCOA_DIR, PCAfilename)
     except Exception as e:
         logging.error(f"Couldn't create PCoA file: {e}")
         return time_key, False
@@ -294,8 +327,8 @@ def create_vis_pca(ldaModel, corpus, topics, phase_name, filename, time_key, PCO
 
         # Attempt to save the figure
         try:
-            fig.savefig(f'{PCoAIMAGEFILE}.jpg', bbox_inches='tight')
-            logging.info(f"Figure saved successfully to {PCoAIMAGEFILE}.jpg")
+            fig.savefig(f'{PCAIMAGEFILE}.jpg', bbox_inches='tight')
+            logging.info(f"Figure saved successfully to {PCAIMAGEFILE}.jpg")
         except Exception as save_error:
             logging.error(f"Failed to save figure: {save_error}")
         finally:
@@ -311,32 +344,50 @@ def create_vis_pca(ldaModel, corpus, topics, phase_name, filename, time_key, PCO
 
 
 
-def create_tsne_plot(document_topic_distributions, perplexity_score, mode_coherence, phase_name, topics, filename, time_key, pca_dir, title="tSNE Topic Distribution"):
-    create_pca = None
-    PCoAfilename = filename
+def create_tsne_plot(document_topic_distributions_json, perplexity_score, mode_coherence, phase_name, topics, filename, time_key, pca_dir, title="tSNE Topic Distribution"):
+
+    tSNEfilename = filename
 
     # Set up directory and output file paths
     try:
         pca_dir = os.path.join(pca_dir, phase_name, f"number_of_topics-{topics}")
         os.makedirs(pca_dir, exist_ok=True)
-        PCoAIMAGEFILE = os.path.join(pca_dir, PCoAfilename)
+        tSNEIMAGEFILE = os.path.join(pca_dir, tSNEfilename)
     except Exception as e:
         logging.error(f"Couldn't create tSNE file: {e}")
         return time_key, False
 
-    # Use the provided number of topics
+    # initialize num_topics
     num_topics = topics
 
     # Initialize GPU tensor directly and prepare labels (optimized for efficiency)
     try:
-
         try:
-            delayed_results = [process_row(row, num_topics) for row in document_topic_distributions]
+            # Deserialize document topic distributions
+            document_topic_distributions = json.loads(document_topic_distributions_json)
+            logging.debug(f"Deserialized document_topic_distributions: {document_topic_distributions[:5]}")
+        except Exception as e:
+            logging.error(f"Failed to deserialize document_topic_distribution: {e}", exc_info=True)
+            return time_key, False
+        
+        if not isinstance(document_topic_distributions, list) or not all(isinstance(row, list) for row in document_topic_distributions):
+            logging.error("Deserialized input is not a list of lists.")
+            return time_key, False
+
+        if not document_topic_distributions:
+            logging.error("Document topic distributions are empty after deserialization.")
+            return time_key, False
+     
+        try:
+            delayed_results = [process_row_v2(row, num_topics) for row in document_topic_distributions]
             results = compute(*delayed_results)
             processed_distributions, dominant_topics_labels = zip(*results)
+
+            logging.debug(f"Dominant topic labels before filtering: {dominant_topics_labels[:10]}")
         except Exception as e:
-            logging.error(f"Error processing document_topic_distributions: {e}")
-            raise  # Stops here and provides a traceback        
+            logging.error(f"Error processing document_topic_distributions: {e}", exc_info=True)
+            return time_key, False
+            #raise  # Stops here and provides a traceback        
 
         # Calculate basic statistics from the processed distributions
         all_std_devs = [np.std(dist) for dist in processed_distributions]
@@ -355,41 +406,75 @@ def create_tsne_plot(document_topic_distributions, perplexity_score, mode_cohere
                     valid_distributions.append(dist)
                     valid_labels.append(label)
 
+        logging.debug(f"Number of valid distributions after filtering: {len(valid_distributions)}")
+        logging.debug(f"Valid labels after filtering: {valid_labels[:10]}")
+
         # If all rows still have insufficient coherence or variance, adjust with a fallback approach
         if not valid_distributions:
-            logging.warning("All rows have insufficient coherence or variance; using a fallback approach with some sampled rows.")
+            logging.warning("All rows filtered out; falling back to the first 10 rows.")
             valid_distributions = processed_distributions[:min(10, len(processed_distributions))]
             valid_labels = dominant_topics_labels[:min(10, len(dominant_topics_labels))]
-
 
         # Convert processed distributions to a GPU tensor
         distributions_tensor = torch.tensor(valid_distributions, device='cuda', dtype=torch.float32)
         logging.debug("Successfully created GPU tensor for document distributions.")
+
     except Exception as e:
         logging.error(f"Failed to create GPU tensor: {e}")
         return time_key, False
 
-    # Check variance to ensure PCA can proceed
-    variance = distributions_tensor.var(dim=0)
-    high_variance_columns = variance > (variance.mean() * 0.01)  # Lowered variance threshold to be less strict
-    if high_variance_columns.sum() == 0:
-        logging.warning("All columns have low variance; using fallback columns.")
-        high_variance_columns = torch.ones(distributions_tensor.shape[1], dtype=torch.bool, device='cuda')
+    # get number of topics from deserialized JSON. This count can be different from the
+    # hyperparameter number of topics due to Dask error in train_model_v2 line 388.
+    num_topics = len(document_topic_distributions)
+    if num_topics != topics:
+        logging.warning(f"The hyperparameter topics, {topics}, does not equal the number JSON document topics {num_topics}")
+        logging.warning("Using the JSON document topic count for tSNE plot generation.")
 
-    distributions_tensor = distributions_tensor[:, high_variance_columns]
+    try:
+        if distributions_tensor.numel() == 0:
+            logging.error("Distributions tensor is empty. Cannot proceed with variance check.")
+            return time_key, False
+        
+        logging.debug(f"Variance before noise: {distributions_tensor.var(dim=0)}")
 
-    # Add small random noise to ensure variance
-    noise = torch.normal(mean=0, std=0.01, size=distributions_tensor.shape, device='cuda')
-    distributions_tensor += noise
+        # Add small Gaussian noise
+        noise = torch.normal(mean=0, std=0.01, size=distributions_tensor.shape, device='cuda')
+        distributions_tensor += noise
 
-    # Add synthetic variation to distributions to avoid uniformity
-    synthetic_variation = torch.rand_like(distributions_tensor) * 0.05
-    distributions_tensor += synthetic_variation
+        # Add synthetic variation to avoid uniformity
+        synthetic_variation = torch.rand_like(distributions_tensor) * 0.05
+        distributions_tensor += synthetic_variation
+
+        # Check variance to ensure tSNE can proceed
+        variance = distributions_tensor.var(dim=0)
+        logging.debug(f"Variance after noise addition: {variance}")
+        logging.debug(f"Variance threshold: {variance.mean() * 0.01}")
+
+
+        high_variance_columns = variance > (variance.mean() * 0.01)  # Lowered variance threshold to be less strict
+        logging.debug(f"Number of high-variance columns: {high_variance_columns.sum()}")
+
+        if high_variance_columns.sum() == 0:
+            logging.warning("All columns have low variance; using fallback columns.")
+            high_variance_columns = torch.ones(distributions_tensor.shape[1], dtype=torch.bool, device='cuda')
+            logging.debug("Fallback columns selected for t-SNE.")
+
+        distributions_tensor = distributions_tensor[:, high_variance_columns]
+        logging.debug(f"Shape after filtering low-variance columns: {distributions_tensor.shape}")
+    
+        # Validate filtered tensor
+        if distributions_tensor.shape[1] == 0:
+            logging.error("All columns filtered out. Cannot proceed with t-SNE.")
+            return time_key, False
+    except Exception as e:
+        logging.error(f"Failed noise addition and variance check: {e}")
+        return time_key, False
 
     # Move tensor to CPU for TSNE processing
     distributions_tensor_cpu = distributions_tensor.cpu()
+    logging.debug("Distributions tensor successfully moved to CPU for t-SNE processing.")
 
-    # Perform PCA and visualization
+    # Perform tSNE and visualization
     try:
         # Ensure perplexity is less than n_samples and within a reasonable range for t-SNE
         n_samples = distributions_tensor_cpu.shape[0]
@@ -397,35 +482,50 @@ def create_tsne_plot(document_topic_distributions, perplexity_score, mode_cohere
         actual_perplexity = max(5, min(perplexity_score, 50))  # Assuming perplexity_score is calculated from your model
         perplexity = min(actual_perplexity, n_samples - 1)  # Ensure perplexity is valid for t-SNE
 
+        logging.debug(f"Tensor shape: {distributions_tensor_cpu.shape}")
+        logging.debug(f"Variance of tensor: {distributions_tensor_cpu.var(axis=0)}")
+
         # Use GPU-accelerated TSNE for dimensionality reduction
         tsne_result = TSNE(n_components=2, perplexity=perplexity, n_iter=1000, random_state=42).fit_transform(distributions_tensor_cpu)
+        logging.debug(f"tSNE result shape: {tsne_result.shape}")
+        logging.debug(f"tSNE result sample: {tsne_result[:5]}")
+
+        # Create DataFrame for visualization
         df = pd.DataFrame({
             'TSNE1': tsne_result[:, 0],
             'TSNE2': tsne_result[:, 1],
             'Dominant_Topic': valid_labels[:len(tsne_result)]
         })
+        logging.debug(f"Sample DataFrame rows:\n{df.head()}")
+        logging.debug(f"Valid labels: {valid_labels[:10]}")
 
         # Generate unique colors for each topic label using a colormap
         unique_labels = list(set(valid_labels))
-        colors = plt.cm.jet(np.linspace(0, 1, len(unique_labels)))
+        logging.debug(f"Number of unique topic labels: {len(unique_labels)}")
+        if len(unique_labels) <= 1:
+            logging.warning("Only one unique topic label found. Plot may lack color diversity.")
         
+        # colormap for distinct colors for each unique topic label
+        colors = plt.cm.jet(np.linspace(0, 1, len(unique_labels)))
+
         # Create a mapping from topic labels to colors
         label_to_color = dict(zip(unique_labels, colors))
+        logging.debug(f"Label-to-color mapping: {label_to_color}")
 
-        # Create a new column in the DataFrame for color
+        # Map colors to the DataFrame
         df['Color'] = df['Dominant_Topic'].map(label_to_color)
 
         # Create and save interactive plot
         fig = px.scatter(df, x='TSNE1', y='TSNE2', color='Dominant_Topic', hover_data={'TSNE1': False, 'TSNE2': False}, title=title)
         fig.update_traces(marker=dict(size=8, opacity=0.7))
-        fig.write_html(f'{PCoAIMAGEFILE}.html')
-        logging.info(f"Figure saved successfully to {PCoAIMAGEFILE}.html")
-        create_pca = True
+        fig.write_html(f'{tSNEIMAGEFILE}.html')
+        logging.info(f"Figure saved successfully to {tSNEIMAGEFILE}.html")
+   
     except Exception as e:
         logging.error(f"Failed during tSNE or visualization: {e}")
         return time_key, False
 
-    return time_key, create_pca
+    return time_key, True
 
 
 
