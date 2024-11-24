@@ -350,8 +350,8 @@ def create_tsne_plot(document_topic_distributions, perplexity_score, mode_cohere
         for dist, label in zip(processed_distributions, dominant_topics_labels):
             if sum(dist) > 0:
                 coherence_score = np.std(dist)
-                if coherence_score >= coherence_threshold and coherence_score >= mode_coherence:
-                #if coherence_score >= coherence_threshold:
+                #if coherence_score >= coherence_threshold and coherence_score >= mode_coherence:
+                if coherence_score >= coherence_threshold:
                     valid_distributions.append(dist)
                     valid_labels.append(label)
 
