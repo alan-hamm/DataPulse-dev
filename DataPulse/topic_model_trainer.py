@@ -143,12 +143,33 @@ def train_model_v2(data_source: str, n_topics: int, alpha_str: Union[str, float]
     try:
         # Convert tokens to BoW format
         for doc_tokens in batch_documents:
+            # Validate `doc_tokens`
             if not isinstance(doc_tokens, list):
                 logging.warning(f"Unexpected structure for doc_tokens: {type(doc_tokens)}, content: {doc_tokens}")
-            bow_out = train_dictionary_batch.doc2bow(doc_tokens)
-            corpus_data[phase].append(bow_out)
-            number_of_documents += 1
+                continue  # Skip invalid document
+
+            # Validate non-empty tokens
+            if len(doc_tokens) == 0:
+                logging.warning(f"Skipping empty document: {doc_tokens}")
+                continue  # Skip empty documents
+
+            try:
+                # Convert tokens to BoW format
+                bow_out = train_dictionary_batch.doc2bow(doc_tokens)
+                if not isinstance(bow_out, list) or not all(isinstance(pair, tuple) and len(pair) == 2 for pair in bow_out):
+                    logging.error(f"Malformed BoW output: {bow_out}. Skipping.")
+                    continue  # Skip malformed BoW outputs
+                # Append to corpus data
+                corpus_data[phase].append(bow_out)
+                number_of_documents += 1
+            except Exception as e:
+                # Log any unexpected error during conversion
+                logging.error(f"Failed to process document tokens: {doc_tokens}, error: {e}")
+                continue  # Skip this document on error
+
+        # Serialize the corpus
         corpus_to_pickle = pickle.dumps(corpus_data[phase])
+
     except Exception as e:
         logging.error(f"Error in creating or appending BoW representation: {e}")
 
@@ -214,7 +235,7 @@ def train_model_v2(data_source: str, n_topics: int, alpha_str: Union[str, float]
     #############################
     with np.errstate(divide='ignore', invalid='ignore'):
         # Coherence configuration
-        max_attempts = estimate_batches_large_docs_v2(data_source, min_batch_size=5, max_batch_size=20, memory_limit_ratio=0.4, cpu_factor=3)
+        max_attempts = estimate_batches_large_docs_v2(data_source, min_batch_size=5, max_batch_size=50, memory_limit_ratio=0.4, cpu_factor=3)
         
         try:
             # Create a delayed task for coherence score calculation without computing it immediately
@@ -337,8 +358,8 @@ def train_model_v2(data_source: str, n_topics: int, alpha_str: Union[str, float]
             logging.error(f"Error processing batch: {e}", exc_info=True)
             raise
     try:
+        validation_results_to_store = []
         try:
-
             # Define batch size for processing
             batch_size = estimate_batches_large_docs_v2(data_source, min_batch_size=1, max_batch_size=5, memory_limit_ratio=0.4, cpu_factor=3)
 
@@ -383,11 +404,50 @@ def train_model_v2(data_source: str, n_topics: int, alpha_str: Union[str, float]
                 #sys.exit()
 
         try:
-            validation_results_to_store = [r.result(timeout=120) for r in done_batches]
-            total_documents = len(validation_results_to_store)
+            delayed_validation_results = [r.result(timeout=120) for r in done_batches]
+            total_documents = len(delayed_validation_results)
             logging.info(f"[get_document_topics] Completed processing {total_documents} documents.")
         except Exception as e:
             logging.error(f"Error in topic_model_trainer/[r.result() for r in done_batches]")
+
+        # Error handling is necessary due to potential issues during Dask operations:
+        # 1. Dask client disconnects or crashes may cause failures in client.submit(), 
+        #    leading to incomplete or invalid delayed objects.
+        # 2. The process_batch_get_document_topics function may yield no topics or invalid results.
+        # 3. Handling cases where delayed_validation_results is improperly formatted (e.g., an int instead of a list).
+        # This block ensures robustness by converting unexpected types, logging errors, and handling empty or malformed inputs.
+        try:
+            if isinstance(delayed_validation_results, int):
+                logging.error(f"The resolved delayed document distribution is not subscriptable: {delayed_validation_results}.")
+                logging.warning(f"Converting the object to a list.")
+                delayed_validation_results = [delayed_validation_results]
+            
+            if not isinstance(delayed_validation_results, list):
+                logging.error("`delayed_validation_results` is not a list.")
+                if hasattr(delayed_validation_results, 'compute'):
+                    # If it has `.compute()`, assume it's a valid delayed object
+                    delayed_validation_results = [delayed_validation_results.compute()]
+                else:
+                    # If it's not computable, log an error and handle it
+                    logging.error(f"Object is not a delayed object and cannot be computed: {type(delayed_validation_results)}")
+                delayed_validation_results = []
+
+            if len(delayed_validation_results) > 1:
+                # Compute all delayed objects in the list
+                validation_results_to_store = [list(result) for result in dask.compute(*delayed_validation_results)]
+            elif len(delayed_validation_results) == 1:
+                # Compute a single delayed object
+                if not hasattr(delayed_validation_results[0], 'compute'):
+                    logging.error(f"Object at index 0 is not computable: {delayed_validation_results[0]}")
+                    logging.error(f"Expected a delayed object, but got type {type(delayed_validation_results[0])}.")
+                validation_results_to_store = [delayed_validation_results[0].compute()]
+            else:
+                # Handle an empty list
+                logging.warning("`delayed_validation_results` is an empty list.")
+        except Exception as e:
+            logging.error(f"Failed to resolve delayed document distributions: {e}")
+
+
 
         # Log the computed structure before further processing
         logging.debug(f"[get_document_topics] Computed validation results: {validation_results_to_store}")
