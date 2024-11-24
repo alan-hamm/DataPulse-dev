@@ -614,7 +614,7 @@ def calculate_torch_coherence(data_source, ldamodel, sample_docs, dictionary):
     #        raise FileNotFoundError(f"Could not load cached or trained model.")
 
     
-    batch_size = estimate_batches_large_docs_v2(data_source, min_batch_size=1, max_batch_size=10, memory_limit_ratio=0.4, cpu_factor=3)
+    batch_size = estimate_batches_large_docs_v2(data_source, min_batch_size=1, max_batch_size=50, memory_limit_ratio=0.4, cpu_factor=3)
 
     # Split sample_docs into smaller batches
     batches = [sample_docs[i:i + batch_size] for i in range(0, len(sample_docs), batch_size)]
@@ -706,25 +706,44 @@ def calculate_perplexity(negative_log_likelihood, num_words):
     Returns:
     - float: The perplexity score.
     """
+    logging.debug(f"Inputs - Negative log-likelihood: {negative_log_likelihood}, num_words: {num_words}")
     if num_words == 0:
-        raise ValueError("Number of words must be greater than zero to calculate perplexity.")
+        raise ValueError("Number of words must be greater than zero to avoid division by zero error.")
     
-    return math.exp(negative_log_likelihood / num_words)
+    perplexity = math.exp(negative_log_likelihood / num_words)
+    logging.debug(f"Calculated perplexity: {perplexity}")
+
+    return perplexity
 
 # Calculate perplexity-based threshold
 def calculate_perplexity_threshold(ldamodel, documents, default_score):
     if not documents:  # Check if documents list is empty
+        logging.warning("[calculate_perplexity_threshold] Empty document list. Returning default threshold.")
         return default_score  # Return a default score if there are no documents
-    
-    negative_log_likelihood = ldamodel.log_perplexity(documents)
-    threshold = min(0.3 * abs(negative_log_likelihood), 10)  # Set a hard upper limit for threshold
 
-    # Check if the calculated threshold is reasonable
-    if threshold < 0.1 or threshold > 1000:  # Example of an unreasonable range
-        logging.error(f"Calculated threshold ({threshold}) is outside the reasonable range. Halting the pipeline.")
-        return None  # Indicate failure to proceed
+    try:
+        # Get the negative log-likelihood
+        negative_log_likelihood = ldamodel.log_perplexity(documents)
+        logging.debug(f"[calculate_perplexity_threshold] Negative Log-Likelihood (NLL): {negative_log_likelihood}")
 
-    return threshold
+        # Calculate perplexity directly
+        num_words = sum(len(doc) for doc in documents)  # Total number of words
+        if num_words == 0:
+            raise ValueError("[calculate_perplexity_threshold] Corpus contains zero words. Cannot calculate threshold.")
+
+        perplexity = math.exp(negative_log_likelihood / num_words)
+        logging.debug(f"[calculate_perplexity_threshold] Calculated Perplexity: {perplexity}")
+
+        # Define threshold as a function of perplexity
+        threshold = max(0.1, min(perplexity * 0.5, 100))  # Example: Scale perplexity by 0.5, cap at 100
+
+        logging.info(f"[calculate_perplexity_threshold] Calculated threshold: {threshold}")
+        return threshold
+
+    except Exception as e:
+        logging.error(f"[calculate_perplexity_threshold] Error calculating perplexity threshold: {e}. Returning default score.")
+        return default_score
+
 
 
 # Main decision logic based on coherence statistics and threshold
@@ -771,8 +790,10 @@ def calculate_convergence(ldamodel, phase_corpus, default_score):
 @delayed
 def calculate_perplexity_score(ldamodel, phase_corpus, num_words, default_score):
     try:
+        logging.debug(f"[calculate_perplexity_score] Calculating perplexity. Phase corpus size: {len(phase_corpus)}, num_words: {num_words}")
         negative_log_likelihood = ldamodel.log_perplexity(phase_corpus)
+        logging.debug(f"[calculate_perplexity_score] Negative log-likelihood: {negative_log_likelihood}")
         return calculate_perplexity(negative_log_likelihood, num_words)
     except RuntimeWarning as e:
-        logging.info(f"Issue calculating perplexity score: {e}. Value '{default_score}' assigned.")
+        logging.info(f"[calculate_perplexity_score] Issue calculating perplexity score: {e}. Value '{default_score}' assigned.")
         return default_score
