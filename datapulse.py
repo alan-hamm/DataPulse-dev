@@ -653,50 +653,41 @@ if __name__=="__main__":
             try:
                 # Train phase logic
                 future_map = {}  # Track futures for debugging
-                train_futures = []  # List to hold all submitted futures
                 for j, scattered_data in enumerate(scattered_train_data_futures):
                     model_key = (n_topics, alpha_value, beta_value)
                     try:
-                        # Submit future
+                        # Submit future for training
                         future = client.submit(
                             train_model_v2, DATA_SOURCE, n_topics, alpha_value, beta_value, TEXTS_ZIP_DIR, PYLDA_DIR, PCOA_DIR, PCA_GPU_DIR, unified_dictionary, scattered_data, "train",
                             RANDOM_STATE, PASSES, ITERATIONS, UPDATE_EVERY, EVAL_EVERY, num_workers, PER_WORD_TOPICS, ldamodel_parameter=None, pure=False, retries=3
                         )
-                        future_map[model_key] = future
-                        train_futures.append(future)  # Track future
-                        progress_bar.update()  # Uncomment if progress tracking is needed
-                    except Exception as e:
-                        logging.error(f"Failed to submit train_model_v2 for batch {j}, model {model_key}: {e}")
+                        future_map[model_key] = future  # Track the future
+                        # train_futures.append(future)
+                       #progress_bar.update()
 
-                    # Process futures in batches of 50
-                    if (j + 1) % 50 == 0:
-                        done_train, not_done = wait(train_futures, timeout=120)
-                        for done in done_train:
-                            try:
-                                result = done.result()  # No timeout needed, wait() already applies it
-                                completed_train_futures.append(result)
-                            except Exception as e:
-                                logging.error(f"Error resolving batch future {done.key}: {e}")
-                        train_futures = not_done  # Retain unresolved futures
-                        client.rebalance()
-
-                # Process any remaining futures after the loop
-                done_train, not_done = wait(train_futures, timeout=120)
-                for done in done_train:
-                    try:
-                        result = done.result()
+                        # Resolve future with timeout
+                        result = future.result(timeout=300)  # Timeout to prevent indefinite blocking
+                        if result is None:
+                            logging.error(f"Batch {j} for model {model_key} returned None. Skipping.")
+                            continue
                         completed_train_futures.append(result)
-                        progress_bar.update()
-                    except Exception as e:
-                        logging.error(f"Error resolving remaining batch future {done.key}: {e}")
 
-                # Exit if no valid results
+                        # Rebalance periodically
+                        if (j + 1) % 100 == 0:
+                            client.rebalance()
+
+                    except ZeroDivisionError as e:
+                        logging.error(f"Division by zero error in batch {j} for model {model_key}: {e}")
+                    except Exception as e:
+                        logging.error(f"Error submitting or resolving future for batch {j} and model {model_key}: {e}")
+
                 if len(completed_train_futures) == 0:
-                    logging.error("No results were output from '_v2' for writing to SSD. Exiting.")
+                    logging.error("No results were output from '_v2' for writing to SSD.")
                     sys.exit()
 
             except Exception as e:
                 logging.error(f"Train phase error in DataPulse.py with train_model_v2: {e}")
+
 
 
             """
