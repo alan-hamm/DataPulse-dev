@@ -54,12 +54,12 @@ from .mathstats import *
 from .visualization import *
 from .process_futures import get_and_process_show_topics, get_document_topics_batch, extract_topics_with_get_topic_terms
 
-   
+
 # https://examples.dask.org/applications/embarrassingly-parallel.html
-def train_model_v2(data_source: str, n_topics: int, alpha_str: Union[str, float], beta_str: Union[str, float], zip_path:str, pylda_path:str, pca_path:str, pca_gpu_path: str,
-                   unified_dictionary: Dictionary, train_val_test_corpus: list, phase: str,
+def train_model_v2(data_source: str, n_topics: int, alpha_str: Union[str,float], beta_str: Union[str,float], zip_path:str, pylda_path:str, pca_path:str, pca_gpu_path: str,
+                   unified_dictionary: Dictionary, validation_test_data: list, phase: str,
                    random_state: int, passes: int, iterations: int, update_every: int, eval_every: int, cores: int,
-                   per_word_topics: bool, ldamodel_parameter=None, **kwargs):
+                   per_word_topics: bool, ldamodel_parameter=None):
     client = get_client()
 
     time_of_method_call = pd.to_datetime('now')  # Record the current timestamp for logging and metadata.
@@ -73,12 +73,12 @@ def train_model_v2(data_source: str, n_topics: int, alpha_str: Union[str, float]
 
     try:
         # Compute the Dask future and convert the result to a list to make it mutable
-        batch_documents = list(dask.compute(*train_val_test_corpus))
+        batch_documents = list(dask.compute(*validation_test_data))
 
         # Flatten the list of documents if needed
-        if len(batch_documents) == 1 and all(isinstance(item, list) for item in batch_documents[0]):
+        #if len(batch_documents) == 1 and all(isinstance(item, list) for item in batch_documents[0]):
             # Flatten only if batch_documents[0] is a list of lists
-            batch_documents = batch_documents[0]
+        #    batch_documents = batch_documents[0]
 
         # Ensure each element in batch_documents is a list of tokens, even if it contains only one word
         for idx, doc in enumerate(batch_documents):
@@ -106,14 +106,11 @@ def train_model_v2(data_source: str, n_topics: int, alpha_str: Union[str, float]
                 raise ValueError(f"Document at index {idx} contains invalid structure.")
 
 
-            # Set a chunksize for model processing, dividing documents into smaller groups for efficient processing.
-            chunksize = max(1, int(len(batch_documents) // 5))
-
             # Optionally, convert batch_documents to a Gensim Dictionary if needed later
             #train_dictionary = Dictionary(list(batch_documents))
 
     except Exception as e:
-        logging.error(f"Error computing streaming_documents data: {e}")  # Log any errors during
+        logging.error(f"Error computing validation_test_data data: {e}")  # Log any errors during
 
 
     # Check for empty batch_documents after cleaning
@@ -121,9 +118,20 @@ def train_model_v2(data_source: str, n_topics: int, alpha_str: Union[str, float]
         logging.error("All documents were filtered out during cleaning in train_model_v2.")
         return None  # Return None to indicate failure
     
-    # Check for extra nesting in batch_documents and flatten if necessary
+    # Check for extra nesting and flatten only if the structure matches expectations
     if len(batch_documents) == 1 and isinstance(batch_documents[0], list):
-        batch_documents = batch_documents[0]   
+        # Ensure the nested list contains valid documents
+        if all(isinstance(doc, list) for doc in batch_documents[0]):
+            batch_documents = batch_documents[0]
+        else:
+            logging.error("Nested batch_documents contains invalid structure. Skipping flattening.")
+            return None
+
+    # Validate `batch_documents` after flattening
+    if not all(isinstance(doc, list) for doc in batch_documents):
+        logging.error("batch_documents is not a list of lists. Exiting.")
+        return None
+
 
     # Create a Gensim dictionary from the batch documents, mapping words to unique IDs for the corpus.
     try:
@@ -131,48 +139,60 @@ def train_model_v2(data_source: str, n_topics: int, alpha_str: Union[str, float]
     except TypeError as e:
         logging.error("Error: The data structure is not correct to create the Dictionary object.")  # Print an error if data format is incompatible.
         logging.error(f"Details: {e}")
-        sys.exit()
+        return None
 
-    # Corrected code inside train_model_v2
-    number_of_documents = 0  # Counter for tracking the number of documents processed.
 
+    # Log dictionary size after filtering
+    logging.info(f"Number of unique tokens after filtering: {len(train_val_test_dictionary)}")
+    if len(train_val_test_dictionary) == 0:
+        logging.error("Dictionary is empty after filtering. Adjust thresholds.")
+        return None
+  
+   # Counters for success and failure
+    number_of_documents = 0
+    failed_convert_token_to_bow = 0
     corpus_to_pickle = ''
+
     try:
-        # Convert tokens to BoW format
-        for doc_tokens in train_val_test_dictionary:
+        for doc_tokens in batch_documents:
             # Validate `doc_tokens`
             if not isinstance(doc_tokens, list):
                 logging.warning(f"Unexpected structure for doc_tokens: {type(doc_tokens)}, content: {doc_tokens}")
-                logging.warning("Skipping token in dictionary build.")
-                continue  # Skip invalid document
+                try:
+                    doc_tokens = list(doc_tokens)  # Attempt conversion
+                except TypeError as e:
+                    logging.error(f"Failed to convert doc_tokens to list: {e}. Skipping.")
+                    failed_convert_token_to_bow += 1
+                    continue
 
-            # Validate non-empty tokens
-            if len(doc_tokens) == 0:
-                logging.warning(f"Skipping empty document: {doc_tokens}")
-                logging.warning("Skipping document in dictionary build.")
-                continue  # Skip empty documents
+            # Skip empty documents
+            if not doc_tokens:
+                logging.warning("Skipping empty document.")
+                failed_convert_token_to_bow += 1
+                continue
 
             try:
-                # Convert tokens to BoW format
+                # Convert to BoW
                 bow_out = train_val_test_dictionary.doc2bow(doc_tokens)
-                if not isinstance(bow_out, list) or not all(isinstance(pair, tuple) and len(pair) == 2 for pair in bow_out):
-                    logging.error(f"Malformed BoW output: {bow_out}. Skipping.")
-                    continue  # Skip malformed BoW outputs
-                # Append to corpus data
+                
                 corpus_data[phase].append(bow_out)
-                number_of_documents += 1
-            except Exception as e:
-                # Log any unexpected error during conversion
-                logging.error(f"Failed to process document tokens: {doc_tokens}, error: {e}")
-                continue  # Skip this document on error
+                number_of_documents+=1
 
-        # Serialize the corpus
-        corpus_to_pickle = pickle.dumps(corpus_data[phase])
+            except Exception as e:
+                logging.error(f"Error processing document: {doc_tokens}, error: {e}")
+                failed_convert_token_to_bow += 1
+                continue
 
     except Exception as e:
-        logging.error(f"CRITICAL: Error in creating or appending BoW representation: {e}")
+        logging.error(f"Critical error in BoW processing: {e}")
 
-    #print(f"Final corpus_data[phase]: {corpus_data[phase][:5]}")  # Log a sample of corpus_data[phase]
+    # Set a chunksize for model processing, dividing documents into smaller groups for efficient processing.
+    chunksize = max(1, int(len(corpus_data[phase]) // 5))
+
+    # Output the counts
+    #logging.info(f"Final BoW Counts: Successful {number_of_documents}, Failed {failed_convert_token_to_bow}")
+
+    #print(f"Final corpus_data[{phase}]: {corpus_data[phase][:100]}")  # Log a sample of corpus_data[phase]
 
     #print(f"There was a total of {number_of_documents} documents added to the corpus_data.")  # Log document count.
 
@@ -218,6 +238,8 @@ def train_model_v2(data_source: str, n_topics: int, alpha_str: Union[str, float]
         except Exception as e:
             logging.error(f"An error occurred during LDA model training: {e}")
             raise
+    else:
+        sys.exit()
 
     try:
         # Create the delayed task for the threshold without computing it immediately
@@ -237,8 +259,8 @@ def train_model_v2(data_source: str, n_topics: int, alpha_str: Union[str, float]
         
         try:
             # Create a delayed task for coherence score calculation without computing it immediately
-            coherence_task = dask.delayed(calculate_torch_coherence)(
-                data_source, ldamodel, batch_documents, train_val_test_dictionary
+            coherence_task = calculate_torch_coherence(
+                data_source, ldamodel, batch_documents, unified_dictionary
             )
         except Exception as e:
             logging.warning("calculate_torch_coherence score calculation failed. Using default score.")
@@ -249,29 +271,31 @@ def train_model_v2(data_source: str, n_topics: int, alpha_str: Union[str, float]
             # Process coherence scores with high precision after computation, including the tolerance parameter
             coherence_scores_data = dask.delayed(calculate_coherence_metrics)(
                 default_score=DEFAULT_SCORE,
-                data={'coherence_scores': coherence_task},
+                real_coherence_value=coherence_task,
                 ldamodel=ldamodel,
-                dictionary=train_val_test_dictionary,
+                dictionary=unified_dictionary,
                 texts=batch_documents,  # Correct parameter
+                cores = cores,
                 max_attempts=max_attempts
             )
 
             # Extract metrics from processed data as delayed tasks
+            coherence_score = dask.delayed(lambda data: data['coherence_score'])(coherence_scores_data)
             mean_coherence = dask.delayed(lambda data: data['mean_coherence'])(coherence_scores_data)
             median_coherence = dask.delayed(lambda data: data['median_coherence'])(coherence_scores_data)
             std_coherence = dask.delayed(lambda data: data['std_coherence'])(coherence_scores_data)
             mode_coherence = dask.delayed(lambda data: data['mode_coherence'])(coherence_scores_data)
 
             # Run compute here if everything is successful
-            mean_coherence, median_coherence, std_coherence, mode_coherence = dask.compute(
-                mean_coherence, median_coherence, std_coherence, mode_coherence
+            coherence_score, mean_coherence, median_coherence, std_coherence, mode_coherence = dask.compute(
+                coherence_score, mean_coherence, median_coherence, std_coherence, mode_coherence
             )
         except Exception as e:
             logging.warning("Sample coherence scores calculation failed. NumPy default_rng().")
             # Assign fallback values directly with a reproducible random generator
             rng = np.random.default_rng(8241984)
-            fallback_coherence_values = np.linspace(0.2, 0.5, 10)
-            mean_coherence = median_coherence = std_coherence = mode_coherence = rng.choice(fallback_coherence_values)
+            fallback_coherence_values = np.linspace(0.01, 0.5, 10)
+            coherence_score = mean_coherence = median_coherence = std_coherence = mode_coherence = rng.choice(fallback_coherence_values)
 
 
 
@@ -286,12 +310,9 @@ def train_model_v2(data_source: str, n_topics: int, alpha_str: Union[str, float]
             convergence_task = dask.delayed(lambda: DEFAULT_SCORE)()
 
         try:
-            # Calculate the number of words in the corpus for the perplexity score
-            num_words = sum(sum(count for _, count in doc) for doc in corpus_data[phase])
-
             # Create a delayed task for perplexity score calculation without computing it immediately
             perplexity_task = dask.delayed(calculate_perplexity_score)(
-                ldamodel, corpus_data[phase], num_words, DEFAULT_SCORE
+                ldamodel, corpus_data[phase], DEFAULT_SCORE
             )
         except Exception as e:
             logging.warning("Perplexity score calculation failed. Using default score.")
@@ -299,51 +320,68 @@ def train_model_v2(data_source: str, n_topics: int, alpha_str: Union[str, float]
             perplexity_task = dask.delayed(lambda: DEFAULT_SCORE)()
 
 
-    # Set a default value for *_jsonb in case of failures
+   # Initialize default JSONB values
     topics_results_jsonb = json.dumps([["not_initialized_yet"], ["no_real_data"]])
     topic_words_jsonb = json.dumps([["not_initialized_yet"], ["no_real_data"]])
     validation_results_jsonb = json.dumps([["not_initialized_yet"], ["no_real_data"]])
-    
-    # Set a default value for num_words in case of errors during calculation
+
+    # Calculate num_words
     try:
         num_words = sum(sum(count for _, count in doc) for doc in corpus_data[phase])
+        logging.debug(f"Calculated num_words for phase '{phase}': {num_words}")
     except Exception as e:
         logging.warning(f"Error calculating num_words: {e}")
-        num_words = 10  # Assign a fallback value for num_words
+        num_words = 10
+        logging.debug(f"Fallback num_words: {num_words}")
 
+    # Extract topics
+    extract_success = False
     try:
-        # Create delayed task for getting and processing show_topics
+        logging.debug("Creating delayed task for topic extraction...")
         topics_to_store_task = extract_topics_with_get_topic_terms(ldamodel, num_words=num_words)
-
-        # Compute the delayed topics result
-        topics_results_to_store = topics_to_store_task.compute()
-
-        try:
-            topics_results_jsonb = convert_float32_to_float(topics_results_to_store)
-        except Exception as e:
-            logging.error(f"First attempt to serialize topics_results_to_store failed: {e}")
-            try:
-                topics_results_jsonb = json.dumps(topics_results_to_store, cls=NumpyEncoder)
-            except Exception as e:
-                logging.warning(f"Second topics_results_jsonb serialization attempt failed: {e}")
-                try:
-                    # second attempt with specific handling for arrays/dataframes
-                    if isinstance(topics_results_to_store, np.ndarray):
-                        data = topics_results_to_store.astype(float).tolist()
-                        topics_results_jsonb = json.dumps(data)
-
-                    elif isinstance(topics_results_to_store, pd.DataFrame):
-                        data = topics_results_to_store.applymap(lambda x: float(x) if isinstance(x, (np.float32, np.float64)) else x)
-                        topics_results_jsonb = json.dumps(data)
-
-                    else:
-                        topics_results_jsonb = json.dumps(topics_results_to_store)
-
-                except Exception as e:
-                    logging.error(f"All JSON topics_results_jsonb serialization attempts failed: {e}")
-                    topics_results_jsonb = json.dumps({"error": "Validation data generation failed", "phase": phase})
+        extract_success = True
     except Exception as e:
-        logging.error(f"Unexpected extract_topics_with_get_topic_terms error during topic processing: {e}")
+        logging.error("[extract_topics_with_get_topic_terms] failed to extract topics.")
+        topics_results_jsonb = json.dumps( [["failed_extract_topics_with_get_topic_terms"], ["not_initialized_yet"], ["no_real_data"]], cls=NumpyEncoder)
+        
+    if extract_success == True:
+        try:
+            logging.debug("Computing delayed task for topic extraction...")
+            topics_results_to_store = topics_to_store_task.compute()
+            logging.debug(f"Extracted topics: {topics_results_to_store}")
+
+            # Update JSONB value
+            topics_results_jsonb = json.dumps(topics_results_to_store, cls=NumpyEncoder)
+        except Exception as e:
+            logging.error(f"Error extracting topics: {e}")
+            topics_results_to_store = [["failed_extract_topics_with_get_topic_terms"], ["not_initialized_yet"], ["no_real_data"]]
+
+            try:
+                topics_results_jsonb = convert_float32_to_float(topics_results_to_store)
+            except Exception as e:
+                logging.error(f"First attempt to serialize topics_results_to_store failed: {e}")
+                try:
+                    topics_results_jsonb = json.dumps(topics_results_to_store, cls=NumpyEncoder)
+                except Exception as e:
+                    logging.warning(f"Second topics_results_jsonb serialization attempt failed: {e}")
+                    try:
+                        # second attempt with specific handling for arrays/dataframes
+                        if isinstance(topics_results_to_store, np.ndarray):
+                            data = topics_results_to_store.astype(float).tolist()
+                            topics_results_jsonb = json.dumps(data)
+
+                        elif isinstance(topics_results_to_store, pd.DataFrame):
+                            data = topics_results_to_store.applymap(lambda x: float(x) if isinstance(x, (np.float32, np.float64)) else x)
+                            topics_results_jsonb = json.dumps(data)
+
+                        else:
+                            topics_results_jsonb = json.dumps(topics_results_to_store)
+
+                    except Exception as e:
+                        logging.error(f"All JSON topics_results_jsonb serialization attempts failed: {e}")
+                        topics_results_jsonb = json.dumps({"error": "Validation data generation failed", "phase": phase})
+        except Exception as e:
+            logging.error(f"Unexpected extract_topics_with_get_topic_terms error during topic processing: {e}")
     
 
 
@@ -362,7 +400,7 @@ def train_model_v2(data_source: str, n_topics: int, alpha_str: Union[str, float]
         validation_results_to_store = []
         try:
             # Define batch size for processing
-            batch_size = estimate_batches_large_docs_v2(data_source, min_batch_size=1, max_batch_size=5, memory_limit_ratio=0.4, cpu_factor=3)
+            batch_size = estimate_batches_large_docs_v2(data_source, min_batch_size=1, max_batch_size=15, memory_limit_ratio=0.4, cpu_factor=3)
 
             batch_size = min(len(corpus_data[phase]), batch_size)
             if batch_size == 0:
@@ -396,62 +434,39 @@ def train_model_v2(data_source: str, n_topics: int, alpha_str: Union[str, float]
 
         # Wait for completion and gather results
         done_batches, not_done = wait(futures, timeout=300)
+
+        # Log errors in completed batches
         for future in done_batches:
             if future.status == 'error':
                 logging.error(f"Future failed with exception: {future.exception()}")
                 logging.error("SOURCE OF ERROR FOUND(1)")
-                #sys.exit()
+
+        # Retry unresolved tasks
+        retry_done_batches, retry_not_done = [], []
         if not_done:
-            logging.error(f"{len(not_done)} train tasks are still unresolved!")
-            for future in not_done:
-                logging.error(f"Unresolved task: {future.key}")
-                logging.error("SOURCE OF ERROR FOUND(2)")
-                #sys.exit()
+            logging.warning(f"Retrying {len(not_done)} unresolved tasks...")
+            retries = [client.retry(future) for future in not_done]
+            retry_done_batches, retry_not_done = wait(retries, timeout=300)
+
+            # Log any unresolved tasks after retry
+            if retry_not_done:
+                logging.error(f"{len(retry_not_done)} tasks remain unresolved after retry.")
+                for future in retry_not_done:
+                    logging.error(f"Unresolved task after retry: {future.key}")
+
+        # Combine results from all completed batches
+        if not isinstance(done_batches, list):
+            done_batches = list(done_batches)
+        if not isinstance(retry_done_batches, list):
+            retry_done_batches = list(retry_done_batches)
+        all_done_batches = done_batches + retry_done_batches
 
         try:
-            delayed_validation_results = [r.result(timeout=120) for r in done_batches]
-            total_documents = len(delayed_validation_results)
+            validation_results_to_store = [r.result(timeout=120) for r in all_done_batches]
+            total_documents = len(validation_results_to_store)
             logging.info(f"[get_document_topics] Completed processing {total_documents} documents.")
         except Exception as e:
-            logging.error(f"Error in topic_model_trainer/[r.result() for r in done_batches]")
-
-        # Error handling is necessary due to potential issues during Dask operations:
-        # 1. Dask client disconnects or crashes may cause failures in client.submit(), 
-        #    leading to incomplete or invalid delayed objects.
-        # 2. The process_batch_get_document_topics function may yield no topics or invalid results.
-        # 3. Handling cases where delayed_validation_results is improperly formatted (e.g., an int instead of a list).
-        # This block ensures robustness by converting unexpected types, logging errors, and handling empty or malformed inputs.
-        try:
-            if isinstance(delayed_validation_results, int):
-                logging.error(f"The resolved delayed document distribution is not subscriptable: {delayed_validation_results}.")
-                logging.warning(f"Converting the object to a list.")
-                delayed_validation_results = [delayed_validation_results]
-            
-            if not isinstance(delayed_validation_results, list):
-                logging.error("`delayed_validation_results` is not a list.")
-                if hasattr(delayed_validation_results, 'compute'):
-                    # If it has `.compute()`, assume it's a valid delayed object
-                    delayed_validation_results = [delayed_validation_results.compute()]
-                else:
-                    # If it's not computable, log an error and handle it
-                    logging.error(f"Object is not a delayed object and cannot be computed: {type(delayed_validation_results)}")
-                delayed_validation_results = []
-
-            if len(delayed_validation_results) > 1:
-                # Compute all delayed objects in the list
-                validation_results_to_store = [list(result) for result in dask.compute(*delayed_validation_results)]
-            elif len(delayed_validation_results) == 1:
-                # Compute a single delayed object
-                if not hasattr(delayed_validation_results[0], 'compute'):
-                    logging.error(f"Object at index 0 is not computable: {delayed_validation_results[0]}")
-                    logging.error(f"Expected a delayed object, but got type {type(delayed_validation_results[0])}.")
-                validation_results_to_store = [delayed_validation_results[0].compute()]
-            else:
-                # Handle an empty list
-                logging.warning("`delayed_validation_results` is an empty list.")
-        except Exception as e:
-            logging.error(f"Failed to resolve delayed document distributions: {e}")
-
+            logging.error(f"Error in topic_model_trainer/[r.result() for r in done_batches]: {e}")
 
 
         # Log the computed structure before further processing
@@ -621,17 +636,17 @@ def train_model_v2(data_source: str, n_topics: int, alpha_str: Union[str, float]
     pyLDAvis_image = os.path.join(pylda_path, phase, number_of_topics)
     
     # Group all main tasks that can be computed at once for efficiency
-    threshold, coherence_score, coherence_data, convergence_score, perplexity_score, topics_to_store = dask.compute(
-        threshold, coherence_task, coherence_scores_data, convergence_task, perplexity_task, topics_to_store_task
+    threshold, convergence_score, perplexity_score, topics_to_store = dask.compute(
+        threshold, convergence_task, perplexity_task, topics_to_store_task
     )
 
 
     if topic_words_jsonb == json.dumps([["not_initialized_yet"], ["no_real_data"]]):
-        logging.warning("topics_results_jsonb is still using the default placeholder!")
+        logging.warning("topic_words_jsonb is still using the default placeholder!")
     if topics_results_jsonb == json.dumps([["not_initialized_yet"], ["no_real_data"]]):
         logging.warning("topics_results_jsonb is still using the default placeholder!") 
     if validation_results_jsonb == json.dumps([["not_initialized_yet"], ["no_real_data"]]):
-        logging.warning("topics_results_jsonb is still using the default placeholder!")
+        logging.warning("validation_results_jsonb is still using the default placeholder!")
 
     flattened_batch = []
     try:
@@ -710,10 +725,10 @@ def train_model_v2(data_source: str, n_topics: int, alpha_str: Union[str, float]
     db_data = copy.deepcopy(current_increment_data)
 
     db_data = {key: safe_serialize_for_postgres(value) for key, value in db_data.items()}
-    
+
     # Debug serialized data types to ensure compatibility
     for key, value in db_data.items():
-        logging.debug(f"DB Key: {key}, Type: {type(value)}, Serialized Value: {value}")
+        #logging.debug(f"DB Key: {key}, Type: {type(value)}, Serialized Value: {value}")
         if isinstance(value, np.ndarray):
             logging.error(f"Key {key} is still ndarray after serialization!")
         elif isinstance(value, cp.ndarray):
