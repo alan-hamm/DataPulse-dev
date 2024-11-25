@@ -37,6 +37,16 @@ from gensim.corpora import Dictionary
 from .batch_estimation import estimate_batches_large_docs_v2, estimate_batches_large_optimized
 from .mathstats import calculate_torch_coherence
 
+def verify_documents(bow_out, location):
+    if not isinstance(bow_out, list):
+        print(f"[{location}] BoW is not a list: {bow_out}")
+        return False
+    if any(not isinstance(pair, tuple) or len(pair) != 2 for pair in bow_out):
+        print(f"[{location}] Invalid tuple detected in BoW: {bow_out}")
+        return False
+    return True
+
+
 def futures_create_lda_datasets(filename, train_ratio, validation_ratio, batch_size):
     with open(filename, 'r', encoding='utf-8') as jsonfile:
         data = load(jsonfile)
@@ -210,23 +220,38 @@ def futures_create_lda_datasets_v3(documents_path, train_ratio=0.7, validation_r
         documents = load(jsonfile)
 
     total_raw_documents = len(documents)
-
+    dictionary = Dictionary(documents)
     # validate documents
     cleaned_documents = []
-    for doc_tokens in documents:
-        # Validate `doc_tokens`
-        if not isinstance(doc_tokens, list):
-            logging.warning(f"Unexpected structure for doc_tokens: {type(doc_tokens)}, content: {doc_tokens}")
-            logging.warning("Skipping token in [futures_create_lda_datasets_v3].")
-            continue  # Skip invalid document
+    failed_convert_token_to_bow = 0
+    number_of_documents = 0
 
-        # Validate non-empty tokens
-        if len(doc_tokens) == 0:
-            logging.warning(f"Skipping empty document: {doc_tokens}")
-            logging.warning("Skipping document in [futures_create_lda_datasets_v3].")
-            continue  # Skip empty documents
-        
-        cleaned_documents.append(doc_tokens)
+
+    for doc_tokens in documents:
+        try:
+            if not isinstance(doc_tokens, list) or not doc_tokens:
+                print(f"Invalid or empty document: {doc_tokens}. Skipping.")
+                failed_convert_token_to_bow += 1
+                continue
+
+            bow_out = dictionary.doc2bow(doc_tokens)
+            bow_out = [pair for pair in bow_out if isinstance(pair, tuple) and len(pair) == 2]
+            if not bow_out:
+                print(f"Document converted to empty BoW: {doc_tokens}. Skipping.")
+                failed_convert_token_to_bow += 1
+                continue
+
+            if verify_documents(bow_out, location="Ingestion"):
+                cleaned_documents.append(doc_tokens)
+                number_of_documents += 1
+            else:
+                print(f"Document failed verification: {doc_tokens}. Skipping.")
+                failed_convert_token_to_bow += 1
+        except Exception as e:
+            print(f"Error processing document: {doc_tokens}, error: {e}")
+            failed_convert_token_to_bow += 1
+            continue
+            
 
     # Create a unified dictionary using the entire corpus (list of lists of tokens)
     print("Creating dictinoary...\n")
@@ -541,28 +566,33 @@ def get_and_process_show_topics(ldamodel, num_words, kwargs=None):
 def extract_topics_with_get_topic_terms(ldamodel, num_words, kwargs=None):
     """
     Delayed function to extract topics using get_topic_terms from an LDA model.
-
-    Parameters:
-    - ldamodel: Trained LDA model.
-    - num_words: Number of words to extract for each topic.
-    - kwargs (optional): Additional parameters for diagnostic information.
-
-    Returns:
-    - A list of processed topics in the desired format.
     """
     try:
-        # Extract topic-word distributions for all topics
-        topics = [
-            {
-                "method": "get_topic_terms",
-                "topic_id": topic_id,
-                "words": [{"word": word, "prob": prob} for word, prob in ldamodel.get_topic_terms(topic_id, num_words)]
-            }
-            for topic_id in range(ldamodel.num_topics)
-        ]
+        logging.debug(f"Extracting topics using LDA model with num_topics={ldamodel.num_topics}")
+        topics = []
+        for topic_id in range(ldamodel.num_topics):
+            try:
+                terms = ldamodel.get_topic_terms(topic_id, num_words)
+                logging.debug(f"Topic {topic_id} terms: {terms}")
+                topics.append({
+                    "method": "get_topic_terms",
+                    "topic_id": int(topic_id),
+                    "words": [{"word": word, "prob": float(prob)} for word, prob in terms]
+                })
+            except Exception as inner_e:
+                logging.warning(f"Error extracting terms for topic {topic_id}: {inner_e}")
+        if not topics:
+            logging.warning("No topics were extracted. Returning empty result.")
+            return [
+                {
+                    "method": "get_topic_terms",
+                    "topic_id": None,
+                    "words": [],
+                    "error": "No topics extracted",
+                }
+            ]
         return topics
     except Exception as e:
-        # Handle errors and provide diagnostic information
         logging.warning(f"An error occurred while extracting topics: {e}")
         return [
             {
@@ -579,9 +609,10 @@ def extract_topics_with_get_topic_terms(ldamodel, num_words, kwargs=None):
                 }
             }
         ]
+
+
     
 # Batch process to get topics for a batch of documents
-@delayed
 def get_document_topics_batch(ldamodel, bow_docs):
     """
     Retrieve significant topics for a batch of documents in a delayed Dask task.
@@ -594,8 +625,14 @@ def get_document_topics_batch(ldamodel, bow_docs):
     - list: A list of topic lists for each document with their respective probabilities.
     """
     batch_results = []
+
     for bow_doc in bow_docs:
         try:
+            # Ensure that bow_doc is a list of tuples
+            if isinstance(bow_doc, tuple):
+                # If bow_doc is a single tuple, wrap it in a list to form a proper BoW representation
+                bow_doc = [bow_doc]
+            
             topics = ldamodel.get_document_topics(bow_doc, minimum_probability=0)
             if not topics:
                 logging.warning(f"No significant topics found for document: {bow_doc}")
@@ -604,10 +641,19 @@ def get_document_topics_batch(ldamodel, bow_docs):
             else:
                 batch_results.append(topics)
         except Exception as e:
-            # Log the error and append a placeholder result
             logging.error(f"Error getting document topics for document {bow_doc}: {e}")
             batch_results.append([{"topic_id": None, "probability": 0}])
-            # Do NOT raise the exception; continue processing the next document
+
+    # Ensure batch_results is not empty
+    if not batch_results:
+        logging.warning("[get_document_topics_batch] No valid data processed. Returning fallback result.")
+        batch_results.append([{"topic_id": None, "probability": None}])
 
     return batch_results
+
+
+
+
+
+
 
