@@ -37,12 +37,17 @@ import cupy
 # Define a custom encoder class for NumPy types
 class NumpyEncoder(json.JSONEncoder):
     def default(self, obj):
+        #logging.debug(f"Encoding object of type {type(obj)}: {obj}")
         if isinstance(obj, (np.float32, np.float64)):
-                return float(obj)
-        if isinstance(obj, np.integer):
+            return float(obj)
+        if isinstance(obj, (np.integer, np.int32, np.int64)):
             return int(obj)
-        # Add other conversions as needed
+        if isinstance(obj, np.ndarray):
+            return obj.tolist()
+        if isinstance(obj, Decimal):
+            return float(obj)
         return super().default(obj)
+
 
 
 def safe_serialize_for_postgres(value):
