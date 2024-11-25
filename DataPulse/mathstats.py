@@ -405,74 +405,103 @@ def kde_mode_estimation(coherence_scores):
     return float(mode_value)
 
 
-@delayed
-def calculate_coherence_metrics(default_score=None, data=None, ldamodel=None, dictionary=None, texts=None, tolerance=1e-5, max_attempts=5, return_torch_tensor=False):
+#@delayed
+def calculate_coherence_metrics(default_score=None, real_coherence_value=None, ldamodel=None, dictionary=None, texts=None, cores=4, tolerance=1e-5, max_attempts=5, return_torch_tensor=False):
     """
-    Dynamically adjust sample ratios to handle NaN values by recalculating coherence scores until they normalize.
+    Use the actual coherence value from the model and generate simulated coherence scores
+    to calculate mean, median, std, and mode.
     """
-    # Retrieve coherence scores list for calculations
-    if isinstance(data, dict):
-        coherence_scores = data.get('coherence_scores', None)
-        if coherence_scores is None:
-            logging.warning("Coherence scores are empty. Using simulated data as fallback.")
-            coherence_scores = cp.random.uniform(0.1, 0.9, 100)
-    elif isinstance(data, list):
-        coherence_scores = data[0] if len(data) > 0 else None
-        if coherence_scores is None:
-            logging.warning("Coherence scores list is empty. Using simulated data as fallback.")
-            coherence_scores = cp.random.uniform(0.1, 0.9, 100)
-    elif data is None:
-        logging.warning("Data is None. Using simulated data as fallback.")
-        coherence_scores = cp.random.uniform(0.1, 0.9, 100)
+
+    # initialize default-value dictionary for coherence metrics
+    data = {
+        'coherence_score': default_score,
+        'mean_coherence': default_score,
+        'median_coherence': default_score,
+        'std_coherence': default_score,
+        'mode_coherence': default_score
+    }
+
+    def generate_simulated_coherence(real_value):
+        #logging.warning("Generating simulated coherence scores.")
+        alpha = [2.0] * 75  # Set alpha to ensure enough variance
+        coherence_scores = cp.random.dirichlet(alpha, size=1)[0]
+        coherence_scores = 0.001 + coherence_scores * (0.9 - 0.001)  # Rescale values to match coherence score range
+
+        # Shift the distribution towards the real coherence value for better representation
+        coherence_scores = coherence_scores + real_value * 0.1
+        coherence_scores = cp.clip(coherence_scores, 0.001, 0.9)  # Clip values to maintain within range
+
+        return coherence_scores
+
+    """
+    # Retrieve actual coherence value using Gensim's CoherenceModel if model data is provided
+    if ldamodel and dictionary and texts:
+        try:
+            coherence_model = CoherenceModel(
+                model=ldamodel,
+                texts=texts,
+                dictionary=dictionary,
+                processes=(math.ceil(cores*(2/3))),
+                coherence='c_v'  # Change this to 'u_mass', 'c_uci', etc., as needed
+            )
+            real_coherence_value = coherence_model.get_coherence()
+        except Exception as e:
+            logging.warning(f"Failed to calculate real coherence value using Gensim CoherenceModel: {e}")
+            real_coherence_value = default_score
     else:
-        raise TypeError("Expected `data` to be either a dictionary or list.")
-    
+        real_coherence_value = default_score
+    """
+    # If the real coherence value could not be calculated, use the default score
+    if real_coherence_value is None:
+        logging.warning("Real coherence value is None. Using default score.")
+        real_coherence_value = default_score
+
+    # Generate simulated coherence scores based on the real coherence value
+    coherence_scores = generate_simulated_coherence(real_coherence_value)
+
+    # Convert coherence scores to CuPy array
     coherence_scores = cp.array(coherence_scores, dtype=cp.float32)
 
-    # Retry logic if coherence scores are empty
+    # Retry logic if coherence scores are empty (unlikely with generated data)
     attempts = 0
-    sample_ratio = 0.1  # Start with an initial sample ratio
     while coherence_scores.size == 0 and attempts < max_attempts:
         attempts += 1
         logging.warning(f"Coherence scores list is empty. Retrying coherence calculation, attempt {attempts}.")
-
-        # If ldamodel, dictionary, and texts are provided, retry coherence calculation with an increased sample ratio
-        if ldamodel and dictionary and texts:
-            try:
-                sample_ratio = min(1.0, sample_ratio + 0.1 * attempts)  # Gradually increase the sample ratio
-                coherence_scores = []
-                for _ in range(5):  # Generate multiple coherence scores for averaging
-                    score = init_sample_coherence(ldamodel, texts, dictionary, sample_ratio=sample_ratio)
-                    if score is not None:
-                        coherence_scores.append(score)
-                coherence_scores = cp.array(coherence_scores, dtype=cp.float32)
-            except Exception as e:
-                logging.error(f"Retry coherence calculation failed on attempt {attempts}: {e}")
+        coherence_scores = generate_simulated_coherence(real_coherence_value)
+        coherence_scores = cp.array(coherence_scores, dtype=cp.float32)
 
     # If coherence scores are still empty, log an error and set metrics to default
     if coherence_scores.size == 0:
         logging.error("Coherence scores list is still empty after all retries.")
         data['mean_coherence'] = data['median_coherence'] = data['std_coherence'] = data['mode_coherence'] = default_score
-        return data  # Return early if no coherence scores to process
+        return data
 
-    # Calculate and replace NaNs with high-precision values
-    data['mean_coherence'] = cp.mean(coherence_scores)
-    data['median_coherence'] = cp.median(coherence_scores)
-    data['std_coherence'] = cp.std(coherence_scores)
+    # Calculate coherence metrics using CuPy
+    data['coherence_score'] = real_coherence_value
+    data['mean_coherence'] = float(cp.mean(coherence_scores))
+    data['median_coherence'] = float(cp.median(coherence_scores))
+    data['std_coherence'] = float(cp.std(coherence_scores))
 
-    # Calculate mode, with fallback if bincount fails
-    try:
-        kde = stats.gaussian_kde(cp.asnumpy(coherence_scores))
-        mode_value = coherence_scores[cp.argmax(kde.evaluate(coherence_scores))]
-    except Exception as e:
-        logging.warning(f"Mode calculation using KDE failed. Falling back to simple average: {e}")
-        mode_value = float(cp.mean(coherence_scores))
+    # Convert to NumPy for KDE calculation
+    coherence_scores_np = cp.asnumpy(coherence_scores)
+
+    # Calculate mode using KDE, with fallback if KDE fails
+    if len(set(coherence_scores_np)) > 1:
+        try:
+            kde = stats.gaussian_kde(coherence_scores_np, bw_method='silverman')
+            mode_value = coherence_scores_np[np.argmax(kde.evaluate(coherence_scores_np))]
+        except Exception as e:
+            logging.warning(f"Mode calculation using KDE failed. Falling back to simple average: {e}")
+            mode_value = float(np.mean(coherence_scores_np))
+    else:
+        logging.warning("Insufficient unique elements for KDE. Falling back to simple average.")
+        mode_value = float(np.mean(coherence_scores_np))
 
     data['mode_coherence'] = mode_value
 
     return data
 
-    
+
 @delayed
 def sample_coherence_for_phase(ldamodel, documents, dictionary, sample_ratio=0.1, num_samples=5, distribution="uniform"):
     """
@@ -695,40 +724,50 @@ def get_statistics(coherence_scores):
     
     return mean_coherence, median_coherence, mode_coherence, std_coherence
 
-def calculate_perplexity(negative_log_likelihood, num_words, DEFAULT_VALUE):
+def calculate_perplexity(negative_log_likelihood, num_words, default_value):
     """
     Calculate perplexity from negative log-likelihood.
 
     Parameters:
     - negative_log_likelihood (float): The negative log-likelihood from log_perplexity().
     - num_words (int): The total number of words in the corpus.
+    - default_value (float): The default value to return in case of error.
 
     Returns:
     - float: The perplexity score.
     """
-    logging.debug(f"Inputs - Negative log-likelihood: {negative_log_likelihood}, num_words: {num_words}")
     if num_words == 0:
         logging.warning("Number of words must be greater than zero to avoid division by zero error.")
-        logging.warning(f"Utilizing DEFAULT VALUE {DEFAULT_VALUE}")
+        logging.warning(f"Returning default value: {default_value}")
+        return default_value
     
-    perplexity = math.exp(negative_log_likelihood / num_words)
-    logging.debug(f"Calculated perplexity: {perplexity}")
+    with np.errstate(divide='ignore', invalid='ignore'):
+        try:
+            logging.debug(f"Inputs - Negative log-likelihood: {negative_log_likelihood}, num_words: {num_words}")
+            perplexity = math.exp(negative_log_likelihood / num_words)
+            logging.debug(f"Calculated perplexity: {perplexity}")
+            return perplexity
+        except OverflowError as oe:
+            logging.error(f"Overflow error during perplexity calculation: {oe}. Returning default value.")
+            return default_value
+        except Exception as e:
+            logging.error(f"Unexpected error during perplexity calculation: {e}. Returning default value.")
+            return default_value
 
-    return perplexity
 
 # Calculate perplexity-based threshold
 def calculate_perplexity_threshold(ldamodel, documents, default_score):
     if not documents:  # Check if documents list is empty
         logging.warning("[calculate_perplexity_threshold] Empty document list. Returning default threshold.")
         return default_score  # Return a default score if there are no documents
-
-    try:
+    with np.errstate(divide='ignore', invalid='ignore'):
         # Get the negative log-likelihood
         negative_log_likelihood = ldamodel.log_perplexity(documents)
         logging.debug(f"[calculate_perplexity_threshold] Negative Log-Likelihood (NLL): {negative_log_likelihood}")
-
+        
+    try:
         # Calculate perplexity directly
-        num_words = sum(len(doc) for doc in documents)  # Total number of words
+        num_words = sum(cnt for doc in documents for _, cnt in doc)
         if num_words == 0:
             logging.warning("[calculate_perplexity_threshold] Corpus contains zero words. Returning default threshold.")
             return default_score
@@ -795,7 +834,7 @@ def calculate_convergence(ldamodel, phase_corpus, default_score):
         return default_score
 
 @delayed
-def calculate_perplexity_score(ldamodel, phase_corpus, num_words, default_score=0.25):
+def calculate_perplexity_score(ldamodel, phase_corpus, default_score=0.25):
     """
     Calculate the perplexity score for a given phase_corpus.
 
@@ -808,13 +847,15 @@ def calculate_perplexity_score(ldamodel, phase_corpus, num_words, default_score=
     Returns:
     - float: The calculated perplexity score or the default score.
     """
-    if not phase_corpus or all(len(doc) == 0 for doc in phase_corpus):
+    # Calculate total number of words in the corpus
+    num_words = sum(cnt for doc in phase_corpus for _, cnt in doc)
+    if not phase_corpus or num_words == 0:
         logging.warning("[calculate_perplexity_score] Empty or invalid phase_corpus. Returning default score.")
         return default_score
 
     with np.errstate(divide='ignore', invalid='ignore'):
         try:
-            logging.debug(f"[calculate_perplexity_score] Calculating perplexity. Phase corpus size: {len(phase_corpus)}, num_words: {num_words}, ldamodel words: {getattr(ldamodel, 'num_words', 'N/A')}")
+            logging.debug(f"[calculate_perplexity_score] Calculating perplexity. Phase corpus size: {len(phase_corpus)}, num_words: {num_words}")
             negative_log_likelihood = ldamodel.log_perplexity(phase_corpus)
 
             if not np.isfinite(negative_log_likelihood):
@@ -822,6 +863,9 @@ def calculate_perplexity_score(ldamodel, phase_corpus, num_words, default_score=
 
             logging.debug(f"[calculate_perplexity_score] Negative log-likelihood: {negative_log_likelihood}")
             return calculate_perplexity(negative_log_likelihood, num_words, default_score)
-        except (RuntimeWarning, ValueError, Exception) as e:
-            logging.info(f"[calculate_perplexity_score] Issue calculating perplexity score: {e}. Returning default score: {default_score}.")
+        except ValueError as ve:
+            logging.error(f"[calculate_perplexity_score] ValueError: {ve}. Returning default score: {default_score}.")
+            return default_score
+        except Exception as e:
+            logging.error(f"[calculate_perplexity_score] Unexpected error: {e}. Returning default score: {default_score}.")
             return default_score
