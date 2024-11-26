@@ -218,6 +218,7 @@ def futures_create_lda_datasets_v3(documents_path, train_ratio=0.7, validation_r
     # Load the document data from JSON file
     with open(documents_path, 'r', encoding='utf-8') as jsonfile:
         documents = load(jsonfile)
+        documents = documents[:300]
 
     total_raw_documents = len(documents)
     dictionary = Dictionary(documents)
@@ -654,6 +655,50 @@ def get_document_topics_batch(ldamodel, bow_docs):
 
 
 
+def get_document_topics_batch_v2(ldamodel, bow_docs):
+    """
+    Retrieve significant topics for a batch of documents in a delayed Dask task.
+
+    Parameters:
+    - ldamodel (LdaModel): Trained LDA model to extract document topics.
+    - bow_docs (list of list of tuples): List of Bag-of-Words representations of documents.
+
+    Returns:
+    - list: A list of topic lists for each document with their respective probabilities.
+    """
+    batch_results = []
+
+    for bow_doc in bow_docs:
+        try:
+            # Ensure that bow_doc is a list of tuples
+            if isinstance(bow_doc, tuple):  # Edge case: single tuple extracted
+                bow_doc = [bow_doc]  # Wrap in a list to make it a valid BoW
+
+            # Validate that bow_doc is a list of tuples
+            if not isinstance(bow_doc, list) or not all(isinstance(item, tuple) for item in bow_doc):
+                logging.warning(f"Invalid BoW format for document: {bow_doc}. Skipping.")
+                batch_results.append([{"topic_id": None, "probability": 0}])
+                continue
+
+            # Get document topics with all probabilities (minimum_probability=0)
+            topics = ldamodel.get_document_topics(bow_doc, minimum_probability=0)
+            if not topics:
+                logging.warning(f"No significant topics found for document: {bow_doc}")
+                batch_results.append([{"topic_id": None, "probability": 0}])
+            else:
+                # Format the topics for consistency
+                formatted_topics = [{"topic_id": topic_id, "probability": float(prob)} for topic_id, prob in topics]
+                batch_results.append(formatted_topics)
+        except Exception as e:
+            logging.error(f"Error getting document topics for document {bow_doc}: {e}")
+            batch_results.append([{"topic_id": None, "probability": 0}])
+
+    # Ensure batch_results is not empty
+    if not batch_results:
+        logging.warning("[get_document_topics_batch] No valid data processed. Returning fallback result.")
+        return [[{"topic_id": None, "probability": 0}]]
+
+    return batch_results
 
 
 
