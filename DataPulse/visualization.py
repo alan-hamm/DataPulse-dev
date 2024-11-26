@@ -121,6 +121,49 @@ def process_row_v2(row, num_topics):
         logging.error(f"Error processing row: {e}")
         return [0] * num_topics, "No Topic"
 
+@delayed
+def process_row_v3(row, num_topics):
+    """
+    Process a single row of document-topic distributions to extract the dominant topic.
+
+    Parameters:
+    - row (list): List of dictionaries with topic probabilities for a document.
+                  Each dictionary should have keys "topic_id" and "probability".
+    - num_topics (int): Number of topics in the model.
+
+    Returns:
+    - tuple: (processed_row, dominant_topic_label)
+    """
+    try:
+        # Ensure the row is a list of dictionaries
+        if not isinstance(row, list) or not all(isinstance(item, dict) and "probability" in item for item in row):
+            logging.warning(f"Invalid row: {row}")
+            return [0] * num_topics, "No Topic"
+
+        # Extract probabilities from the dictionaries
+        probabilities = [item["probability"] for item in row]
+
+        # Normalize probabilities (ensure they sum to 1)
+        total = sum(probabilities)
+        if total > 0:
+            processed_row = [value / total for value in probabilities]
+        else:
+            processed_row = [0] * num_topics
+
+        # Ensure the processed row matches the expected number of topics
+        if len(processed_row) < num_topics:
+            processed_row.extend([0] * (num_topics - len(processed_row)))
+
+        # Determine the dominant topic
+        max_index = processed_row.index(max(processed_row)) if processed_row else -1
+        dominant_topic_label = f"Topic {max_index + 1}" if max_index >= 0 else "No Topic"
+
+        return processed_row, dominant_topic_label
+    except Exception as e:
+        logging.error(f"Error processing row: {e}")
+        return [0] * num_topics, "No Topic"
+
+
 
 
 def get_document_topics(ldamodel, bow_doc):
@@ -379,7 +422,7 @@ def create_tsne_plot(document_topic_distributions_json, perplexity_score, mode_c
             return time_key, False
      
         try:
-            delayed_results = [process_row_v2(row, num_topics) for row in document_topic_distributions]
+            delayed_results = [process_row_v3(row, num_topics) for row in document_topic_distributions]
             results = compute(*delayed_results)
             processed_distributions, dominant_topics_labels = zip(*results)
 
@@ -435,7 +478,11 @@ def create_tsne_plot(document_topic_distributions_json, perplexity_score, mode_c
             logging.error("Distributions tensor is empty. Cannot proceed with variance check.")
             return time_key, False
         
-        logging.debug(f"Variance before noise: {distributions_tensor.var(dim=0)}")
+        if distributions_tensor.shape[0] < 2:  # Check for insufficient samples
+            logging.warning("Insufficient samples for variance calculation. Skipping variance checks.")
+            return time_key, False
+
+        logging.debug(f"Variance before noise: {distributions_tensor.var(dim=0) if distributions_tensor.shape[0] > 1 else 'Skipped due to insufficient samples'}")
 
         # Add small Gaussian noise
         noise = torch.normal(mean=0, std=0.01, size=distributions_tensor.shape, device='cuda')
@@ -445,14 +492,18 @@ def create_tsne_plot(document_topic_distributions_json, perplexity_score, mode_c
         synthetic_variation = torch.rand_like(distributions_tensor) * 0.05
         distributions_tensor += synthetic_variation
 
+        if distributions_tensor.shape[0] < 2:  # After noise addition, ensure validity
+            logging.warning("Insufficient variance for t-SNE processing after noise addition.")
+            return time_key, False
+
         # Check variance to ensure tSNE can proceed
-        variance = distributions_tensor.var(dim=0)
+        variance = distributions_tensor.var(dim=0) if distributions_tensor.shape[0] > 1 else torch.zeros(distributions_tensor.shape[1], device='cuda')
         logging.debug(f"Variance after noise addition: {variance}")
-        logging.debug(f"Variance threshold: {variance.mean() * 0.01}")
+        logging.debug(f"Variance threshold: {variance.mean() * 0.01}" if variance.numel() > 0 else "No variance to calculate threshold.")
 
 
-        high_variance_columns = variance > (variance.mean() * 0.01)  # Lowered variance threshold to be less strict
-        logging.debug(f"Number of high-variance columns: {high_variance_columns.sum()}")
+        high_variance_columns = variance > (variance.mean() * 0.01) if variance.numel() > 0 else torch.ones(distributions_tensor.shape[1], dtype=torch.bool, device='cuda')
+        logging.debug(f"Number of high-variance columns: {high_variance_columns.sum() if variance.numel() > 0 else 'Skipped due to empty variance.'}")
 
         if high_variance_columns.sum() == 0:
             logging.warning("All columns have low variance; using fallback columns.")
@@ -461,11 +512,13 @@ def create_tsne_plot(document_topic_distributions_json, perplexity_score, mode_c
 
         distributions_tensor = distributions_tensor[:, high_variance_columns]
         logging.debug(f"Shape after filtering low-variance columns: {distributions_tensor.shape}")
-    
+
         # Validate filtered tensor
         if distributions_tensor.shape[1] == 0:
             logging.error("All columns filtered out. Cannot proceed with t-SNE.")
             return time_key, False
+
+        
     except Exception as e:
         logging.error(f"Failed noise addition and variance check: {e}")
         return time_key, False
@@ -474,19 +527,20 @@ def create_tsne_plot(document_topic_distributions_json, perplexity_score, mode_c
     distributions_tensor_cpu = distributions_tensor.cpu()
     logging.debug("Distributions tensor successfully moved to CPU for t-SNE processing.")
 
+    if distributions_tensor_cpu.shape[0] < 2:  # Validate before variance check
+        logging.warning("Insufficient samples for variance check on CPU.")
+        return time_key, False
+
+    logging.debug(f"Variance of tensor: {distributions_tensor_cpu.var(axis=0) if distributions_tensor_cpu.shape[0] > 1 else 'Skipped due to insufficient samples'}")
+
+
     # Perform tSNE and visualization
     try:
-        # Ensure perplexity is less than n_samples and within a reasonable range for t-SNE
-        n_samples = distributions_tensor_cpu.shape[0]
-        # Use the actual perplexity score if available, otherwise default to a typical value (e.g., 30)
-        actual_perplexity = max(5, min(perplexity_score, 50))  # Assuming perplexity_score is calculated from your model
-        perplexity = min(actual_perplexity, n_samples - 1)  # Ensure perplexity is valid for t-SNE
-
         logging.debug(f"Tensor shape: {distributions_tensor_cpu.shape}")
         logging.debug(f"Variance of tensor: {distributions_tensor_cpu.var(axis=0)}")
 
         # Use GPU-accelerated TSNE for dimensionality reduction
-        tsne_result = TSNE(n_components=2, perplexity=perplexity, n_iter=1000, random_state=42).fit_transform(distributions_tensor_cpu)
+        tsne_result = TSNE(n_components=2, perplexity=perplexity_score, n_iter=1000, random_state=42).fit_transform(distributions_tensor_cpu)
         logging.debug(f"tSNE result shape: {tsne_result.shape}")
         logging.debug(f"tSNE result sample: {tsne_result[:5]}")
 
@@ -548,14 +602,14 @@ def create_vis_pylda(ldaModel, corpus, dictionary, topics, phase_name, filename,
 
     # Ensure data is deserialized (remove pickle.loads if data is already deserialized)
     try:
-        ldaModel =ldaModel if isinstance(ldaModel, str) else ldaModel
-        corpus = corpus if isinstance(corpus, str) else corpus
-        dictionary =dictionary if isinstance(dictionary, str) else dictionary
+        ldaModel =pickle.loads(ldaModel) if isinstance(ldaModel, bytes) else ldaModel
+        corpus = pickle.loads(corpus) if isinstance(corpus, bytes) else corpus
+        dictionary = pickle.loads(dictionary) if isinstance(dictionary, bytes) else dictionary
     except Exception as e:
         logging.error(f"Deserialization error: {e}")
         return time_key, False
     except Exception as e:
-        logging.error(f"The pyLDAvis HTML could not be saved: {e}")
+        logging.error(f"The pyLDAvis HTML could not be loaded: {e}")
         return time_key, False
 
     try:
@@ -635,7 +689,7 @@ def process_visualizations(phase_results, phase_name, performance_log, n_topics,
                         pickle.loads(result_dict['lda_model']),
                         pickle.loads(result_dict['corpus']),
                         pickle.loads(result_dict['dictionary']),
-                        n_topics, "VALIDATION", result_dict['text_md5'], cores,
+                        n_topics, phase_name, result_dict['text_md5'], cores,
                         result_dict['time_key'], pylda_dir,pure=False, retries=3
                     )
                     visualization_futures_pylda.append(vis_future_pylda)
@@ -644,10 +698,10 @@ def process_visualizations(phase_results, phase_name, performance_log, n_topics,
                     logging.error(f"TYPE: pyLDA -- MD5: {result_dict['text_md5']}")
                 
                 try:
-                    train_tsne_vis = client.submit(
+                    vis_future_tsne = client.submit(
                         create_tsne_plot,
                         result_dict['validation_result'], 
-                        result_dict['perplexity'],
+                        result_dict['tsne_perplexity'],
                         result_dict['mode_coherence'],
                         phase_name,
                         n_topics,
@@ -655,7 +709,7 @@ def process_visualizations(phase_results, phase_name, performance_log, n_topics,
                         result_dict['time_key'], 
                         pca_gpu_dir,pure=False, retries=3
                     )
-                    visualization_futures_tsne.append(train_tsne_vis)
+                    visualization_futures_tsne.append(vis_future_tsne)
                 except Exception as e:
                     logging.error(f"Error in create_tsne_plot() Dask operation: {e}")
                     logging.error("Traceback: ", exc_info=True)
