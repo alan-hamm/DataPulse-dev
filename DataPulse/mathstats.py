@@ -49,6 +49,7 @@ from decimal import Decimal, InvalidOperation
 from scipy.stats import gaussian_kde
 import random
 from scipy import stats
+import random
 from .batch_estimation import estimate_batches_large_docs_v2
 
 
@@ -61,6 +62,57 @@ import numpy as np
 import logging
 
 from scipy import stats  # Import for KDE
+
+import statistics
+
+def get_word_count(phase_corpus, dictionary, tallied_word_count):
+    """
+    Determine the most accurate word count for perplexity calculation.
+    
+    Args:
+        phase_corpus: The corpus (list of lists) processed into a bag-of-words format.
+        dictionary: Gensim Dictionary associated with the corpus.
+        tallied_word_count: Word count recorded during ingestion or creation of the corpus.
+        
+    Returns:
+        An appropriate word count for perplexity calculation.
+    """
+    # Calculate word counts
+    corpus_wrd_count = sum(count for doc in phase_corpus for _, count in doc)
+    dictionary_wrd_count = dictionary.num_pos
+
+    # Case: All counts are valid and available
+    if tallied_word_count > 0 and corpus_wrd_count > 0 and dictionary_wrd_count > 0:
+        if tallied_word_count == corpus_wrd_count == dictionary_wrd_count:
+            return tallied_word_count  # All counts agree
+        elif corpus_wrd_count == dictionary_wrd_count:
+            return corpus_wrd_count  # Corpus and dictionary agree
+        elif tallied_word_count == dictionary_wrd_count:
+            return dictionary_wrd_count  # Tallied and dictionary agree
+        elif tallied_word_count == corpus_wrd_count:
+            return corpus_wrd_count  # Tallied and corpus agree
+        else:
+            return dictionary_wrd_count  # Default to dictionary count
+    elif corpus_wrd_count > 0 and dictionary_wrd_count > 0:
+        # Case: Use corpus or dictionary counts if available
+        if corpus_wrd_count == dictionary_wrd_count:
+            return corpus_wrd_count
+        else:
+            return dictionary_wrd_count  # Default to dictionary
+    elif dictionary_wrd_count > 0:
+        # Case: Only dictionary count is available
+        return dictionary_wrd_count
+    elif corpus_wrd_count > 0:
+        # Case: Only corpus count is available
+        return corpus_wrd_count
+    elif tallied_word_count > 0:
+        # Case: Only tallied count is available
+        return tallied_word_count
+    else:
+        # Case: No valid counts
+        raise ValueError("Unable to determine a valid word count for perplexity calculation.")
+
+
 
 @delayed
 def gpu_simulate_coherence_scores_with_lln(alpha, initial_size=100, max_attempts=1000, growth_factor=2, convergence_threshold=0.01, device="cuda"):
@@ -724,73 +776,6 @@ def get_statistics(coherence_scores):
     
     return mean_coherence, median_coherence, mode_coherence, std_coherence
 
-def calculate_perplexity(negative_log_likelihood, num_words, default_value):
-    """
-    Calculate perplexity from negative log-likelihood.
-
-    Parameters:
-    - negative_log_likelihood (float): The negative log-likelihood from log_perplexity().
-    - num_words (int): The total number of words in the corpus.
-    - default_value (float): The default value to return in case of error.
-
-    Returns:
-    - float: The perplexity score.
-    """
-    if num_words == 0:
-        logging.warning("Number of words must be greater than zero to avoid division by zero error.")
-        logging.warning(f"Returning default value: {default_value}")
-        return default_value
-    
-    with np.errstate(divide='ignore', invalid='ignore'):
-        try:
-            logging.debug(f"Inputs - Negative log-likelihood: {negative_log_likelihood}, num_words: {num_words}")
-            perplexity = math.exp(negative_log_likelihood / num_words)
-            logging.debug(f"Calculated perplexity: {perplexity}")
-            return perplexity
-        except OverflowError as oe:
-            logging.error(f"Overflow error during perplexity calculation: {oe}. Returning default value.")
-            return default_value
-        except Exception as e:
-            logging.error(f"Unexpected error during perplexity calculation: {e}. Returning default value.")
-            return default_value
-
-
-# Calculate perplexity-based threshold
-def calculate_perplexity_threshold(ldamodel, documents, default_score):
-    if not documents:  # Check if documents list is empty
-        logging.warning("[calculate_perplexity_threshold] Empty document list. Returning default threshold.")
-        return default_score  # Return a default score if there are no documents
-    with np.errstate(divide='ignore', invalid='ignore'):
-        # Get the negative log-likelihood
-        negative_log_likelihood = ldamodel.log_perplexity(documents)
-        logging.debug(f"[calculate_perplexity_threshold] Negative Log-Likelihood (NLL): {negative_log_likelihood}")
-        
-    try:
-        # Calculate perplexity directly
-        num_words = sum(cnt for doc in documents for _, cnt in doc)
-        if num_words == 0:
-            logging.warning("[calculate_perplexity_threshold] Corpus contains zero words. Returning default threshold.")
-            return default_score
-
-        try:
-            # Inside train_model_v2
-            perplexity = math.exp(negative_log_likelihood / num_words)
-        except ZeroDivisionError as e:
-            logging.error(f"Division by zero while calculating perplexity: {e}")
-            raise
-
-
-        # Define threshold as a function of perplexity
-        threshold = max(0.1, min(perplexity * 0.5, 100))  # Example: Scale perplexity by 0.5, cap at 100
-
-        logging.info(f"[calculate_perplexity_threshold] Calculated threshold: {threshold}")
-        return threshold
-
-    except Exception as e:
-        logging.error(f"[calculate_perplexity_threshold] Error calculating perplexity threshold: {e}. Returning default score.")
-        return default_score
-
-
 
 # Main decision logic based on coherence statistics and threshold
 def coherence_score_decision(ldamodel, documents, dictionary, initial_sample_ratio=0.1):
@@ -833,39 +818,157 @@ def calculate_convergence(ldamodel, phase_corpus, default_score):
         logging.error(f"Issue calculating convergence score: {e}. Value '{default_score}' assigned.")
         return default_score
 
-@delayed
-def calculate_perplexity_score(ldamodel, phase_corpus, default_score=0.25):
+
+def simulate_corpus(dictionary, num_docs=100, avg_doc_len=50):
+    """
+    Simulate a synthetic corpus based on an existing dictionary.
+    
+    Args:
+        dictionary: Gensim Dictionary object.
+        num_docs: Number of documents to simulate.
+        avg_doc_len: Average number of words per document.
+    
+    Returns:
+        list of list: A synthetic corpus in tokenized format.
+    """
+    vocab = list(dictionary.token2id.keys())
+    synthetic_corpus = [
+        random.choices(vocab, k=avg_doc_len) for _ in range(num_docs)
+    ]
+    return synthetic_corpus
+
+def simulate_negative_log_likelihood(dictionary, num_topics=10, num_docs=100, avg_doc_len=50):
+    """
+    Simulate a realistic negative log-likelihood using a synthetic corpus and LDA model.
+    
+    Args:
+        dictionary: Gensim Dictionary object.
+        num_topics: Number of topics for the LDA model.
+        num_docs: Number of documents to simulate.
+        avg_doc_len: Average document length for the synthetic corpus.
+    
+    Returns:
+        float: Simulated negative log-likelihood.
+    """
+    # Generate a synthetic corpus
+    synthetic_corpus = simulate_corpus(dictionary, num_docs=num_docs, avg_doc_len=avg_doc_len)
+    
+    # Train a small LDA model on the synthetic corpus
+    synthetic_bow = [dictionary.doc2bow(doc) for doc in synthetic_corpus]
+    lda_model = LdaModel(synthetic_bow, num_topics=num_topics, id2word=dictionary, passes=2)
+    
+    # Calculate the negative log-likelihood
+    return lda_model.log_perplexity(synthetic_bow)
+
+
+def calculate_negative_log_likelihood(ldamodel, phase_corpus, dictionary, default_score=None):
     """
     Calculate the perplexity score for a given phase_corpus.
 
     Parameters:
     - ldamodel: The trained LDA model.
     - phase_corpus: The corpus for the current phase.
-    - num_words: Total number of words in the corpus.
+    - dictionary: Gensim dictionary object.
     - default_score: The default score to return in case of failure.
 
     Returns:
     - float: The calculated perplexity score or the default score.
     """
-    # Calculate total number of words in the corpus
-    num_words = sum(cnt for doc in phase_corpus for _, cnt in doc)
-    if not phase_corpus or num_words == 0:
-        logging.warning("[calculate_perplexity_score] Empty or invalid phase_corpus. Returning default score.")
-        return default_score
-
     with np.errstate(divide='ignore', invalid='ignore'):
         try:
-            logging.debug(f"[calculate_perplexity_score] Calculating perplexity. Phase corpus size: {len(phase_corpus)}, num_words: {num_words}")
             negative_log_likelihood = ldamodel.log_perplexity(phase_corpus)
 
             if not np.isfinite(negative_log_likelihood):
                 raise ValueError(f"Non-finite negative log-likelihood: {negative_log_likelihood}")
 
-            logging.debug(f"[calculate_perplexity_score] Negative log-likelihood: {negative_log_likelihood}")
-            return calculate_perplexity(negative_log_likelihood, num_words, default_score)
+            logging.debug(f"[calculate_negative_log_likelihood] Negative log-likelihood: {negative_log_likelihood}")
+            return negative_log_likelihood
         except ValueError as ve:
-            logging.error(f"[calculate_perplexity_score] ValueError: {ve}. Returning default score: {default_score}.")
-            return default_score
+            logging.error(f"[calculate_negative_log_likelihood] ValueError: {ve}. Returning simulated score.")
+            return simulate_negative_log_likelihood(dictionary)
         except Exception as e:
-            logging.error(f"[calculate_perplexity_score] Unexpected error: {e}. Returning default score: {default_score}.")
+            logging.error(f"[calculate_negative_log_likelihood] Unexpected error: {e}. Returning simulated score.")
+            return simulate_negative_log_likelihood(dictionary)
+
+
+
+def calculate_perplexity(negative_log_likelihood, phase_corpus, dictionary, number_of_words, default_score=30.0):
+    try:
+        total_words = get_word_count(phase_corpus, dictionary, number_of_words)
+        if total_words <= 1:
+            logging.warning(f"Word count is too low for reliable perplexity calculation: {total_words}. Returning default score.")
             return default_score
+
+        perplexity = math.exp(negative_log_likelihood / total_words)
+        logging.debug(f"Calculated perplexity: {perplexity}")
+
+        # Validate perplexity for t-SNE
+        if perplexity > len(phase_corpus):
+            logging.warning(f"Perplexity {perplexity} exceeds number of samples {len(phase_corpus)}. Using number of samples.")
+            return float(len(phase_corpus))
+        elif perplexity < 5:
+            logging.warning(f"Perplexity {perplexity} is below the recommended range for t-SNE. Adjusting to minimum value of 5.")
+            return 5.0
+        else:
+            return float(perplexity)
+    except Exception as e:
+        logging.error(f"Error during perplexity calculation: {e}. Returning default value.")
+        return default_score
+
+def get_tsne_perplexity_param(
+    phase_corpus, 
+    dictionary, 
+    tallied_word_count, 
+    ldamodel, 
+    num_docs=100, 
+    avg_doc_len=50, 
+    default_perplexity=30.0, 
+    precomputed_simulated_nll=None
+):
+    """
+    Calculate the t-SNE perplexity parameter.
+
+    Args:
+        phase_corpus: Corpus for the current phase, in bag-of-words format.
+        dictionary: Gensim Dictionary object for the corpus.
+        tallied_word_count: Word count recorded during corpus ingestion.
+        ldamodel: The trained LDA model.
+        num_docs: Number of documents for simulated corpus (default: 100).
+        avg_doc_len: Average length of simulated documents (default: 50).
+        default_perplexity: Default perplexity value in case of failure (default: 30.0).
+        precomputed_simulated_nll: Precomputed simulated negative log-likelihood (optional).
+    
+    Returns:
+        float: A valid t-SNE perplexity parameter.
+    """
+    try:
+        # Step 1: Get the word count
+        word_count = get_word_count(phase_corpus, dictionary, tallied_word_count)
+        logging.debug(f"Word count for perplexity calculation: {word_count}")
+
+        # Step 2: Use the provided simulated NLL or generate a new one
+        if precomputed_simulated_nll is not None:
+            simulated_nll = precomputed_simulated_nll
+            logging.debug("Using precomputed simulated NLL.")
+        else:
+            simulated_nll = simulate_negative_log_likelihood(dictionary, num_docs=num_docs, avg_doc_len=avg_doc_len)
+            logging.debug(f"Generated simulated NLL: {simulated_nll}")
+
+        # Step 3: Attempt to calculate the actual NLL using the LDA model
+        try:
+            calculated_nll = calculate_negative_log_likelihood(ldamodel, phase_corpus, dictionary, default_score=simulated_nll)
+            logging.debug(f"Calculated negative log-likelihood: {calculated_nll}")
+        except Exception as e:
+            logging.error(f"Error calculating NLL from LDA model: {e}. Falling back to simulated NLL.")
+            calculated_nll = simulated_nll
+
+        # Step 4: Calculate t-SNE-specific perplexity
+        tsne_perplexity = calculate_perplexity(calculated_nll, phase_corpus, dictionary, word_count, default_score=default_perplexity)
+        logging.info(f"t-SNE perplexity parameter: {tsne_perplexity}")
+
+        return tsne_perplexity
+
+    except Exception as e:
+        logging.error(f"Failed to calculate t-SNE perplexity parameter: {e}. Returning default value.")
+        return default_perplexity
+
