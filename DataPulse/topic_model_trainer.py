@@ -52,7 +52,7 @@ from .utils import NumpyEncoder
 from .batch_estimation import estimate_batches_large_docs_v2
 from .mathstats import *
 from .visualization import *
-from .process_futures import get_and_process_show_topics, get_document_topics_batch, extract_topics_with_get_topic_terms
+from .process_futures import get_and_process_show_topics, get_document_topics_batch, extract_topics_with_get_topic_terms, get_document_topics_batch_v2
 
 
 # https://examples.dask.org/applications/embarrassingly-parallel.html
@@ -149,9 +149,9 @@ def train_model_v2(data_source: str, n_topics: int, alpha_str: Union[str,float],
         return None
   
    # Counters for success and failure
-    number_of_documents = 0
+    number_of_words = 0
     failed_convert_token_to_bow = 0
-    corpus_to_pickle = ''
+    corpus_to_pickle = 'NOT YET SERIALIZED'
 
     try:
         for doc_tokens in batch_documents:
@@ -176,7 +176,7 @@ def train_model_v2(data_source: str, n_topics: int, alpha_str: Union[str,float],
                 bow_out = train_val_test_dictionary.doc2bow(doc_tokens)
                 
                 corpus_data[phase].append(bow_out)
-                number_of_documents+=1
+                number_of_words+=1
 
             except Exception as e:
                 logging.error(f"Error processing document: {doc_tokens}, error: {e}")
@@ -186,15 +186,16 @@ def train_model_v2(data_source: str, n_topics: int, alpha_str: Union[str,float],
     except Exception as e:
         logging.error(f"Critical error in BoW processing: {e}")
 
+    corpus_to_pickle = pickle.dumps(corpus_data[phase])
     # Set a chunksize for model processing, dividing documents into smaller groups for efficient processing.
     chunksize = max(1, int(len(corpus_data[phase]) // 5))
 
     # Output the counts
-    #logging.info(f"Final BoW Counts: Successful {number_of_documents}, Failed {failed_convert_token_to_bow}")
+    #logging.info(f"Final BoW Counts: Successful {number_of_words}, Failed {failed_convert_token_to_bow}")
 
     #print(f"Final corpus_data[{phase}]: {corpus_data[phase][:100]}")  # Log a sample of corpus_data[phase]
 
-    #print(f"There was a total of {number_of_documents} documents added to the corpus_data.")  # Log document count.
+    #print(f"There was a total of {number_of_words} documents added to the corpus_data.")  # Log document count.
 
     # Calculate numeric values for alpha and beta, using custom functions based on input strings or values.
     n_alpha = calculate_numeric_alpha(alpha_str, n_topics)
@@ -204,7 +205,8 @@ def train_model_v2(data_source: str, n_topics: int, alpha_str: Union[str,float],
     DEFAULT_SCORE = 0.25
 
     # Set default values for coherence metrics to ensure they are defined even if computation fails
-    perplexity_score = coherence_score = convergence_score = negative_log_likelihood = DEFAULT_SCORE
+    perplexity_score = 30.0 # see SciKit-Learn TSNE documentation
+    coherence_score = convergence_score = negative_log_likelihood = DEFAULT_SCORE
     threshold = mean_coherence = median_coherence = std_coherence = mode_coherence = DEFAULT_SCORE
 
     if phase in ['validation', 'test']:
@@ -230,7 +232,7 @@ def train_model_v2(data_source: str, n_topics: int, alpha_str: Union[str,float],
                 per_word_topics=True
             )
             # Serialize the model as a delayed task
-            ldamodel_bytes = delayed(pickle.dumps)(ldamodel)
+            ldamodel_bytes =pickle.dumps(ldamodel)
 
             #temp_dir = os.path.expanduser("~/temp/datapulse/")
             #os.makedirs(temp_dir, exist_ok=True)
@@ -240,14 +242,6 @@ def train_model_v2(data_source: str, n_topics: int, alpha_str: Union[str,float],
             raise
     else:
         sys.exit()
-
-    try:
-        # Create the delayed task for the threshold without computing it immediately
-        threshold = dask.delayed(calculate_perplexity_threshold)(ldamodel, corpus_data[phase], DEFAULT_SCORE)
-    except Exception as e:
-        logging.warning(f"Perplexity threshold calculation failed for phase {phase}. Using default score: {DEFAULT_SCORE}")
-        # Create a delayed fallback task for the default score
-        threshold = dask.delayed(lambda: DEFAULT_SCORE)()
 
 
     #############################
@@ -309,15 +303,32 @@ def train_model_v2(data_source: str, n_topics: int, alpha_str: Union[str,float],
             # Create a delayed fallback task for the default score
             convergence_task = dask.delayed(lambda: DEFAULT_SCORE)()
 
+
+        # get appropriate total number of words
+        total_word_count = get_word_count(corpus_data[phase], train_val_test_dictionary, number_of_words)
+
+        #####################################
+        ## CALCULATE NLL & PERPLEXITY
+        #####################################
+        
+        simulated_nll = simulate_negative_log_likelihood(train_val_test_dictionary, num_topics=10, num_docs=100, avg_doc_len=50)
+        negative_log_likelihood = 0.0
+
+        # calculate negative-log-likelihood
         try:
-            # Create a delayed task for perplexity score calculation without computing it immediately
-            perplexity_task = dask.delayed(calculate_perplexity_score)(
-                ldamodel, corpus_data[phase], DEFAULT_SCORE
-            )
-        except Exception as e:
-            logging.warning("Perplexity score calculation failed. Using default score.")
-            # Create a delayed fallback task for the default score
-            perplexity_task = dask.delayed(lambda: DEFAULT_SCORE)()
+            negative_log_likelihood = calculate_negative_log_likelihood(ldamodel, corpus_data[phase], train_val_test_dictionary, default_score=simulated_nll)
+        except:
+            logging.error("The negative log-likelihood could not be calculated")
+            logging.warning("Using simulated NLL")
+            negative_log_likelihood = simulated_nll
+
+        # calculate general perplexity score
+        perplexity =  calculate_perplexity(negative_log_likelihood, corpus_data[phase], train_val_test_dictionary, total_word_count, default_score=30.0)
+
+        # calculate perplexity score specific to tSNE
+        tsne_perplexity = get_tsne_perplexity_param(corpus_data[phase], train_val_test_dictionary, number_of_words, 
+                                                    ldamodel, num_docs=100, avg_doc_len=50, default_perplexity=30.0, precomputed_simulated_nll=simulated_nll)
+
 
 
    # Initialize default JSONB values
@@ -338,7 +349,7 @@ def train_model_v2(data_source: str, n_topics: int, alpha_str: Union[str,float],
     extract_success = False
     try:
         logging.debug("Creating delayed task for topic extraction...")
-        topics_to_store_task = extract_topics_with_get_topic_terms(ldamodel, num_words=num_words)
+        topics_to_store_task = extract_topics_with_get_topic_terms(ldamodel, num_words=total_word_count)
         extract_success = True
     except Exception as e:
         logging.error("[extract_topics_with_get_topic_terms] failed to extract topics.")
@@ -384,12 +395,15 @@ def train_model_v2(data_source: str, n_topics: int, alpha_str: Union[str,float],
             logging.error(f"Unexpected extract_topics_with_get_topic_terms error during topic processing: {e}")
     
 
+    ################################################
+    ## GET DOCUMENT TOPIC PROBABILITIES
+    ################################################
 
     # Assuming the corpus_data[phase] is already split into batches
     # Define a helper function to process each batch
     def process_batch_get_document_topics(ldamodel, batch):
         try:
-            return [get_document_topics_batch(ldamodel, bow_doc) for bow_doc in batch]
+            return [get_document_topics_batch_v2(ldamodel, bow_doc) for bow_doc in batch]
         except Exception as e:
             logging.error(f"Error processing batch: {e}", exc_info=True)
             raise
@@ -453,21 +467,28 @@ def train_model_v2(data_source: str, n_topics: int, alpha_str: Union[str,float],
                 logging.error(f"{len(retry_not_done)} tasks remain unresolved after retry.")
                 for future in retry_not_done:
                     logging.error(f"Unresolved task after retry: {future.key}")
+        else:
+            retry_done_batches =[]
 
-        # Combine results from all completed batches
-        if not isinstance(done_batches, list):
-            done_batches = list(done_batches)
-        if not isinstance(retry_done_batches, list):
-            retry_done_batches = list(retry_done_batches)
-        all_done_batches = done_batches + retry_done_batches
+        # Combine all completed batches
+        all_done_batches = list(done_batches) + list(retry_done_batches)
 
+        # Extract and flatten results
         try:
-            validation_results_to_store = [r.result(timeout=120) for r in all_done_batches]
-            total_documents = len(validation_results_to_store)
-            logging.info(f"[get_document_topics] Completed processing {total_documents} documents.")
-        except Exception as e:
-            logging.error(f"Error in topic_model_trainer/[r.result() for r in done_batches]: {e}")
+            for future in all_done_batches:
+                batch_result = future.result(timeout=120)
+                # Flatten batch_result if it's nested
+                for document_topics in batch_result:
+                    if isinstance(document_topics, list) and all(isinstance(item, list) for item in document_topics):
+                        # Handle nested lists: Flatten one level
+                        validation_results_to_store.extend(document_topics)
+                    else:
+                        validation_results_to_store.append(document_topics)
 
+            total_documents = len(validation_results_to_store)
+            logging.info(f"Completed processing {total_documents} documents.")
+        except Exception as e:
+            logging.error(f"Error extracting results from completed futures: {e}", exc_info=True)
 
         # Log the computed structure before further processing
         logging.debug(f"[get_document_topics] Computed validation results: {validation_results_to_store}")
@@ -476,50 +497,47 @@ def train_model_v2(data_source: str, n_topics: int, alpha_str: Union[str,float],
         logging.error(f"[get_document_topics] Error while computing validation results task: {e}")
         validation_results_to_store = [{"error": "Validation get_document_topics data generation failed", "phase": phase}]
 
-
     try:
-        validation_results_jsonb = json.dumps(
-            validation_results_to_store,
-            default=lambda obj: (
-                float(obj) if isinstance(obj, (np.float32, np.float64, float, Decimal))
-                else int(obj) if isinstance(obj, (np.integer, int))
-                else list(obj) if isinstance(obj, np.ndarray)  # Convert arrays to lists
-                else str(obj)  # Fallback to string for anything else
-            )
-        )
-        #print("Serialized validation results (JSONB):", validation_results_jsonb)
+        # Serialize directly using NumpyEncoder
+        validation_results_jsonb = json.dumps(validation_results_to_store, cls=NumpyEncoder)
+        logging.info("Serialized validation results successfully using NumpyEncoder.")
     except Exception as e:
-        logging.error(f"JSON serialization failed with TypeError: {e}")
-        try:
-            validation_results_jsonb = json.dumps(validation_results_to_store, cls=NumpyEncoder)
+        logging.error(f"JSON serialization failed with NumpyEncoder: {e}")
+        validation_results_jsonb = None  # Fallback if even NumpyEncoder fails
 
-        except Exception as e:
-            logging.warning(f"Second serialization attempt failed: {e}")
-            try:
-                # Third attempt with specific handling for arrays/dataframes
-                if isinstance(validation_results_to_store, np.ndarray):
-                    data = validation_results_to_store.astype(float).tolist()
-                    validation_results_jsonb = json.dumps(data)
-
-                elif isinstance(validation_results_to_store, pd.DataFrame):
-                    data = validation_results_to_store.applymap(lambda x: float(x) if isinstance(x, (np.float32, np.float64)) else x)
-                    validation_results_jsonb = json.dumps(data)
-
-                else:
-                    validation_results_jsonb = json.dumps(validation_results_to_store)
-
-            except Exception as e:
-                logging.error("All JSON serialization attempts failed.")
-                validation_results_jsonb = json.dumps({"error": "Validation data generation failed", "phase": phase})
-
-    # Log any problematic types if serialization fails completely
     if not validation_results_jsonb:
-        logging.error("Final serialization failed. Checking data types.")
-        for item in validation_results_to_store:
-            if isinstance(item, dict):
-                for key, value in item.items():
-                    logging.error(f"Type of {key}: {type(value)}")
+        logging.error("Final serialization failed. Checking data types in validation_results_to_store.")
+        
+        def log_data_types(data, prefix=""):
+            """
+            Recursively log the types of data elements in dictionaries or lists.
+            
+            Args:
+                data: The data to inspect (dict, list, or other types).
+                prefix: A string to indicate the nesting level for logging.
+            """
+            if isinstance(data, dict):
+                for key, value in data.items():
+                    logging.error(f"{prefix}Key '{key}' has type {type(value)}")
+                    if isinstance(value, (dict, list)):
+                        log_data_types(value, prefix=prefix + "  ")
+            elif isinstance(data, list):
+                for idx, item in enumerate(data):
+                    logging.error(f"{prefix}List index {idx} has type {type(item)}")
+                    if isinstance(item, (dict, list)):
+                        log_data_types(item, prefix=prefix + "  ")
+            else:
+                logging.error(f"{prefix}Type of data: {type(data)}")
 
+        for idx, item in enumerate(validation_results_to_store):
+            logging.error(f"Inspecting item {idx}:")
+            log_data_types(item, prefix="  ")
+
+
+
+        ####################################################
+        ## GET SHOW_TOPICS()
+        ####################################################
 
         # Validate batch_documents
         if not batch_documents:
@@ -636,8 +654,8 @@ def train_model_v2(data_source: str, n_topics: int, alpha_str: Union[str,float],
     pyLDAvis_image = os.path.join(pylda_path, phase, number_of_topics)
     
     # Group all main tasks that can be computed at once for efficiency
-    threshold, convergence_score, perplexity_score, topics_to_store = dask.compute(
-        threshold, convergence_task, perplexity_task, topics_to_store_task
+    threshold, convergence_score, topics_to_store = dask.compute(
+        threshold, convergence_task, topics_to_store_task
     )
 
 
@@ -701,17 +719,19 @@ def train_model_v2(data_source: str, n_topics: int, alpha_str: Union[str,float],
 
     # Evaluation Metrics
     'convergence': convergence_score,
+    'num_samples': len(corpus_data[phase]),
     'nll': negative_log_likelihood,
-    'perplexity': perplexity_score,
+    'simulated_nll': simulated_nll,
+    'perplexity': perplexity,
+    'tsne_perplexity': tsne_perplexity,
     'coherence': coherence_score,
     'mean_coherence': mean_coherence,
     'median_coherence': median_coherence,
     'mode_coherence': mode_coherence,
     'std_coherence': std_coherence,
-    'perplexity_threshold': threshold,
 
     # Serialized Data
-    'lda_model': ldamodel_bytes.compute(), # C:\Users\pqn7\OneDrive - CDC\git-projects\unified-topic-modeling-analysis\gpt\why-lda-is-delayed.md
+    'lda_model': ldamodel_bytes,
     'corpus': corpus_to_pickle,
     'dictionary': pickle.dumps(train_val_test_dictionary),
 
