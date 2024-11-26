@@ -733,7 +733,7 @@ def train_model_v2(data_source: str, n_topics: int, alpha_str: Union[str,float],
     # Serialized Data
     'lda_model': ldamodel_bytes,
     'corpus': corpus_to_pickle,
-    'dictionary': pickle.dumps(train_val_test_dictionary),
+    'dictionary': pickle.dumps(unified_dictionary),
 
     # Visualization Creation Verification Placeholders
     'create_pylda': None,
