@@ -12,7 +12,7 @@ from .utils import *
 from .process_futures import *
 from .topic_model_trainer import train_model_v2
 from .alpha_eta import calculate_numeric_alpha, calculate_numeric_beta, validate_alpha_beta, calculate_alpha_beta
-from .visualization import create_vis_pylda, create_vis_pcoa, process_visualizations, create_vis_pca, create_tsne_plot, get_document_topics
+from .visualization import create_vis_pylda, process_visualizations, create_vis_pca, create_vis_pca_v2, create_tsne_plot, get_document_topics
 from .write_to_postgres import save_to_zip, create_dynamic_table_class, create_table_if_not_exists, add_model_data_to_database
 from .yaml_loader import join, getenv, get_current_time
 from .postgres_logging  import  PostgresLoggingHandler
@@ -77,8 +77,8 @@ __all__ = [
 
     # visualization
     'create_vis_pylda',
-    'create_vis_pcoa',
     'create_vis_pca',
+    'create_vis_pca_v2',
     'create_tsne_plot',
     'process_visualizations',
     'get_document_topics',
