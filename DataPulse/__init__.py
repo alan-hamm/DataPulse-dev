@@ -22,21 +22,24 @@ from .batch_estimation import *
 # Define __all__ to control what is imported with "from SpectraSync import *"
 __all__ = [
     # mathstats
+    'calculate_value',
     'init_sample_coherence',
     'calculate_statistics',
     'sample_coherence_for_phase',
     'get_statistics',
-    'calculate_perplexity_threshold',
     'coherence_score_decision',
     'calculate_coherence_metrics',
-    'calculate_perplexity',
     'compute_full_coherence_score',
     'calculate_convergence',
-    'calculate_perplexity_score',
-    'calculate_value',
+    'calculate_perplexity',
     'cpu_simulate_coherence_scores_with_lln',
     'gpu_simulate_coherence_scores_with_lln',
     'simulate_coherence_scores_with_lln_optimized',
+    'simulate_corpus',
+    'simulate_negative_log_likelihood',
+    'calculate_negative_log_likelihood',
+    'get_tsne_perplexity_param',
+
 
     # batch estimation
     'estimate_batches_large_docs',
@@ -88,6 +91,7 @@ __all__ = [
     'futures_create_lda_datasets_v3',
     'get_and_process_show_topics',
     'extract_topics_with_get_topic_terms',
+    'get_document_topics_batch_v2',
 
     # writeToPostgres
     'save_to_zip', 
