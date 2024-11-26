@@ -19,7 +19,7 @@
 #
 # Developed with AI assistance to deliver SpectraSync’s visually engaging, data-driven experiences.
 
-import torch
+import cupy as cp
 import os
 import pickle
 import logging
@@ -164,8 +164,6 @@ def process_row_v3(row, num_topics):
         return [0] * num_topics, "No Topic"
 
 
-
-
 def get_document_topics(ldamodel, bow_doc):
     try:
         topics = ldamodel.get_document_topics(bow_doc, minimum_probability=0)
@@ -204,111 +202,65 @@ def fill_distribution_matrix(ldaModel, corpus, num_topics):
             distributions_matrix[i, topic_num] = prob
     return distributions_matrix
 
-# The create_vis_pcoa function utilizes Principal Coordinate Analysis (PCoA) to visualize topic
-# distributions based on Jensen-Shannon divergence. PCoA is beneficial for capturing complex
-# distances, which can reveal nuanced topic relationships. However, PCoA can be computationally
-# intensive on large datasets, so PCA may be used in certain cases for efficiency.
-def create_vis_pcoa(ldaModel, corpus, topics, phase_name, filename, time_key, PCOA_DIR):
-    """
-    Generates a Principal Coordinate Analysis (PCoA) visualization for topic distributions.
 
-    This function uses Jensen-Shannon divergence and Principal Coordinate Analysis (Classical 
-    Multidimensional Scaling) to create a 2D visualization of topic distributions for the 
-    provided LDA model and corpus. It saves the visualization as a JPEG image in the specified directory.
-
-    Parameters:
-    - ldaModel: Serialized LDA model used for topic extraction.
-    - corpus: Serialized corpus of documents to analyze with the LDA model.
-    - topics: Number of topics in the LDA model.
-    - phase_name: Name of the analysis phase (e.g., "train" or "test") for directory organization.
-    - filename: Name of the output image file.
-    - time_key: Unique identifier to track timing or phase.
-    - PCOA_DIR: Root directory to save PCoA visualizations.
-
-    Returns:
-    - Tuple (time_key, create_pcoa): 
-        - time_key: Provided identifier to track the operation's timing or phase.
-        - create_pcoa: Boolean indicating if the visualization was successfully created.
-    """
-    create_pcoa = None
-    PCoAfilename = filename
-
+def fill_distribution_matrix_cupy(doc_topics_batch, num_topics=None):
     try:
-        PCOA_DIR = os.path.join(PCOA_DIR, phase_name, f"number_of_topics-{topics.compute()}")
-        os.makedirs(PCOA_DIR, exist_ok=True)
-        #if os.path.exists(PCOA_DIR):
-        #    logging.info(f"Confirmed that directory exists: {PCOA_DIR}")
-        #else:
-        #    logging.error(f"Directory creation failed for: {PCOA_DIR}")
+        # Dynamically calculate the number of topics if not provided
+        if num_topics is None:
+            num_topics = max(
+                max((topic_data.get("topic_id", -1) for topic_data in doc_topics), default=-1)
+                for doc_topics in doc_topics_batch if doc_topics
+            ) + 1
+            logging.debug(f"Calculated number of topics: {num_topics}")
 
-        PCoAIMAGEFILE = os.path.join(PCOA_DIR, PCoAfilename)
-    except Exception as e:
-         logging.error(f"Couldn't create PCoA file: {e}")
+        if num_topics <= 0:
+            logging.error("Invalid number of topics. Returning a zero-filled matrix.")
+            return cp.zeros((len(doc_topics_batch), 1), dtype=cp.float32)
 
-    # try Jensen-Shannon Divergence & Principal Coordinate Analysis (aka Classical Multidimensional Scaling)
-    topic_labels = [] # list to store topic labels
+        # Initialize the matrix
+        num_documents = len(doc_topics_batch)
+        distributions_matrix = cp.zeros((num_documents, num_topics), dtype=cp.float32)
+        logging.debug(f"Initialized distributions_matrix with shape: {distributions_matrix.shape}")
+        assert isinstance(distributions_matrix, cp.ndarray), "Matrix initialization failed! distributions_matrix is not a CuPy array."
 
-    ldaModel = ldaModel
-    topic_distributions = [ldaModel.get_document_topics(doc, minimum_probability=0) for doc in corpus]
+        # Fill the matrix
+        for i, doc_topics in enumerate(doc_topics_batch):
+            if not isinstance(doc_topics, list):
+                logging.warning(f"Document {i} topics invalid or not a list. Skipping.")
+                continue
 
-    # Ensure all topics are represented even if their probability is 0
-    num_topics = ldaModel.num_topics
-    distributions_matrix = np.zeros((len(corpus), num_topics))
+            # Initialize row
+            row = cp.zeros(num_topics, dtype=cp.float32)
+            assert isinstance(row, cp.ndarray), f"Row for document {i} is not a CuPy array!"
 
-    # apply topic labels and extract distribution matrix
-    for i, doc_topics in enumerate(topic_distributions):
-        topic_labels.append(f"Topic {max(doc_topics, key=lambda x: x[1])[0]}")
-        for topic_num, prob in doc_topics:
-            distributions_matrix[i, topic_num] = prob
-    
-    try: 
-        pcoa_results = pyLDAvis.js_PCoA(distributions_matrix) 
+            for topic_data in doc_topics:
+                topic_id = topic_data.get("topic_id")
+                probability = topic_data.get("probability", 0)
+                if topic_id is not None and 0 <= topic_id < num_topics:
+                    row[topic_id] = probability
 
-        # Assuming pcoa_results is a NumPy array with shape (n_dists, 2)
-        x = pcoa_results[:, 0]  # X-coordinates
-        y = pcoa_results[:, 1]  # Y-coordinates
-
-        # Create a figure and an axes instance
-        fig, ax = plt.subplots(figsize=(10, 10))
-
-        # Generate unique colors for each topic label using a colormap
-        unique_labels = list(set(topic_labels))
-        colors = plt.cm.jet(np.linspace(0, 1, len(unique_labels)))
-        
-        # Create a mapping from topic labels to colors
-        label_to_color = dict(zip(unique_labels, colors))
-
-        # Plot each point and assign it the color based on its label.
-        scatter_plots = {}
-        
-        for i in range(len(x)):
-            if topic_labels[i] not in scatter_plots:
-                scatter_plots[topic_labels[i]] = ax.scatter(x[i], y[i], color=label_to_color[topic_labels[i]], label=topic_labels[i])
+            total = cp.sum(row)
+            if total > 0:
+                distributions_matrix[i, :] = row / total
             else:
-                ax.scatter(x[i], y[i], color=label_to_color[topic_labels[i]])
+                distributions_matrix[i, :] = row  # Row remains zero-filled
 
-        # Set title and labels for axes
-        ax.set_title('PCoA Results')
-        ax.set_xlabel('PC1')
-        ax.set_ylabel('PC2')
+            logging.debug(f"Row {i} assigned. Row type: {type(row)}, total: {total}")
 
-        # Add legend outside the plot to avoid covering data points.
-        ax.legend(loc='center left', bbox_to_anchor=(1.04, 0.5), borderaxespad=0)
+        # Final validation
+        logging.debug(f"Final distributions_matrix type: {type(distributions_matrix)}")
+        if not isinstance(distributions_matrix, cp.ndarray):
+            logging.error("distributions_matrix is not a valid CuPy array before returning!")
+            raise ValueError("distributions_matrix type mismatch.")
+        if distributions_matrix.size == 0:
+            logging.error("distributions_matrix is empty before returning!")
 
-        # Save the figure as an image file with additional padding to accommodate the legend.
-        fig.savefig(f'{PCoAIMAGEFILE}.jpg', bbox_inches='tight')
+        return distributions_matrix
 
-        # Close the figure to free up memory
-        plt.close(fig)
+    except Exception as e:
+        logging.error(f"Error in fill_distribution_matrix_cupy: {e}", exc_info=True)
+        return cp.zeros((len(doc_topics_batch), num_topics or 1), dtype=cp.float32)
 
-        create_pcoa = True
-
-    except Exception as e: 
-        logging.error(f"An error occurred during PCoA transformation: {e}")
-        create_pcoa=False
-
-    #garbage_collection(False,"create_vis(...)")
-    return (time_key, create_pcoa)
 
 
 #@delayed
@@ -384,6 +336,114 @@ def create_vis_pca(ldaModel, corpus, topics, phase_name, filename, time_key, PCO
         create_pcoa = False
 
     return (time_key, create_pcoa)
+
+
+def create_vis_pca_v2(document_topic_distributions_json, topics, phase_name, filename, time_key, PCA_DIR):
+    """
+    Generate a PCA plot using the topic distribution matrix.
+
+    Parameters:
+    - document_topic_distributions_json (str): JSON-serialized document topic distributions.
+    - topics (int): Number of topics.
+    - phase_name (str): Phase name (e.g., 'Train', 'Validation').
+    - filename (str): Filename for saving the plot.
+    - time_key (str): Unique identifier for this operation.
+    - PCA_DIR (str): Directory path to save the PCA plot.
+
+    Returns:
+    - tuple: (time_key, create_pca) where create_pca is True if successful.
+    """
+    create_pca = False
+    PCAfilename = filename
+
+    try:
+        # Ensure PCA directory exists
+        PCA_DIR = os.path.join(PCA_DIR, phase_name, f"number_of_topics-{topics}")
+        os.makedirs(PCA_DIR, exist_ok=True)
+        PCAIMAGEFILE = os.path.join(PCA_DIR, PCAfilename)
+    except Exception as e:
+        logging.error(f"Couldn't create PCA directory: {e}")
+        return time_key, False
+
+    try:
+        # Deserialize document topic distributions
+        document_topic_distributions = json.loads(document_topic_distributions_json)
+
+        if not isinstance(document_topic_distributions, list) or not all(isinstance(row, list) for row in document_topic_distributions):
+            logging.error("Deserialized input is not a valid list of lists.")
+            return time_key, False
+
+        if not document_topic_distributions:
+            logging.error("Document topic distributions are empty after deserialization.")
+            return time_key, False
+
+        # Generate the distribution matrix
+        distributions_matrix = fill_distribution_matrix_cupy(document_topic_distributions, topics)
+
+        # Log and validate incoming matrix
+        logging.debug(f"Incoming distributions_matrix type: {type(distributions_matrix)}")
+        if not isinstance(distributions_matrix, cp.ndarray):
+            logging.error("Incoming distributions_matrix is not a valid CuPy array.")
+            return time_key, False
+
+
+        if distributions_matrix.size == 0:
+            logging.error("Distribution matrix is empty.")
+            return time_key, False
+
+        if distributions_matrix.shape[1] < 2:
+            logging.error(f"Distribution matrix has insufficient columns for PCA (expected at least 2, got {distributions_matrix.shape[1]}).")
+            return time_key, False
+
+        # Perform PCA
+        if isinstance(distributions_matrix, cp.ndarray):
+            distributions_matrix = distributions_matrix.get()  # Convert CuPy to NumPy
+
+        pca = PCA(n_components=2)
+        if isinstance(distributions_matrix, cp.ndarray):
+            reduced_coords = pca.fit_transform(distributions_matrix.get())
+        else:
+            reduced_coords = pca.fit_transform(distributions_matrix)
+        logging.debug(f"Type of reduced_coords after PCA: {type(reduced_coords)}")
+
+        # Convert to NumPy for visualization
+        x, y = reduced_coords[:, 0], reduced_coords[:, 1]
+        
+        # Generate topic labels
+        if isinstance(distributions_matrix, cp.ndarray):
+            topic_labels = [f"Topic {row.argmax()}" for row in distributions_matrix.get()]  # Convert to NumPy
+        else:
+            topic_labels = [f"Topic {row.argmax()}" for row in distributions_matrix]
+
+        # Generate topic labels and colors
+        unique_labels = list(set(topic_labels))
+        colors = plt.cm.jet(np.linspace(0, 1, len(unique_labels)))
+        label_to_color = dict(zip(unique_labels, colors))
+
+        # Create scatter plot
+        fig, ax = plt.subplots(figsize=(10, 10))
+        for i in range(len(x)):
+            label = topic_labels[i]
+            color = label_to_color[label]
+            ax.scatter(x[i], y[i], color=color, label=label if label not in ax.get_legend_handles_labels()[1] else None)
+
+        ax.set_title('PCA Results')
+        ax.set_xlabel('PC1')
+        ax.set_ylabel('PC2')
+        ax.legend(loc='center left', bbox_to_anchor=(1.04, 0.5), borderaxespad=0)
+
+        # Save the plot
+        fig.savefig(f'{PCAIMAGEFILE}.jpg', bbox_inches='tight')
+        logging.info(f"Figure saved successfully to {PCAIMAGEFILE}.jpg")
+        create_pca = True
+
+    except Exception as e:
+        logging.error(f"Error during PCA plot creation: {e}", exc_info=True)
+        return time_key, False
+    finally:
+        plt.close('all')
+
+    return time_key, create_pca
 
 
 
@@ -582,10 +642,6 @@ def create_tsne_plot(document_topic_distributions_json, perplexity_score, mode_c
     return time_key, True
 
 
-
-
-
-
 #@delayed
 def create_vis_pylda(ldaModel, corpus, dictionary, topics, phase_name, filename, CORES, time_key, PYLDA_DIR):
     """
@@ -636,6 +692,7 @@ def create_vis_pylda(ldaModel, corpus, dictionary, topics, phase_name, filename,
         return time_key, False
 
     return (time_key, True)
+
 
 def process_visualizations(phase_results, phase_name, performance_log, n_topics, cores, pylda_dir, pca_dir, pca_gpu_dir):
     """
@@ -695,7 +752,6 @@ def process_visualizations(phase_results, phase_name, performance_log, n_topics,
                     visualization_futures_pylda.append(vis_future_pylda)
                 except Exception as e:
                     logging.error(f"Error in create_vis_pylda() Dask operation: {e}")
-                    logging.error(f"TYPE: pyLDA -- MD5: {result_dict['text_md5']}")
                 
                 try:
                     vis_future_tsne = client.submit(
@@ -713,32 +769,31 @@ def process_visualizations(phase_results, phase_name, performance_log, n_topics,
                 except Exception as e:
                     logging.error(f"Error in create_tsne_plot() Dask operation: {e}")
                     logging.error("Traceback: ", exc_info=True)
-                    logging.error(f"TYPE: tsNE -- MD5: {result_dict['text_md5']}") 
-                    logging.debug(f"document_topic_distributions: {result_dict['document_topic_distributions']}")
-                    logging.debug(f"mode_coherence: {result_dict['mode_coherence']}")
-                    logging.debug(f"perplexity_score: {result_dict['perplexity_score']}")   
-                    raise        
+       
                 try:
+                    logging.info("Submitting create_vis_pca_v2 to Dask.")
                     vis_future_pca = client.submit(
-                        create_vis_pca,
-                        pickle.loads(result_dict['lda_model']),
-                        pickle.loads(result_dict['corpus']),
-                        n_topics, phase_name, result_dict['text_md5'],
-                        result_dict['time_key'], pca_dir,pure=False, retries=3
+                        create_vis_pca_v2, 
+                        result_dict['validation_result'],
+                        n_topics,
+                        phase_name,
+                        result_dict['text_md5'],
+                        result_dict['time_key'], 
+                        pca_dir,pure=False, retries=3
                     )
                     visualization_futures_pca.append(vis_future_pca)
                 except Exception as e:
-                    logging.error(f"Error in create_vis_pcoa() Dask operation: {e}")
-                    logging.error(f"TYPE: PCoA -- MD5: {result_dict['text_md5']}")
+                    logging.error(f"Error in create_vis_pca() Dask operation: {e}")
+                    logging.error("Traceback: ", exc_info=True)
 
         # Wait for all visualization tasks to complete
         logging.info(f"Execute WAIT on {phase_name} pyLDA visualizations: {len(visualization_futures_pylda)} futures.")
         done_viz_futures_pylda, not_done_viz_futures_pylda = wait(visualization_futures_pylda, timeout=None)
         
-        logging.info(f"Execute WAIT on {phase_name} PCoA visualizations: {len(visualization_futures_pca)} futures.")
+        logging.info(f"Execute WAIT on {phase_name} PCA visualizations: {len(visualization_futures_pca)} futures.")
         done_viz_futures_pca, not_done_viz_futures_pca = wait(visualization_futures_pca, timeout=None)
 
-        logging.info(f"Execute WAIT on {phase_name} PCoA visualizations: {len(visualization_futures_tsne)} futures.")
+        logging.info(f"Execute WAIT on {phase_name} tSNE visualizations: {len(visualization_futures_tsne)} futures.")
         done_viz_futures_tsne, not_done_viz_futures_tsne = wait(visualization_futures_tsne, timeout=None)
 
         if len(not_done_viz_futures_pylda) > 0:
