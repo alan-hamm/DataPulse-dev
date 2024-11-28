@@ -121,7 +121,7 @@ def process_row_v2(row, num_topics):
         logging.error(f"Error processing row: {e}")
         return [0] * num_topics, "No Topic"
 
-@delayed
+#@delayed
 def process_row_v3(row, num_topics):
     """
     Process a single row of document-topic distributions to extract the dominant topic.
@@ -482,8 +482,9 @@ def create_tsne_plot(document_topic_distributions_json, perplexity_score, mode_c
             return time_key, False
      
         try:
-            delayed_results = [process_row_v3(row, num_topics) for row in document_topic_distributions]
-            results = compute(*delayed_results)
+            #delayed_results = [process_row_v3(row, num_topics) for row in document_topic_distributions]
+            #results = compute(*delayed_results)
+            results = [process_row_v3(row, num_topics) for row in document_topic_distributions]
             processed_distributions, dominant_topics_labels = zip(*results)
 
             logging.debug(f"Dominant topic labels before filtering: {dominant_topics_labels[:10]}")
@@ -525,13 +526,6 @@ def create_tsne_plot(document_topic_distributions_json, perplexity_score, mode_c
     except Exception as e:
         logging.error(f"Failed to create GPU tensor: {e}")
         return time_key, False
-
-    # get number of topics from deserialized JSON. This count can be different from the
-    # hyperparameter number of topics due to Dask error in train_model_v2 line 388.
-    num_topics = len(document_topic_distributions)
-    if num_topics != topics:
-        logging.warning(f"The hyperparameter topics, {topics}, does not equal the number JSON document topics {num_topics}")
-        logging.warning("Using the JSON document topic count for tSNE plot generation.")
 
     try:
         if distributions_tensor.numel() == 0:
@@ -771,7 +765,7 @@ def process_visualizations(phase_results, phase_name, performance_log, n_topics,
                     logging.error("Traceback: ", exc_info=True)
        
                 try:
-                    logging.info("Submitting create_vis_pca_v2 to Dask.")
+                    #logging.info("Submitting create_vis_pca_v2 to Dask.")
                     vis_future_pca = client.submit(
                         create_vis_pca_v2, 
                         result_dict['validation_result'],
