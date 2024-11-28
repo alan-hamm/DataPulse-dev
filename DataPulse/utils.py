@@ -49,7 +49,6 @@ class NumpyEncoder(json.JSONEncoder):
         return super().default(obj)
 
 
-
 def safe_serialize_for_postgres(value):
     """
     Convert values to PostgreSQL-compatible types.
