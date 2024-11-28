@@ -196,8 +196,8 @@ DASK_DIR = args.mem_spill if args.mem_spill else os.path.expanduser("~/temp/Spec
 os.makedirs(DASK_DIR, exist_ok=True)
 
 # Model configurations
-PASSES = args.passes if args.passes is not None else 15
-ITERATIONS = args.iterations if args.iterations is not None else 100
+PASSES = args.passes if args.passes is not None else 50
+ITERATIONS = args.iterations if args.iterations is not None else 2000
 UPDATE_EVERY = args.update_every if args.update_every is not None else 5
 EVAL_EVERY = args.eval_every if args.eval_every is not None else 5
 RANDOM_STATE = args.random_state if args.random_state is not None else 50
@@ -216,7 +216,7 @@ MAX_RETRIES = args.max_retries if args.max_retries is not None else 5
 BASE_WAIT_TIME = args.base_wait_time if args.base_wait_time is not None else 1.1
 
 # Ensure required directories exist
-ROOT_DIR = args.root_dir or os.path.expanduser("~/temp/SpectraSync/")
+ROOT_DIR = args.root_dir or os.path.expanduser("~/temp/DataPulse/")
 LOG_DIRECTORY = args.log_dir or os.path.join(ROOT_DIR, "log")
 IMAGE_DIR = os.path.join(ROOT_DIR, "visuals")
 PYLDA_DIR = os.path.join(IMAGE_DIR, 'pyLDAvis')
@@ -621,7 +621,6 @@ if __name__=="__main__":
 
         # Train Phase
         if train_eval_type == "train":
-
             # Adaptive throttling logic remains here
             logging.info("Evaluating if adaptive throttling is necessary...")
             throttle_attempt = 0
@@ -650,76 +649,49 @@ if __name__=="__main__":
                         client.rebalance()
                         break
 
-            try:
-                # Train phase logic
-                future_map = {}  # Track futures for debugging
-                for j, scattered_data in enumerate(scattered_train_data_futures):
-                    model_key = (n_topics, alpha_value, beta_value)
-                    try:
-                        # Submit future for training
-                        future = client.submit(
-                            train_model_v2, DATA_SOURCE, n_topics, alpha_value, beta_value, TEXTS_ZIP_DIR, PYLDA_DIR, PCOA_DIR, PCA_GPU_DIR, unified_dictionary, scattered_data, "train",
-                            RANDOM_STATE, PASSES, ITERATIONS, UPDATE_EVERY, EVAL_EVERY, num_workers, PER_WORD_TOPICS, ldamodel_parameter=None, pure=False, retries=3
-                        )
-                        future_map[model_key] = future  # Track the future
-                        # train_futures.append(future)
-                       #progress_bar.update()
-
-                        # Resolve future with timeout
-                        result = future.result(timeout=300)  # Timeout to prevent indefinite blocking
-                        if result is None:
-                            logging.error(f"Batch {j} for model {model_key} returned None. Skipping.")
-                            continue
-                        completed_train_futures.append(result)
-
-                        # Rebalance periodically
-                        if (j + 1) % 100 == 0:
-                            client.rebalance()
-
-                    except ZeroDivisionError as e:
-                        logging.error(f"Division by zero error in batch {j} for model {model_key}: {e}")
-                    except Exception as e:
-                        logging.error(f"Error submitting or resolving future for batch {j} and model {model_key}: {e}")
-
-                if len(completed_train_futures) == 0:
-                    logging.error("No results were output from '_v2' for writing to SSD.")
-                    sys.exit()
-
-            except Exception as e:
-                logging.error(f"Train phase error in DataPulse.py with train_model_v2: {e}")
-
-
-
-            """
-            try:
-                # Wait for all training futures and then process results
-                done_train, not_done = wait(train_futures, timeout=None)
-                if not_done:
-                    logging.error(f"{len(not_done)} train tasks are still unresolved!")
-                    for future in not_done:
-                        logging.error(f"Unresolved task: {future.key}")
-                        print("SOURCE OF ERROR FOUND")
-                        sys.exit()
-               
+            os.makedirs(f"{LOG_DIR}", exist_ok=True)
+            train_perforamnce_log= f"{LOG_DIR}/log/TRAIN-build-perf-log.html"
+            with performance_report(filename=train_perforamnce_log):      
                 try:
-                    completed_train_futures = [done.result(timeout=120) for done in done_train]
-                except ZeroDivisionError as e:
-                    logging.error(f"Division by zero error while resolving train_model_v2 futures: {e}")
-                    sys.exit()
-                except Exception as e:
-                    logging.error(f"Unexpected error while resolving futures: {e}")
-                    sys.exit()
+                    # Train phase logic
+                    future_map = {}  # Track futures for debugging
+                    for j, scattered_data in enumerate(scattered_train_data_futures):
+                        model_key = (n_topics, alpha_value, beta_value)
+                        try:
+                            # Submit future for training
+                            future = client.submit(
+                                train_model_v2, DATA_SOURCE, n_topics, alpha_value, beta_value, TEXTS_ZIP_DIR, PYLDA_DIR, PCOA_DIR, PCA_GPU_DIR, unified_dictionary, scattered_data, "train",
+                                RANDOM_STATE, PASSES, ITERATIONS, UPDATE_EVERY, EVAL_EVERY, num_workers, PER_WORD_TOPICS, ldamodel_parameter=None, pure=False, retries=3
+                            )
+                            future_map[model_key] = future  # Track the future
+                            # train_futures.append(future)
+                            #progress_bar.update()
 
-                client.rebalance()
-                
-                if len(completed_train_futures) == 0:
-                    logging.error(f"No results were output from '_v2' for writing to SSD. Number of completed train futures: {len(completed_train_futures)}")
-                    sys.exit()
-            except Exception as e:
-                logging.error(f"Train phase error with WAIT: {e}")
-                print(f"Train phase error with WAIT: {e}")
-                sys.exit()
-            """
+                            # Resolve future with timeout
+                            result = future.result(timeout=300)  # Timeout to prevent indefinite blocking
+                            if result is None:
+                                logging.error(f"Batch {j} for model {model_key} returned None. Skipping.")
+                                continue
+                            completed_train_futures.append(result)
+
+                            result = [r.cancel for r in result]
+                            del result
+                            # Rebalance periodically
+                            if (j + 1) % 10 == 0:
+                                client.rebalance()
+
+                        except ZeroDivisionError as e:
+                            logging.error(f"Division by zero error in batch {j} for model {model_key}: {e}")
+                        except Exception as e:
+                            logging.error(f"Error submitting or resolving future for batch {j} and model {model_key}: {e}")
+
+                    if len(completed_train_futures) == 0:
+                        logging.error("No results were output from '_v2' for writing to SSD.")
+                        sys.exit()
+
+                except Exception as e:
+                    logging.error(f"Train phase error in DataPulse.py with train_model_v2: {e}")
+
 
             try:
                 os.makedirs(f"{IMAGE_DIR}/log", exist_ok=True)
