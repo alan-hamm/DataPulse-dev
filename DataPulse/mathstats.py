@@ -34,6 +34,7 @@ import cupy as cp
 
 import torch
 
+import json
 import re
 import dask
 from dask import delayed
@@ -49,6 +50,7 @@ from decimal import Decimal, InvalidOperation
 from scipy.stats import gaussian_kde
 import random
 from scipy import stats
+from sklearn.decomposition import PCA
 import random
 from .batch_estimation import estimate_batches_large_docs_v2
 
@@ -457,8 +459,8 @@ def kde_mode_estimation(coherence_scores):
     return float(mode_value)
 
 
-#@delayed
-def calculate_coherence_metrics(default_score=None, real_coherence_value=None, ldamodel=None, dictionary=None, texts=None, cores=4, tolerance=1e-5, max_attempts=5, return_torch_tensor=False):
+
+def calculate_coherence_metrics(default_score=None, real_coherence_value=None,  max_attempts=5):
     """
     Use the actual coherence value from the model and generate simulated coherence scores
     to calculate mean, median, std, and mode.
@@ -485,24 +487,6 @@ def calculate_coherence_metrics(default_score=None, real_coherence_value=None, l
 
         return coherence_scores
 
-    """
-    # Retrieve actual coherence value using Gensim's CoherenceModel if model data is provided
-    if ldamodel and dictionary and texts:
-        try:
-            coherence_model = CoherenceModel(
-                model=ldamodel,
-                texts=texts,
-                dictionary=dictionary,
-                processes=(math.ceil(cores*(2/3))),
-                coherence='c_v'  # Change this to 'u_mass', 'c_uci', etc., as needed
-            )
-            real_coherence_value = coherence_model.get_coherence()
-        except Exception as e:
-            logging.warning(f"Failed to calculate real coherence value using Gensim CoherenceModel: {e}")
-            real_coherence_value = default_score
-    else:
-        real_coherence_value = default_score
-    """
     # If the real coherence value could not be calculated, use the default score
     if real_coherence_value is None:
         logging.warning("Real coherence value is None. Using default score.")
@@ -542,6 +526,117 @@ def calculate_coherence_metrics(default_score=None, real_coherence_value=None, l
         try:
             kde = stats.gaussian_kde(coherence_scores_np, bw_method='silverman')
             mode_value = coherence_scores_np[np.argmax(kde.evaluate(coherence_scores_np))]
+        except Exception as e:
+            logging.warning(f"Mode calculation using KDE failed. Falling back to simple average: {e}")
+            mode_value = float(np.mean(coherence_scores_np))
+    else:
+        logging.warning("Insufficient unique elements for KDE. Falling back to simple average.")
+        mode_value = float(np.mean(coherence_scores_np))
+
+    data['mode_coherence'] = mode_value
+
+    return data
+
+
+#@delayed
+def calculate_coherence_metrics_v2(default_score=None, real_coherence_value=None,  max_attempts=3):
+    """
+    Use the actual coherence value from the model and generate simulated coherence scores
+    to calculate mean, median, std, and mode.
+    """
+
+    # initialize default-value dictionary for coherence metrics
+    data = {
+        'coherence_score': default_score,
+        'mean_coherence': default_score,
+        'median_coherence': default_score,
+        'std_coherence': default_score,
+        'mode_coherence': default_score
+    }
+
+    dimension = 100  # The number of dimensions (topics) used for the Dirichlet distribution's alpha vector
+    simulations = 1  # The number of simulated coherence scores to generate for statistical analysis
+
+    # Generate a random fallback coherence value within the range [0.001, 0.70]
+    if real_coherence_value is None or not (0.0 < real_coherence_value < 1.0):
+        logging.warning(f"Invalid real_coherence_value detected: {real_coherence_value}. "
+                        "Generating a random fallback value.")
+        real_coherence_value = random.uniform(0.001, 0.70)
+
+    def generate_simulated_coherence(real_coherence_value, simulations=simulations, alpha_min=1.0, alpha_max=10.0):
+        """
+        Generate simulated coherence scores using PyTorch's Dirichlet distribution.
+        Parameters:
+            - real_value: Actual coherence score to anchor the simulation.
+            - simulations: Number of simulations for stable statistics.
+            - alpha_min: Minimum alpha value for Dirichlet distribution.
+            - alpha_max: Maximum alpha value for Dirichlet distribution.
+            - device: 'cuda' for GPU or 'cpu' for CPU.
+        Returns:
+            - Simulated coherence scores (numpy array).
+        """
+        # Dynamically scale alpha based on real_value
+        alpha_scale = alpha_min + (alpha_max - alpha_min) * real_coherence_value  # Scale alpha based on real_value
+        # Generate alpha vector of size 75
+        alpha = cp.full((dimension,), alpha_scale, dtype=cp.float32)
+
+        # Generate Dirichlet-distributed samples
+        coherence_scores = cp.random.dirichlet(alpha, size=simulations)  
+
+        return coherence_scores
+
+    # Generate simulated coherence scores based on the real coherence value
+    coherence_scores = generate_simulated_coherence(real_coherence_value)
+
+
+    if coherence_scores.size == 0:
+        # Retry logic if coherence scores are empty (unlikely with generated data)
+        attempts = 0
+        valid_scores_found = False
+        coherence_scores = None
+        while attempts < max_attempts and not valid_scores_found:
+            attempts += 1
+            logging.info(f"Generating coherence scores. Attempt {attempts}.")
+
+            # Generate a smaller batch of coherence scores in each attempt
+            partial_scores = generate_simulated_coherence(
+                real_coherence_value, 
+                simulations=simulations // max_attempts,  # Use reduced simulations
+                alpha_min=1.0, 
+                alpha_max=10.0
+            ).mean(axis=0)  # Partial batch sampling
+
+            if coherence_scores is None:
+                coherence_scores = partial_scores  # Initialize coherence scores
+            else:
+                # Append new scores
+                coherence_scores = cp.concatenate((coherence_scores, partial_scores), axis=0)
+
+            # Check if scores meet validity criteria (non-empty and sufficient size)
+            if coherence_scores.size > dimension:  # Early stopping if scores are valid
+                valid_scores_found = True
+
+        # Fallback to default coherence values if retries fail
+        if not valid_scores_found:
+            logging.error("Failed to generate valid coherence scores after retries. Falling back to default values.")
+            coherence_scores = cp.full((dimension,), default_score, dtype=cp.float32)  # Default reasonable scores
+
+
+    # Calculate coherence metrics using CuPy
+    data['coherence_score'] = real_coherence_value
+    data['mean_coherence'] = float(cp.mean(coherence_scores))
+    data['median_coherence'] = float(cp.median(coherence_scores))
+    data['std_coherence'] = float(cp.std(coherence_scores))
+
+    # After generating coherence scores (without PCA)
+    coherence_scores_np = coherence_scores.get()  # CuPy to NumPy
+
+    # Ensure the shape is correct: should be (samples, features)
+    # kde expects the shape (n_features, n_samples), so we need to transpose if needed
+    if len(set(coherence_scores_np.flatten())) > 1:
+        try:
+            kde = stats.gaussian_kde(coherence_scores_np.T, bw_method='silverman')  # Transpose to match expected shape
+            mode_value = coherence_scores_np[np.argmax(kde.evaluate(coherence_scores_np.T))]  # Evaluate with the transposed array
         except Exception as e:
             logging.warning(f"Mode calculation using KDE failed. Falling back to simple average: {e}")
             mode_value = float(np.mean(coherence_scores_np))
@@ -777,28 +872,6 @@ def get_statistics(coherence_scores):
     return mean_coherence, median_coherence, mode_coherence, std_coherence
 
 
-# Main decision logic based on coherence statistics and threshold
-def coherence_score_decision(ldamodel, documents, dictionary, initial_sample_ratio=0.1):
-    # Sample coherence scores
-    coherence_scores = sample_coherence_for_phase(ldamodel, documents, dictionary, initial_sample_ratio)
-    
-    # Calculate coherence statistics
-    mean_coherence, median_coherence, mode_coherence, std_coherence = get_statistics(coherence_scores)
-    
-    # Calculate perplexity threshold
-    try:
-        threshold = calculate_perplexity_threshold(ldamodel, documents, dictionary)
-    except Exception as e:
-        logging.error(f"Error calculating perplexity threshold: {e}")
-        threshold = float('nan')
-    
-    # Check coherence threshold
-    coherence_score = mean_coherence if mean_coherence < threshold else float('nan')
-    
-    # Ensure all values are returned
-    return (coherence_score, mean_coherence, median_coherence, mode_coherence, std_coherence, threshold)
-
-
 @delayed
 def compute_full_coherence_score(ldamodel, dictionary, texts, cores):
     coherence_model_lda = CoherenceModel(
@@ -837,7 +910,7 @@ def simulate_corpus(dictionary, num_docs=100, avg_doc_len=50):
     ]
     return synthetic_corpus
 
-def simulate_negative_log_likelihood(dictionary, num_topics=10, num_docs=100, avg_doc_len=50):
+def simulate_per_word_likelihood(dictionary, num_topics=10, num_docs=100, avg_doc_len=50):
     """
     Simulate a realistic negative log-likelihood using a synthetic corpus and LDA model.
     
@@ -855,13 +928,13 @@ def simulate_negative_log_likelihood(dictionary, num_topics=10, num_docs=100, av
     
     # Train a small LDA model on the synthetic corpus
     synthetic_bow = [dictionary.doc2bow(doc) for doc in synthetic_corpus]
-    lda_model = LdaModel(synthetic_bow, num_topics=num_topics, id2word=dictionary, passes=2)
+    lda_model = LdaModel(synthetic_bow, num_topics=num_topics, id2word=dictionary, passes=10)
     
     # Calculate the negative log-likelihood
     return lda_model.log_perplexity(synthetic_bow)
 
 
-def calculate_negative_log_likelihood(ldamodel, phase_corpus, dictionary, default_score=None):
+def calculate_per_word_likelihood(ldamodel, phase_corpus, dictionary, default_score=None):
     """
     Calculate the perplexity score for a given phase_corpus.
 
@@ -876,99 +949,96 @@ def calculate_negative_log_likelihood(ldamodel, phase_corpus, dictionary, defaul
     """
     with np.errstate(divide='ignore', invalid='ignore'):
         try:
-            negative_log_likelihood = ldamodel.log_perplexity(phase_corpus)
+            per_word_likelihood_bound = ldamodel.log_perplexity(phase_corpus)
 
-            if not np.isfinite(negative_log_likelihood):
-                raise ValueError(f"Non-finite negative log-likelihood: {negative_log_likelihood}")
+            if not np.isfinite(per_word_likelihood_bound):
+                raise ValueError(f"Non-finite negative log-likelihood: {per_word_likelihood_bound}")
 
-            logging.debug(f"[calculate_negative_log_likelihood] Negative log-likelihood: {negative_log_likelihood}")
-            return negative_log_likelihood
+            logging.debug(f"[calculate_negative_log_likelihood] Negative log-likelihood: {per_word_likelihood_bound}")
+            return per_word_likelihood_bound
         except ValueError as ve:
             logging.error(f"[calculate_negative_log_likelihood] ValueError: {ve}. Returning simulated score.")
-            return simulate_negative_log_likelihood(dictionary)
+            return simulate_per_word_likelihood(dictionary)
         except Exception as e:
             logging.error(f"[calculate_negative_log_likelihood] Unexpected error: {e}. Returning simulated score.")
-            return simulate_negative_log_likelihood(dictionary)
+            return simulate_per_word_likelihood(dictionary)
 
 
 
-def calculate_perplexity(negative_log_likelihood, phase_corpus, dictionary, number_of_words, default_score=30.0):
-    try:
-        total_words = get_word_count(phase_corpus, dictionary, number_of_words)
-        if total_words <= 1:
-            logging.warning(f"Word count is too low for reliable perplexity calculation: {total_words}. Returning default score.")
-            return default_score
+def calculate_perplexity(per_word_likelihood_bound):
+    perplexity = 2**(-per_word_likelihood_bound)
+    logging.debug(f"Calculated perplexity: {perplexity}")
 
-        perplexity = math.exp(negative_log_likelihood / total_words)
-        logging.debug(f"Calculated perplexity: {perplexity}")
 
-        # Validate perplexity for t-SNE
-        if perplexity > len(phase_corpus):
-            logging.warning(f"Perplexity {perplexity} exceeds number of samples {len(phase_corpus)}. Using number of samples.")
-            return float(len(phase_corpus))
-        elif perplexity < 5:
-            logging.warning(f"Perplexity {perplexity} is below the recommended range for t-SNE. Adjusting to minimum value of 5.")
-            return 5.0
-        else:
-            return float(perplexity)
-    except Exception as e:
-        logging.error(f"Error during perplexity calculation: {e}. Returning default value.")
-        return default_score
-
-def get_tsne_perplexity_param(
-    phase_corpus, 
-    dictionary, 
-    tallied_word_count, 
-    ldamodel, 
-    num_docs=100, 
-    avg_doc_len=50, 
-    default_perplexity=30.0, 
-    precomputed_simulated_nll=None
-):
+def calculate_tsne_perplexity_from_topics(topic_vectors_bytes, phase_corpus, n_neighbors=50, radius=None, default_perplexity=5.0):
     """
-    Calculate the t-SNE perplexity parameter.
-
-    Args:
-        phase_corpus: Corpus for the current phase, in bag-of-words format.
-        dictionary: Gensim Dictionary object for the corpus.
-        tallied_word_count: Word count recorded during corpus ingestion.
-        ldamodel: The trained LDA model.
-        num_docs: Number of documents for simulated corpus (default: 100).
-        avg_doc_len: Average length of simulated documents (default: 50).
-        default_perplexity: Default perplexity value in case of failure (default: 30.0).
-        precomputed_simulated_nll: Precomputed simulated negative log-likelihood (optional).
+    Calculate t-SNE perplexity using topic vectors and CuPy's GPU-accelerated operations.
+    
+    Parameters:
+    - topic_vectors_bytes (str): Serialized JSON string of topic vectors.
+    - phase_corpus (list): List of samples in the current phase (used to validate perplexity).
+    - n_neighbors (int): Number of neighbors to consider for k-NN.
+    - radius (float or None): Optional radius for neighbor calculation. If None, estimated automatically.
+    - default_perplexity (float): Default perplexity value to return in case of errors.
     
     Returns:
-        float: A valid t-SNE perplexity parameter.
+    - float: Calculated perplexity.
     """
     try:
-        # Step 1: Get the word count
-        word_count = get_word_count(phase_corpus, dictionary, tallied_word_count)
-        logging.debug(f"Word count for perplexity calculation: {word_count}")
+        # Load and convert topic vectors to a CuPy array
+        topic_vectors_list = json.loads(topic_vectors_bytes)
 
-        # Step 2: Use the provided simulated NLL or generate a new one
-        if precomputed_simulated_nll is not None:
-            simulated_nll = precomputed_simulated_nll
-            logging.debug("Using precomputed simulated NLL.")
-        else:
-            simulated_nll = simulate_negative_log_likelihood(dictionary, num_docs=num_docs, avg_doc_len=avg_doc_len)
-            logging.debug(f"Generated simulated NLL: {simulated_nll}")
+        # Prepare the BoW structure (list of topic_id and probability tuples)
+        boW_structure = []
 
-        # Step 3: Attempt to calculate the actual NLL using the LDA model
-        try:
-            calculated_nll = calculate_negative_log_likelihood(ldamodel, phase_corpus, dictionary, default_score=simulated_nll)
-            logging.debug(f"Calculated negative log-likelihood: {calculated_nll}")
-        except Exception as e:
-            logging.error(f"Error calculating NLL from LDA model: {e}. Falling back to simulated NLL.")
-            calculated_nll = simulated_nll
+        for doc in topic_vectors_list:
+            for topic in doc:  # Each doc is a list of topic-probability tuples
+                # Extract topic_id and probability
+                topic_id = topic["topic_id"]
+                probability = topic["probability"]
 
-        # Step 4: Calculate t-SNE-specific perplexity
-        tsne_perplexity = calculate_perplexity(calculated_nll, phase_corpus, dictionary, word_count, default_score=default_perplexity)
-        logging.info(f"t-SNE perplexity parameter: {tsne_perplexity}")
+                # Append as a tuple for BoW structure
+                boW_structure.append((topic_id, probability))
 
-        return tsne_perplexity
+        # Convert BoW structure to CuPy arrays
+        topic_ids_array = cp.array([item[0] for item in boW_structure], dtype=cp.int32)  # Topic IDs
+        probabilities_array = cp.array([item[1] for item in boW_structure], dtype=cp.float32)  # Probabilities
 
+        # Combine the topic IDs and probabilities in a structured array (BoW structure)
+        topic_vectors = cp.column_stack((topic_ids_array, probabilities_array))
+
+        
     except Exception as e:
-        logging.error(f"Failed to calculate t-SNE perplexity parameter: {e}. Returning default value.")
+        logging.error("Could not load or process topic vectors")
+        logging.warning(f"Returning {default_perplexity} value due to error: {e}")
         return default_perplexity
 
+    try:
+        # Compute pairwise distances using broadcasting (efficient for GPUs)
+        distances = cp.sqrt(cp.sum((topic_vectors[:, None, :] - topic_vectors[None, :, :])**2, axis=2))
+
+        # Get the k-nearest distances for each vector
+        k_distances = cp.sort(distances, axis=1)[:, :n_neighbors]
+
+        if radius is None:
+            # Automatically estimate radius as the median of the k-th nearest distances
+            radius = cp.median(k_distances[:, -1]).item()
+
+        # Count neighbors within the radius for each point
+        neighbors_within_radius = cp.sum(distances <= radius, axis=1)
+
+        # Calculate the median number of neighbors
+        median_neighbors = cp.median(neighbors_within_radius).item()
+
+        # Validate perplexity: must be less than the number of samples
+        num_samples = len(phase_corpus)
+        if median_neighbors > num_samples:
+            logging.warning(f"Perplexity {median_neighbors} exceeds number of samples {num_samples}. Using number of samples.")
+            return float(num_samples), radius or -1.0
+        else:
+            return max(5.0, median_neighbors), radius or -1.0
+
+    except Exception as e:
+        logging.error(f"Error during perplexity calculation: {e}")
+        logging.warning(f"Returning default perplexity value: {default_perplexity}")
+        return default_perplexity, radius or -1.0
