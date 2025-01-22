@@ -403,10 +403,10 @@ def main():
         re.compile(r'wrap.*')
     ]
 
-    CLEANED = os.path.join("C:\\", "SpectraSync", "raw_material", "mmwr", "2020_2024", "cleaned")
-    STATS_DIR = os.path.join("C:\\", "SpectraSync", "raw_material", "mmwr", "2020_2024", "statistics")
+    CLEANED = os.path.join("C:\\", "DataPulse", "data", "raw_material", "mmwr", "2010_2014", "cleaned")
+    STATS_DIR = os.path.join("C:\\", "DataPulse", "data", "raw_material", "mmwr", "2010_2014", "statistics")
 
-    TITLE_LIST = parse_directory_for_files("C:/SpectraSync/raw_material/mmwr/2020_2024/pre-processed", ".json")
+    TITLE_LIST = parse_directory_for_files("C:/DataPulse/data/raw_material/mmwr/2010_2014/pre-processed", ".json")
     pp.pprint(TITLE_LIST)
 
     futures = []
@@ -502,7 +502,7 @@ if __name__ == "__main__":
         sys.exit()
 
     try:
-        with performance_report(filename=r"C:\SpectraSync\raw_material\statistics\2020_2024_dask_report.html"):
+        with performance_report(filename=r"C:\DataPulse\data\raw_material\mmwr\2010_2014\statistics\2010_2014_dask_report.html"):
             main()
     except Exception as e:
         print(f"There was an error in the main method: {e}")

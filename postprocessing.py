@@ -130,9 +130,9 @@ DOC_ID = r'.*[\d\w\-.]+\.(html|json)$'  # Regular expression pattern to identify
 #DOC_ID = r'^.*/cleaned/[^/]+\.(html|json)$'
 
 DOC_TYPE = 'json'
-DOC_FOLDER = '2010'
+DOC_FOLDER = '2010_2014'
 
-TAGS = ['p', 'i']  # List of HTML tags to extract content from; 'p' is commonly used to denote paragraphs in HTML.
+TAGS = ['p', 'i', 'b']  # List of HTML tags to extract content from; 'p' is commonly used to denote paragraphs in HTML.
 
 
 ##################################
@@ -573,7 +573,7 @@ class UnifiedParser(CorpusReader):
                         else:
                             error_dict.append(cleaned_html_content)
 
-        return documents #, self.get_error_statistics()
+        return documents , self.get_error_statistics()
 
 
 
@@ -739,7 +739,7 @@ if __name__ == "__main__":
 
 
     #corpus_path = os.path.join("topic-modeling", "data", "docs-to-process", "PROJECT_FOLDER")
-    corpus_path = f"C:/SpectraSync/raw_material/mmwr/{DOC_FOLDER}/cleaned"
+    corpus_path = f"C:/DataPulse/data/raw_material/mmwr/{DOC_FOLDER}/cleaned"
 
     _corpus = UnifiedParser(corpus_path)
     # print filenames
@@ -751,7 +751,7 @@ if __name__ == "__main__":
 
 
     # Define generic paths for log files
-    base_path = f"C:/SpectraSync/processed_material/mmwr/{DOC_FOLDER}/log"
+    base_path = f"C:/DataPulse/data/raw_material/mmwr/{DOC_FOLDER}/log"
     os.makedirs(base_path, exist_ok=True)
 
     log_file_path = os.path.join(base_path, f"log_error.log")
@@ -759,24 +759,24 @@ if __name__ == "__main__":
 
     # Run the generate function with generic paths
     #corpus_tuple, error_statistics = _corpus.generate(
-    corpus_tuple = _corpus.generate(
+    corpus_tuple, error_statistics = _corpus.generate(
         log_file_path=log_file_path,
         non_html_log_path=non_html_log_path
     )
 
-    '''
+  
     pp.pprint(error_statistics)
 
 
     # Define generic paths for log files
-    base_path = f"C:/SpectraSync/raw_material/mmwr/{DOC_FOLDER}/statistics/"
+    base_path = f"C:/DataPulse/data/raw_material/mmwr/{DOC_FOLDER}/statistics/"
     os.makedirs(base_path, exist_ok=True)
 
 
     #####################
     # ERROR CSV
     #####################
-    output_csv_path = f"C:/SpectraSync/raw_material/mmwr/{DOC_FOLDER}/statistics/{DOC_FOLDER}_stats.csv"
+    output_csv_path = f"C:/DataPulse/data/raw_material/mmwr/{DOC_FOLDER}/statistics/{DOC_FOLDER}_stats.csv"
 
     # Convert nested dictionaries to JSON strings
     data_for_csv = {key: (json.dumps(value) if isinstance(value, dict) else value)
@@ -801,14 +801,14 @@ if __name__ == "__main__":
     # Flatten nested dictionary
     ###########################
     # Write to CSV in RFC 4180 format
-    output_csv_path = f"C:/SpectraSync/raw_material/mmwr/{DOC_FOLDER}/statistics/{DOC_FOLDER}_rfc4180_stats.csv"
-
-    def flatten_dict(d, parent_key='', sep='.'):
+    output_csv_path = f"C:/DataPulse/data/raw_material/mmwr/{DOC_FOLDER}/statistics/{DOC_FOLDER}_rfc4180_stats.csv"
+    
+    def flatten_dict(d, parent_key="", sep="."):
         items = []
         for k, v in d.items():
             new_key = f"{parent_key}{sep}{k}" if parent_key else k
             if isinstance(v, dict):  # If nested, recursively flatten
-                items.extend(flatten_dict(v, new_key, sep=sep).items())
+                items.extend(flatten_dict(v, parent_key=new_key, sep=".").items())
             else:
                 items.append((new_key, v))
         return dict(items)
@@ -831,14 +831,14 @@ if __name__ == "__main__":
     # WRITE TO JSON
     ####################
     # Output JSON file path
-    output_json_path = f"C:/SpectraSync/raw_material/mmwr/{DOC_FOLDER}/statistics/{DOC_FOLDER}_stats.json"
+    output_json_path = f"C:/DataPulse/data/raw_material/mmwr/{DOC_FOLDER}/statistics/{DOC_FOLDER}_stats.json"
 
     # Write to JSON file
     with open(output_json_path, mode="w", encoding="utf-8") as file:
         json.dump(error_statistics, file, indent=4)  # Use indent=4 for pretty-printing
 
     print(f"Data written to {output_json_path}")
-    '''
+
 
 
     ########################
@@ -884,20 +884,20 @@ if __name__ == "__main__":
 
 
 
-    os.makedirs(f"C:/SpectraSync/processed_material/mmwr/{DOC_FOLDER}/final", exist_ok=True)
+    os.makedirs(f"C:/DataPulse/data/raw_material/mmwr/{DOC_FOLDER}/final", exist_ok=True)
 
     print("writing texts_out_lemmatized_with_stopwords")
     # Define the file path for saving processed text in JSON format
-    filename2 = f"C:/SpectraSync/processed_material/mmwr/{DOC_FOLDER}/final/texts_out_lemmatized_with_stopwords.json"
+    filename2 = f"C:/DataPulse/data/raw_material/mmwr/{DOC_FOLDER}/final/texts_out_lemmatized_with_stopwords.json"
 
-    with open(filename2, 'w', encoding='utf-8') as jsonfile:
+    with open(filename2, "w", encoding="utf-8") as jsonfile:
         # Write the processed text data to the JSON file with formatting and UTF-8 encoding
         json.dump(texts_out_lemmatized_with_stopwords, jsonfile, indent=2, ensure_ascii=False)
 
     # texts_out_lemmatized_with_stopwords
     texts_out_lemmatized_with_stopwords_with_bigrams = generate_bigrams(texts_out_lemmatized_with_stopwords)
 
-    bigrams = f"C:/SpectraSync/processed_material/mmwr/{DOC_FOLDER}/final/texts_out_lemmatized_with_stopwords_with_bigrams.json"
+    bigrams = f"C:/DataPulse/data/raw_material/mmwr/{DOC_FOLDER}/final/texts_out_lemmatized_with_stopwords_with_bigrams.json"
     # Open the specified file in write mode
     with open(bigrams, 'w', encoding='utf-8') as jsonfile:
         # Write the processed text data to the JSON file with formatting and UTF-8 encoding
@@ -908,14 +908,14 @@ if __name__ == "__main__":
 
     print("writing texts_out_lemmatized_without_stopwords")
     # Define the file path for saving processed text in JSON format
-    filename2 = f"C:/SpectraSync/processed_material/mmwr/{DOC_FOLDER}/final/texts_out_lemmatized_without_stopwords.json"
+    filename2 = f"C:/DataPulse/data/raw_material/mmwr/{DOC_FOLDER}/final/texts_out_lemmatized_without_stopwords.json"
     # Open the specified file in write mode
     with open(filename2, 'w', encoding='utf-8') as jsonfile:
         # Write the processed text data to the JSON file with formatting and UTF-8 encoding
         json.dump(texts_out_lemmatized_without_stopwords, jsonfile, indent=2, ensure_ascii=False)
 
     texts_out_lemmatized_without_stopwords_with_bigrams = generate_bigrams(texts_out_lemmatized_without_stopwords)
-    bigrams = f"C:/SpectraSync/processed_material/mmwr/{DOC_FOLDER}/final/texts_out_lemmatized_without_stopwords_with_bigrams.json"
+    bigrams = f"C:/DataPulse/data/raw_material/mmwr/{DOC_FOLDER}/final/texts_out_lemmatized_without_stopwords_with_bigrams.json"
     # Open the specified file in write mode
     with open(bigrams, 'w', encoding='utf-8') as jsonfile:
         # Write the processed text data to the JSON file with formatting and UTF-8 encoding
@@ -926,7 +926,7 @@ if __name__ == "__main__":
 
     print("writing texts_out_not_lemmatized_with_stopwords ")
     # Define the file path for saving processed text in JSON format
-    filename2 = f"C:/SpectraSync/processed_material/mmwr/{DOC_FOLDER}/final/texts_out_not_lemmatized_with_stopwords.json"
+    filename2 = f"C:/DataPulse/data/raw_material/mmwr/{DOC_FOLDER}/final/texts_out_not_lemmatized_with_stopwords.json"
     # Open the specified file in write mode
     with open(filename2, 'w', encoding='utf-8') as jsonfile:
         # Write the processed text data to the JSON file with formatting and UTF-8 encoding
@@ -936,7 +936,7 @@ if __name__ == "__main__":
     texts_out_not_lemmatized_with_stopwords_with_bigrams = generate_bigrams(texts_out_not_lemmatized_with_stopwords)
 
     # Define the file path for saving processed text in JSON format
-    bigrams = f"C:/SpectraSync/processed_material/mmwr/{DOC_FOLDER}/final/texts_out_not_lemmatized_with_stopwords_with_bigrams.json"
+    bigrams = f"C:/DataPulse/data/raw_material/mmwr/{DOC_FOLDER}/final/texts_out_not_lemmatized_with_stopwords_with_bigrams.json"
     # Open the specified file in write mode
     with open(bigrams, 'w', encoding='utf-8') as jsonfile:
         # Write the processed text data to the JSON file with formatting and UTF-8 encoding
@@ -948,7 +948,7 @@ if __name__ == "__main__":
 
     print("writing texts_out_not_lemmatized_without_stopwords.json")
     # Define the file path for saving processed text in JSON format
-    filename2 = f"C:/SpectraSync/processed_material/mmwr/{DOC_FOLDER}/final/texts_out_not_lemmatized_without_stopwords.json"
+    filename2 = f"C:/DataPulse/data/raw_material/mmwr/{DOC_FOLDER}/final/texts_out_not_lemmatized_without_stopwords.json"
     # Open the specified file in write mode
     with open(filename2, 'w', encoding='utf-8') as jsonfile:
         # Write the processed text data to the JSON file with formatting and UTF-8 encoding
@@ -958,7 +958,7 @@ if __name__ == "__main__":
     texts_out_not_lemmatized_without_stopwords_with_bigrams = generate_bigrams(texts_out_not_lemmatized_without_stopwords)
 
     # Define the file path for saving processed text in JSON format
-    bigrams = f"C:/SpectraSync/processed_material/mmwr/{DOC_FOLDER}/final/texts_out_not_lemmatized_without_stopwords_with_bigrams.json"
+    bigrams = f"C:/DataPulse/data/raw_material/mmwr/{DOC_FOLDER}/final/texts_out_not_lemmatized_without_stopwords_with_bigrams.json"
     # Open the specified file in write mode
     with open(bigrams, 'w', encoding='utf-8') as jsonfile:
         # Write the processed text data to the JSON file with formatting and UTF-8 encoding

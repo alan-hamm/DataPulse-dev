@@ -121,7 +121,7 @@ def process_row_v2(row, num_topics):
         logging.error(f"Error processing row: {e}")
         return [0] * num_topics, "No Topic"
 
-@delayed
+#@delayed
 def process_row_v3(row, num_topics):
     """
     Process a single row of document-topic distributions to extract the dominant topic.
@@ -482,8 +482,9 @@ def create_tsne_plot(document_topic_distributions_json, perplexity_score, mode_c
             return time_key, False
      
         try:
-            delayed_results = [process_row_v3(row, num_topics) for row in document_topic_distributions]
-            results = compute(*delayed_results)
+            #delayed_results = [process_row_v3(row, num_topics) for row in document_topic_distributions]
+            #results = compute(*delayed_results)
+            results = [process_row_v3(row, num_topics) for row in document_topic_distributions]
             processed_distributions, dominant_topics_labels = zip(*results)
 
             logging.debug(f"Dominant topic labels before filtering: {dominant_topics_labels[:10]}")

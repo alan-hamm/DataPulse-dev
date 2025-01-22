@@ -218,7 +218,7 @@ def futures_create_lda_datasets_v3(documents_path, train_ratio=0.7, validation_r
     # Load the document data from JSON file
     with open(documents_path, 'r', encoding='utf-8') as jsonfile:
         documents = load(jsonfile)
-        documents = documents[:300]
+        #documents = documents[:300]
 
     total_raw_documents = len(documents)
     dictionary = Dictionary(documents)
