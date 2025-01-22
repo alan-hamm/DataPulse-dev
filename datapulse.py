@@ -196,8 +196,8 @@ DASK_DIR = args.mem_spill if args.mem_spill else os.path.expanduser("~/temp/Spec
 os.makedirs(DASK_DIR, exist_ok=True)
 
 # Model configurations
-PASSES = args.passes if args.passes is not None else 50
-ITERATIONS = args.iterations if args.iterations is not None else 2000
+PASSES = args.passes if args.passes is not None else 15
+ITERATIONS = args.iterations if args.iterations is not None else 100
 UPDATE_EVERY = args.update_every if args.update_every is not None else 5
 EVAL_EVERY = args.eval_every if args.eval_every is not None else 5
 RANDOM_STATE = args.random_state if args.random_state is not None else 50
@@ -665,11 +665,7 @@ if __name__=="__main__":
                             )
                             future_map[model_key] = future  # Track the future
                             # train_futures.append(future)
-<<<<<<< HEAD
                         #progress_bar.update()
-=======
-                            #progress_bar.update()
->>>>>>> 7a98abcdfcd85b074ff8ba75990ed96d8e808e01
 
                             # Resolve future with timeout
                             result = future.result(timeout=300)  # Timeout to prevent indefinite blocking
@@ -678,15 +674,8 @@ if __name__=="__main__":
                                 continue
                             completed_train_futures.append(result)
 
-<<<<<<< HEAD
                             # Rebalance periodically
                             if (j + 1) % 100 == 0:
-=======
-                            result = [r.cancel for r in result]
-                            del result
-                            # Rebalance periodically
-                            if (j + 1) % 10 == 0:
->>>>>>> 7a98abcdfcd85b074ff8ba75990ed96d8e808e01
                                 client.rebalance()
 
                         except ZeroDivisionError as e:
