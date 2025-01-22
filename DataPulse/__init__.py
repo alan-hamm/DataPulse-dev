@@ -27,8 +27,8 @@ __all__ = [
     'calculate_statistics',
     'sample_coherence_for_phase',
     'get_statistics',
-    'coherence_score_decision',
     'calculate_coherence_metrics',
+    'calculate_coherence_metrics_v2',
     'compute_full_coherence_score',
     'calculate_convergence',
     'calculate_perplexity',
@@ -36,9 +36,9 @@ __all__ = [
     'gpu_simulate_coherence_scores_with_lln',
     'simulate_coherence_scores_with_lln_optimized',
     'simulate_corpus',
-    'simulate_negative_log_likelihood',
-    'calculate_negative_log_likelihood',
-    'get_tsne_perplexity_param',
+    'simulate_per_word_likelihood',
+    'calculate_per_word_likelihood',
+    'calculate_tsne_perplexity_from_topics',
 
 
     # batch estimation

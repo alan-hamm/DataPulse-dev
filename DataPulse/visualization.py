@@ -527,13 +527,6 @@ def create_tsne_plot(document_topic_distributions_json, perplexity_score, mode_c
         logging.error(f"Failed to create GPU tensor: {e}")
         return time_key, False
 
-    # get number of topics from deserialized JSON. This count can be different from the
-    # hyperparameter number of topics due to Dask error in train_model_v2 line 388.
-    num_topics = len(document_topic_distributions)
-    if num_topics != topics:
-        logging.warning(f"The hyperparameter topics, {topics}, does not equal the number JSON document topics {num_topics}")
-        logging.warning("Using the JSON document topic count for tSNE plot generation.")
-
     try:
         if distributions_tensor.numel() == 0:
             logging.error("Distributions tensor is empty. Cannot proceed with variance check.")
@@ -772,7 +765,7 @@ def process_visualizations(phase_results, phase_name, performance_log, n_topics,
                     logging.error("Traceback: ", exc_info=True)
        
                 try:
-                    logging.info("Submitting create_vis_pca_v2 to Dask.")
+                    #logging.info("Submitting create_vis_pca_v2 to Dask.")
                     vis_future_pca = client.submit(
                         create_vis_pca_v2, 
                         result_dict['validation_result'],

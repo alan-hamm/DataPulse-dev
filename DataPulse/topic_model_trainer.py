@@ -206,7 +206,7 @@ def train_model_v2(data_source: str, n_topics: int, alpha_str: Union[str,float],
 
     # Set default values for coherence metrics to ensure they are defined even if computation fails
     perplexity_score = 30.0 # see SciKit-Learn TSNE documentation
-    coherence_score = convergence_score = negative_log_likelihood = DEFAULT_SCORE
+    coherence_score = convergence_score = DEFAULT_SCORE
     threshold = mean_coherence = median_coherence = std_coherence = mode_coherence = DEFAULT_SCORE
 
     if phase in ['validation', 'test']:
@@ -228,7 +228,7 @@ def train_model_v2(data_source: str, n_topics: int, alpha_str: Union[str,float],
                 iterations=iterations,
                 update_every=update_every,
                 eval_every=eval_every,
-                chunksize=chunksize,
+                #chunksize=chunksize,
                 per_word_topics=True
             )
             # Serialize the model as a delayed task
@@ -263,14 +263,10 @@ def train_model_v2(data_source: str, n_topics: int, alpha_str: Union[str,float],
 
         try:
             # Process coherence scores with high precision after computation, including the tolerance parameter
-            coherence_scores_data = dask.delayed(calculate_coherence_metrics)(
+            coherence_scores_data = dask.delayed(calculate_coherence_metrics_v2)(
                 default_score=DEFAULT_SCORE,
                 real_coherence_value=coherence_task,
-                ldamodel=ldamodel,
-                dictionary=unified_dictionary,
-                texts=batch_documents,  # Correct parameter
-                cores = cores,
-                max_attempts=max_attempts
+                max_attempts=2
             )
 
             # Extract metrics from processed data as delayed tasks
@@ -284,6 +280,7 @@ def train_model_v2(data_source: str, n_topics: int, alpha_str: Union[str,float],
             coherence_score, mean_coherence, median_coherence, std_coherence, mode_coherence = dask.compute(
                 coherence_score, mean_coherence, median_coherence, std_coherence, mode_coherence
             )
+            del coherence_scores_data
         except Exception as e:
             logging.warning("Sample coherence scores calculation failed. NumPy default_rng().")
             # Assign fallback values directly with a reproducible random generator
@@ -304,34 +301,8 @@ def train_model_v2(data_source: str, n_topics: int, alpha_str: Union[str,float],
             convergence_task = dask.delayed(lambda: DEFAULT_SCORE)()
 
 
-        # get appropriate total number of words
-        total_word_count = get_word_count(corpus_data[phase], train_val_test_dictionary, number_of_words)
-
-        #####################################
-        ## CALCULATE NLL & PERPLEXITY
-        #####################################
-        
-        simulated_nll = simulate_negative_log_likelihood(train_val_test_dictionary, num_topics=10, num_docs=100, avg_doc_len=50)
-        negative_log_likelihood = 0.0
-
-        # calculate negative-log-likelihood
-        try:
-            negative_log_likelihood = calculate_negative_log_likelihood(ldamodel, corpus_data[phase], train_val_test_dictionary, default_score=simulated_nll)
-        except:
-            logging.error("The negative log-likelihood could not be calculated")
-            logging.warning("Using simulated NLL")
-            negative_log_likelihood = simulated_nll
-
-        # calculate general perplexity score
-        perplexity =  calculate_perplexity(negative_log_likelihood, corpus_data[phase], train_val_test_dictionary, total_word_count, default_score=30.0)
-
-        # calculate perplexity score specific to tSNE
-        tsne_perplexity = get_tsne_perplexity_param(corpus_data[phase], train_val_test_dictionary, number_of_words, 
-                                                    ldamodel, num_docs=100, avg_doc_len=50, default_perplexity=30.0, precomputed_simulated_nll=simulated_nll)
-
-
-
    # Initialize default JSONB values
+    topics_to_store_task = [["not_initialized_yet"], ["no_real_data"]]
     topics_results_jsonb = json.dumps([["not_initialized_yet"], ["no_real_data"]])
     topic_words_jsonb = json.dumps([["not_initialized_yet"], ["no_real_data"]])
     validation_results_jsonb = json.dumps([["not_initialized_yet"], ["no_real_data"]])
@@ -349,8 +320,8 @@ def train_model_v2(data_source: str, n_topics: int, alpha_str: Union[str,float],
     extract_success = False
     try:
         logging.debug("Creating delayed task for topic extraction...")
-        topics_to_store_task = extract_topics_with_get_topic_terms(ldamodel, num_words=total_word_count)
-        extract_success = True
+        #topics_to_store_task = extract_topics_with_get_topic_terms(ldamodel, num_words=total_word_count)
+        extract_success = False
     except Exception as e:
         logging.error("[extract_topics_with_get_topic_terms] failed to extract topics.")
         topics_results_jsonb = json.dumps( [["failed_extract_topics_with_get_topic_terms"], ["not_initialized_yet"], ["no_real_data"]], cls=NumpyEncoder)
@@ -487,6 +458,16 @@ def train_model_v2(data_source: str, n_topics: int, alpha_str: Union[str,float],
 
             total_documents = len(validation_results_to_store)
             logging.info(f"Completed processing {total_documents} documents.")
+
+            # clear memory
+            done_batches = [d.cancel() for d in done_batches]
+            not_done = [d.cancel() for d in not_done]
+            retry_done_batches = [d.cancel() for d in retry_done_batches]
+            retry_not_done = [d.cancel() for d in retry_not_done]
+            all_done_batches = [d.cancel() for d in all_done_batches]
+            del done_batches, not_done, retry_done_batches, retry_not_done, all_done_batches
+            client.rebalance()
+
         except Exception as e:
             logging.error(f"Error extracting results from completed futures: {e}", exc_info=True)
 
@@ -533,98 +514,29 @@ def train_model_v2(data_source: str, n_topics: int, alpha_str: Union[str,float],
             logging.error(f"Inspecting item {idx}:")
             log_data_types(item, prefix="  ")
 
+    # get appropriate total number of words
+    total_word_count = get_word_count(corpus_data[phase], train_val_test_dictionary, number_of_words)
 
-
-        ####################################################
-        ## GET SHOW_TOPICS()
-        ####################################################
-
-        # Validate batch_documents
-        if not batch_documents:
-            raise ValueError("Batch documents are empty!")
-        if not all(isinstance(doc, list) and all(isinstance(token, str) for token in doc) for doc in batch_documents):
-            print(f"ERROR IN BATCH STRUCTURE: {batch_documents}:")
-            raise ValueError("Batch documents have an incorrect structure!")
-
-        # Validate LDAModel
-        if not hasattr(ldamodel, 'num_topics') or ldamodel.num_topics <= 0:
-            raise ValueError("LDAModel is not properly trained. Ensure it has been trained with valid data.")
-        if not hasattr(ldamodel, 'state') or ldamodel.state is None:
-            raise ValueError("LDAModel state is missing. Training might not have been completed.")
-
-        # Test LDAModel functionality
-        try:
-            topic_words = ldamodel.show_topic(0, topn=5)  # Get top 5 words from topic 0
-            logging.debug(f"Top words for topic 0: {topic_words}")
-        except Exception as e:
-            logging.error(f"Error while retrieving topic words: {e}")
-            raise
-
+    #####################################
+    ## CALCULATE NLL & PERPLEXITY
+    #####################################
         
-        # Ensure that show_topic works without errors
-        try:
-            topic_words = ldamodel.show_topic(0, topn=5)  # Get top 5 words from topic 0
-            logging.debug(f"Top words for topic 0: {topic_words}")
-        except Exception as e:
-            logging.error(f"Error while retrieving topic words: {e}")
-            raise
-        try:
-            if phase == "train":
-                try:
-                    logging.debug("Phase: train - creating topic_words_task.")
-                    topic_words_task = dask.delayed(lambda: [
-                        [word for word, _ in ldamodel.show_topic(topic_id, topn=10)]
-                        for topic_id in range(ldamodel.num_topics)
-                    ])()
-                    logging.debug("topic_words_task created successfully.")
-                except Exception as e:
-                    logging.error(f"Error creating topic_words_task in train phase: {e}")
-                    topic_words_task = dask.delayed(lambda: [["N/A"]])()
-            else:
-                logging.debug("Phase: non-train - creating topics_task.")
-                topics_task = dask.delayed(ldamodel.top_topics)(
-                    texts=batch_documents,
-                    processes=math.floor(cores * (2 / 3))
-                )
-                logging.debug("topics_task created successfully.")
+    simulated_per_word_likelihood = simulate_per_word_likelihood(train_val_test_dictionary, num_topics=10, num_docs=100, avg_doc_len=50)
+    per_word_likelihood_bound = -.25
 
-                topic_words_task = dask.delayed(lambda topics: [[word for _, word in topic[0]] for topic in topics])(topics_task)
-                logging.debug("topic_words_task created successfully.")
+    # calculate negative-log-likelihood
+    try:
+        per_word_likelihood_bound = calculate_per_word_likelihood(ldamodel, corpus_data[phase], train_val_test_dictionary, default_score=simulated_per_word_likelihood)
+    except:
+        logging.error("The negative log-likelihood could not be calculated")
+        logging.warning("Using simulated NLL")
+        per_word_likelihood_bound = simulated_per_word_likelihood
 
-            logging.debug("Computing topic_words_task...")
-            topic_words = topic_words_task.compute()
-            logging.debug(f"topic_words computed successfully: {topic_words}")
+    # calculate general perplexity score
+    perplexity =  calculate_perplexity(per_word_likelihood_bound)
 
-            topics_to_store = convert_float32_to_float(topic_words)
-            topic_words_jsonb = json.dumps(topics_to_store)  # Serialize to JSON format
-            logging.debug(f"Serialized topic words: {topic_words_jsonb}")
-
-        except Exception as e:
-            # Error during topic processing or serialization
-            logging.error(f"Critical failure in topic processing or serialization: {e}. Attempting second attempt with NumpyEncoder.")
-
-            try:
-                topic_words_jsonb = json.dumps(topics_to_store, cls=NumpyEncoder)
-
-            except TypeError as e:
-                logging.warning(f"Second topics_to_store serialization attempt failed: {e}")
-                try:
-                    # Third attempt with specific handling for arrays/dataframes
-                    if isinstance(topics_to_store, np.ndarray):
-                        data = topics_to_store.astype(float).tolist()
-                        topic_words_jsonb = json.dumps(data)
-
-                    elif isinstance(topics_to_store, pd.DataFrame):
-                        data = topics_to_store.applymap(lambda x: float(x) if isinstance(x, (np.float32, np.float64)) else x)
-                        topic_words_jsonb = json.dumps(data)
-
-                    else:
-                        topic_words_jsonb = json.dumps(topics_to_store)
-
-                except TypeError as e:
-                    logging.error("All JSON topics_to_store serialization attempts failed.")
-                    topic_words_jsonb = json.dumps({"error": "Validation data generation failed", "phase": phase})
-
+    # calculate perplexity score specific to tSNE
+    tsne_perplexity, radius = calculate_tsne_perplexity_from_topics(validation_results_jsonb, corpus_data[phase], n_neighbors=50, radius=mode_coherence, default_perplexity=5.0)
 
     # Calculate batch size based on training data batch
     #batch_size = len(batch_documents) if phase == "train" else len(batch_documents)
@@ -720,10 +632,11 @@ def train_model_v2(data_source: str, n_topics: int, alpha_str: Union[str,float],
     # Evaluation Metrics
     'convergence': convergence_score,
     'num_samples': len(corpus_data[phase]),
-    'nll': negative_log_likelihood,
-    'simulated_nll': simulated_nll,
-    'perplexity': perplexity,
+    'per_word_likelihood_bound': per_word_likelihood_bound,
+    'simulated_pwdl': simulated_per_word_likelihood,
+    'gensim_perplexity': perplexity,
     'tsne_perplexity': tsne_perplexity,
+    'perplexity_radius': -1,
     'coherence': coherence_score,
     'mean_coherence': mean_coherence,
     'median_coherence': median_coherence,

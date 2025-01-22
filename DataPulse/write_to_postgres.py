@@ -131,10 +131,11 @@ def create_dynamic_table_class(table_name):
     # Evaluation Metrics
     'convergence': Column(Numeric(precision=20, scale=10), nullable=False),
     'num_samples': Column(Numeric(precision=20, scale=10), nullable=False),
-    'nll': Column(Numeric(precision=20, scale=10), nullable=False),
-    'simulated_nll': Column(Numeric(precision=20, scale=10), nullable=False),
-    'perplexity': Column(Numeric(precision=20, scale=10), nullable=False),
+    'per_word_likelihood_bound': Column(Numeric(precision=20, scale=10), nullable=False),
+    'simulated_pwdl': Column(Numeric(precision=20, scale=10), nullable=False),
+    'gensim_perplexity': Column(Numeric(precision=20, scale=10), nullable=True),
     'tsne_perplexity': Column(Numeric(precision=20, scale=10), nullable=False),
+    'perplexity_radius': Column(Numeric(precision=20, scale=10), nullable=False),
     'coherence': Column(Numeric(precision=20, scale=10), nullable=False),
     'mean_coherence': Column(Numeric(precision=20, scale=10), nullable=False),
     'median_coherence': Column(Numeric(precision=20, scale=10), nullable=False),
@@ -142,9 +143,9 @@ def create_dynamic_table_class(table_name):
     'std_coherence': Column(Numeric(precision=20, scale=10), nullable=False),
     
     # Visualization Placeholders
-    'create_pylda' : Column(Boolean, nullable=True),
-    'create_pcoa' : Column(Boolean, nullable=True),
-    'create_pca_gpu': Column(Boolean, nullable=True)
+    'create_pylda' : Column(Boolean, nullable=False),
+    'create_pcoa' : Column(Boolean, nullable=False),
+    'create_pca_gpu': Column(Boolean, nullable=False)
     }
 
     # Create a new class type with a unique name derived from table_name

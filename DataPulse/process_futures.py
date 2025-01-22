@@ -22,6 +22,7 @@ import sys
 from .utils import exponential_backoff, garbage_collection
 from .write_to_postgres import add_model_data_to_database, create_dynamic_table_class, create_table_if_not_exists
 
+import cupy as cp
 from time import sleep
 import logging
 from dask import delayed
@@ -654,7 +655,6 @@ def get_document_topics_batch(ldamodel, bow_docs):
 
 
 
-
 def get_document_topics_batch_v2(ldamodel, bow_docs):
     """
     Retrieve significant topics for a batch of documents in a delayed Dask task.
@@ -681,7 +681,7 @@ def get_document_topics_batch_v2(ldamodel, bow_docs):
                 continue
 
             # Get document topics with all probabilities (minimum_probability=0)
-            topics = ldamodel.get_document_topics(bow_doc, minimum_probability=0)
+            topics = ldamodel.get_document_topics(bow_doc, minimum_probability=.01)
             if not topics:
                 logging.warning(f"No significant topics found for document: {bow_doc}")
                 batch_results.append([{"topic_id": None, "probability": 0}])
@@ -701,4 +701,76 @@ def get_document_topics_batch_v2(ldamodel, bow_docs):
     return batch_results
 
 
+
+def get_document_topics_batch_with_cupy(ldamodel, bow_docs):
+    """
+    Retrieve significant topics for a batch of documents, process results with CuPy for GPU acceleration,
+    and maintain a structure that is serializable.
+    """
+    batch_results = []
+
+    logging.info(f"[get_document_topics_batch_with_cupy] Starting batch processing with {len(bow_docs)} documents.")
+
+    for bow_doc_idx, bow_doc in enumerate(bow_docs):
+        try:
+            # Ensure bow_doc is a list of tuples
+            if isinstance(bow_doc, tuple):  # Edge case: single tuple extracted
+                bow_doc = [bow_doc]  # Wrap in a list to make it a valid BoW
+
+            # Log the structure of bow_doc
+            logging.debug(f"[get_document_topics_batch_with_cupy] Processing document {bow_doc_idx}: {bow_doc[:5]}")
+
+            # Validate that bow_doc is a list of tuples
+            if not isinstance(bow_doc, list) or not all(isinstance(item, tuple) for item in bow_doc):
+                logging.warning(f"Invalid BoW format for document {bow_doc_idx}: {bow_doc}. Skipping.")
+                batch_results.append([{"topic_id": None, "probability": 0}])
+                continue
+
+            # Get document topics with all probabilities (minimum_probability=0)
+            topics = ldamodel.get_document_topics(bow_doc, minimum_probability=0)
+            logging.debug(f"[get_document_topics_batch_with_cupy] Topics for document {bow_doc_idx}: {topics}")
+
+            if not topics:
+                logging.warning(f"No significant topics found for document {bow_doc_idx}: {bow_doc}")
+                batch_results.append([{"topic_id": None, "probability": 0}])
+            else:
+                # Convert topics to GPU for CuPy processing
+                topic_ids = cp.array([topic_id for topic_id, _ in topics], dtype=cp.int32)
+                probabilities = cp.array([float(prob) for _, prob in topics], dtype=cp.float32)
+
+                logging.debug(
+                    f"[get_document_topics_batch_with_cupy] CuPy arrays created for document {bow_doc_idx}."
+                )
+
+                # Perform any CuPy-based processing here (e.g., normalization, transformations)
+                probabilities = probabilities / cp.sum(probabilities)
+
+                # Convert CuPy arrays back to Python objects (fully deserialized)
+                topic_ids_cpu = topic_ids.get().tolist()
+                probabilities_cpu = probabilities.get().tolist()
+
+                # Log after GPU processing
+                logging.debug(
+                    f"[get_document_topics_batch_with_cupy] Normalized probabilities for document {bow_doc_idx}: {probabilities.get()}"
+                )
+
+                # Move results back to CPU and format as serializable structure
+                formatted_topics = [
+                    {"topic_id": int(topic_id), "probability": float(prob)}
+                    for topic_id, prob in zip(topic_ids_cpu, probabilities_cpu)
+                ]
+                batch_results.append(formatted_topics)
+        except Exception as e:
+            logging.error(
+                f"Error getting document topics for document {bow_doc_idx}: {e}", exc_info=True
+            )
+            batch_results.append([{"topic_id": None, "probability": 0}])
+
+    logging.info(f"[get_document_topics_batch_with_cupy] Finished processing batch.")
+    # Ensure batch_results is not empty
+    if not batch_results:
+        logging.warning("[get_document_topics_batch_with_cupy] No valid data processed. Returning fallback result.")
+        return [[{"topic_id": None, "probability": 0}]]
+
+    return batch_results
 
